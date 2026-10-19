@@ -6,4 +6,4 @@ kind: Function
 metadata:
   name: function-tuskpilot
 spec:
-  package: ghcr.io/bartvanbenthem/function-tuskpilot:v0.1.0
+  package: ghcr.io/bartvanbenthem/function-tuskpilot:v0.1.1

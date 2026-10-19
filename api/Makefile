@@ -2,7 +2,7 @@
 
 # function-tuskpilot, the composition function behind PostgresCluster.
 FUNCTION_IMAGE ?= ghcr.io/bartvanbenthem/function-tuskpilot
-FUNCTION_VERSION ?= v0.1.0
+FUNCTION_VERSION ?= v0.1.1
 XPKG := _output/function-tuskpilot-$(FUNCTION_VERSION).xpkg
 
 # Rebuild the function's embedded assets from src/ (dashboard, alert rules)
