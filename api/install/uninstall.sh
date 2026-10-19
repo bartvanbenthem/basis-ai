@@ -12,20 +12,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 API_DIR="${SCRIPT_DIR}/../apis"
 CROSSPLANE_NAMESPACE="${CROSSPLANE_NAMESPACE:-crossplane-system}"
 
-if kubectl get crd postgresclusters.cnpg.tuskpilot.com >/dev/null 2>&1; then
-  remaining="$(kubectl get postgresclusters.cnpg.tuskpilot.com -A --no-headers 2>/dev/null | wc -l)"
+if kubectl get crd postgresclusters.cnpg.cndev.nl >/dev/null 2>&1; then
+  remaining="$(kubectl get postgresclusters.cnpg.cndev.nl -A --no-headers 2>/dev/null | wc -l)"
   if [[ "${remaining}" -gt 0 ]]; then
     echo "ERROR: ${remaining} PostgresCluster(s) still exist; delete them first:" >&2
-    kubectl get postgresclusters.cnpg.tuskpilot.com -A >&2
+    kubectl get postgresclusters.cnpg.cndev.nl -A >&2
     exit 1
   fi
 fi
 
-if kubectl get crd projects.platform.tuskpilot.com >/dev/null 2>&1; then
-  remaining="$(kubectl get projects.platform.tuskpilot.com --no-headers 2>/dev/null | wc -l)"
+if kubectl get crd projects.platform.cndev.nl >/dev/null 2>&1; then
+  remaining="$(kubectl get projects.platform.cndev.nl --no-headers 2>/dev/null | wc -l)"
   if [[ "${remaining}" -gt 0 ]]; then
     echo "ERROR: ${remaining} Project(s) still exist; delete them first:" >&2
-    kubectl get projects.platform.tuskpilot.com >&2
+    kubectl get projects.platform.cndev.nl >&2
     exit 1
   fi
 fi
@@ -36,8 +36,8 @@ kubectl delete -f "${API_DIR}/project/definition.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/postgrescluster/policies.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/postgrescluster/composition.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/postgrescluster/definition.yaml" --ignore-not-found
-if kubectl get crd locations.platform.tuskpilot.com >/dev/null 2>&1; then
-  kubectl delete locations.platform.tuskpilot.com --all --wait=true
+if kubectl get crd locations.platform.cndev.nl >/dev/null 2>&1; then
+  kubectl delete locations.platform.cndev.nl --all --wait=true
 fi
 kubectl delete -f "${API_DIR}/location/composition.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/location/definition.yaml" --ignore-not-found

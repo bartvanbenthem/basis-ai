@@ -33,9 +33,9 @@ import { parseKubeconfig } from './kubeconfig';
 const KUBECONFIG_KEY = 'kubeconfig';
 const OWNER_LABEL = 'backstage.io/owner';
 /** The Location API (api/apis/location), cluster-scoped. */
-const LOCATION_API = { group: 'platform.tuskpilot.com', version: 'v1alpha1', plural: 'locations' };
+const LOCATION_API = { group: 'platform.cndev.nl', version: 'v1alpha1', plural: 'locations' };
 const API_MISSING =
-  'The Location API (locations.platform.tuskpilot.com) is not installed; run api/install/install.sh';
+  'The Location API (locations.platform.cndev.nl) is not installed; run api/install/install.sh';
 
 interface LocationResource {
   apiVersion?: string;

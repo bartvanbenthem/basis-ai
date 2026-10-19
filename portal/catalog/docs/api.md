@@ -6,9 +6,9 @@ them against the schema: types, defaults, enums and rules.
 
 | API | Kind | Scope | Reference |
 |---|---|---|---|
-| `cnpg.tuskpilot.com/v1alpha1` | `PostgresCluster` (`pgc`) | in a Project's namespace | [PostgresCluster API](/catalog/default/api/postgrescluster/definition) |
-| `platform.tuskpilot.com/v1alpha1` | `Project` (`proj`) | cluster | [Project API](/catalog/default/api/project/definition) |
-| `platform.tuskpilot.com/v1alpha1` | `Location` (`loc`) | cluster | [Location API](/catalog/default/api/location/definition) |
+| `cnpg.cndev.nl/v1alpha1` | `PostgresCluster` (`pgc`) | in a Project's namespace | [PostgresCluster API](/catalog/default/api/postgrescluster/definition) |
+| `platform.cndev.nl/v1alpha1` | `Project` (`proj`) | cluster | [Project API](/catalog/default/api/project/definition) |
+| `platform.cndev.nl/v1alpha1` | `Location` (`loc`) | cluster | [Location API](/catalog/default/api/location/definition) |
 
 Each reference is an OpenAPI document of the CRD Crossplane makes of the API's definition (XRD):
 the platform's fields plus Crossplane's own, `spec.crossplane` (which Composition composes it) and

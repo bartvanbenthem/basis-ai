@@ -1,5 +1,5 @@
 # Both sites: databases run in si-ske-demo, replica clusters in onprem-ams.
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata:
   name: team-payments

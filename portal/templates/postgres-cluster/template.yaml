@@ -5,7 +5,7 @@ metadata:
   title: PostgreSQL cluster (CloudNativePG)
   description: >-
     Provision a production-ready PostgreSQL cluster on CloudNativePG through the
-    cnpg.tuskpilot.com PostgresCluster API: HA instances, optional PgBouncer and S3
+    cnpg.cndev.nl PostgresCluster API: HA instances, optional PgBouncer and S3
     backups, Prometheus metrics, alerts and a Grafana dashboard.
   tags: [postgresql, cnpg, database]
 spec:

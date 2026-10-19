@@ -2,7 +2,7 @@
 # Registers another Kubernetes cluster as a location, the same way the portal
 # does (Locations > Add location), on the control plane (your current
 # context): the kubeconfig as Secret <name> in ${LOCATIONS_NAMESPACE} (label
-# platform.tuskpilot.com/location=true) and a Location <name> pointing at it. The
+# platform.cndev.nl/location=true) and a Location <name> pointing at it. The
 # Location composition (apis/location) does the rest: the provider-kubernetes
 # ClusterProviderConfig, and in the location the ClusterRole every project's
 # Prometheus binds to.
@@ -93,12 +93,12 @@ echo "==> control plane: Secret ${LOCATIONS_NAMESPACE}/${NAME} + Location ${NAME
 kubectl create namespace "${LOCATIONS_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n "${LOCATIONS_NAMESPACE}" create secret generic "${NAME}" \
   --from-file=kubeconfig="${KUBECONFIG_FILE}" --dry-run=client -o yaml \
-  | kubectl label --local -f - -o yaml platform.tuskpilot.com/location=true \
+  | kubectl label --local -f - -o yaml platform.cndev.nl/location=true \
   | kubectl apply -f -
 # Server-side apply of just the credentials: settings made in the portal or
 # with kubectl edit stay.
 kubectl apply --server-side --field-manager=add-location -f - <<YAML
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Location
 metadata:
   name: ${NAME}
@@ -109,7 +109,7 @@ spec:
       name: ${NAME}
       key: kubeconfig
 YAML
-kubectl wait "location.platform.tuskpilot.com/${NAME}" --for=jsonpath='{.status.connected}'=true --timeout=120s \
+kubectl wait "location.platform.cndev.nl/${NAME}" --for=jsonpath='{.status.connected}'=true --timeout=120s \
   || echo "WARNING: Crossplane hasn't reached ${NAME} yet; see kubectl get location ${NAME} -o wide" >&2
 
 echo "==> Done. Use \"${NAME}\" in a Project's spec.locations, as its protected"

@@ -109,7 +109,7 @@ export function toProjectSpec(f: ProjectForm): Record<string, unknown> {
 /** The manifest the form produces, for the preview pane. */
 export function toProjectManifest(f: ProjectForm) {
   return {
-    apiVersion: 'platform.tuskpilot.com/v1alpha1',
+    apiVersion: 'platform.cndev.nl/v1alpha1',
     kind: 'Project',
     metadata: { name: f.name || '<name>' },
     spec: {

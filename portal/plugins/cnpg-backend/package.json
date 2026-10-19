@@ -50,6 +50,6 @@
     "dist",
     "config.d.ts"
   ],
-  "description": "Backend for the CNPG portal: REST API, catalog provider and scaffolder action for cnpg.tuskpilot.com PostgresClusters",
+  "description": "Backend for the CNPG portal: REST API, catalog provider and scaffolder action for cnpg.cndev.nl PostgresClusters",
   "configSchema": "config.d.ts"
 }

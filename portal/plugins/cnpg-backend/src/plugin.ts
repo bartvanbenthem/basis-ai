@@ -12,7 +12,7 @@ import { volumeServiceRef } from './service/VolumeService';
 
 /**
  * REST API for the CNPG portal: list / inspect / create / update / delete
- * cnpg.tuskpilot.com PostgresClusters. Mounted at /api/cnpg.
+ * cnpg.cndev.nl PostgresClusters. Mounted at /api/cnpg.
  *
  * @public
  */

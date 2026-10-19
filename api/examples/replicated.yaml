@@ -16,7 +16,7 @@
 # and back with primarySite: protected. When the protected location is down,
 # add "promotion":"Failover" to promote the recovery site without waiting for
 # the old primary.
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: invoices-db

@@ -1,6 +1,6 @@
 # A size from the postgres-sizes catalog (apis/postgrescluster/sizes.yaml):
 # its resources and tuned settings, with spec.postgresql.parameters on top.
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

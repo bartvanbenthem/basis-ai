@@ -25,7 +25,7 @@ cluster-admin or an equivalent role. The Location is `READY` once Crossplane rea
 operators (CloudNativePG, Prometheus Operator) are installed.
 
 ```yaml
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Location
 metadata:
   name: dc-a

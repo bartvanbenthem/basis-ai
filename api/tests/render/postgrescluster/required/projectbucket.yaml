@@ -1,6 +1,6 @@
 # Project vault with both sites and a ready COSI backup bucket (its status, as
 # the Project composition reports it).
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata:
   name: vault

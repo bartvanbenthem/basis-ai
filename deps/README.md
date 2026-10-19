@@ -103,10 +103,10 @@ plane, for all Projects, so it goes in before the first one (its CRD comes
 with Crossplane, so after `api/install/install.sh`). It holds this
 environment's values:
 
-- the Grafana ingress host (`grafana-<project>.paas.tuskpilot.com`) and the
+- the Grafana ingress host (`grafana-<project>.paas.cndev.nl`) and the
   remote-write endpoint the locations' Prometheus send to
-  (`prometheus-<project>.paas.tuskpilot.com`), both through the HAProxy Ingress of
-  step 4. A wildcard DNS record `*.paas.tuskpilot.com` points at its LoadBalancer
+  (`prometheus-<project>.paas.cndev.nl`), both through the HAProxy Ingress of
+  step 4. A wildcard DNS record `*.paas.cndev.nl` points at its LoadBalancer
   IP; use your own domain (or `<x>-{project}.<ip>.nip.io` without DNS)
   elsewhere
 - where kube-prometheus-stack's ServiceMonitors live in the locations (step 2)
@@ -124,7 +124,7 @@ kubectl apply -f control-plane/project-defaults.yaml
 ## 6. The `demo` Project (after `api/`)
 
 A namespace with its own Prometheus and Grafana is a **Project**
-(`platform.tuskpilot.com/v1alpha1`, see
+(`platform.cndev.nl/v1alpha1`, see
 [`api`](../api/README.md#the-project-api)), so
 this step runs on the control plane *after* `api/install/install.sh`
 and after registering the location the demo databases run in
@@ -139,7 +139,7 @@ in the location that scrapes every `PodMonitor` and `PrometheusRule` in it
 (plus the kubelet / kube-state-metrics / node-exporter targets from step 2)
 and writes to the project's Prometheus on the control plane, and there a
 Grafana with a `prometheus` datasource, anonymous Viewer access and
-embedding allowed. The Grafana carries `dashboards.paas.tuskpilot.com/scope=demo`,
+embedding allowed. The Grafana carries `dashboards.paas.cndev.nl/scope=demo`,
 which every PostgresCluster's `GrafanaDashboard` in `demo` selects.
 
 ```sh
@@ -177,7 +177,7 @@ kubectl delete clusterrolebinding demo-prometheus
 kubectl delete clusterrole demo-prometheus
 ```
 
-The old Grafana also answered on `grafana.paas.tuskpilot.com`. A Project has one
+The old Grafana also answered on `grafana.paas.cndev.nl`. A Project has one
 host from `hostTemplate`, so add that DNS name elsewhere if you still need it.
 
 > The `demo` namespace now belongs to the Project. Deletion protection is on

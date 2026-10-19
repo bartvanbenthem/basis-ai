@@ -22,14 +22,14 @@ func obj(t *testing.T, y string) Object {
 }
 
 const xrYAML = `
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata: {name: orders-db, namespace: payments, uid: 0f3a9c1e-1111-2222-3333-444444444444}
 spec: {}
 `
 
 func project(t *testing.T, y string) []Object {
-	return []Object{obj(t, "apiVersion: platform.tuskpilot.com/v1alpha1\nkind: Project\nmetadata: {name: payments}\n"+y)}
+	return []Object{obj(t, "apiVersion: platform.cndev.nl/v1alpha1\nkind: Project\nmetadata: {name: payments}\n"+y)}
 }
 
 // running is the observed state of a cluster that exists: the dashboard and its Cluster.

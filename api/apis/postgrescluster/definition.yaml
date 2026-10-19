@@ -24,9 +24,9 @@
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: postgresclusters.cnpg.tuskpilot.com
+  name: postgresclusters.cnpg.cndev.nl
 spec:
-  group: cnpg.tuskpilot.com
+  group: cnpg.cndev.nl
   scope: Namespaced
   names:
     kind: PostgresCluster
@@ -559,7 +559,7 @@ spec:
                           default: true
                         instanceSelector:
                           type: object
-                          description: matchLabels selecting the Grafana instance(s). Defaults to dashboards.paas.tuskpilot.com/scope=<namespace>.
+                          description: matchLabels selecting the Grafana instance(s). Defaults to dashboards.paas.cndev.nl/scope=<namespace>.
                           additionalProperties:
                             type: string
                         allowCrossNamespaceImport:

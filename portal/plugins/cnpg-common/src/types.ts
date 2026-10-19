@@ -1,5 +1,5 @@
 /**
- * Shapes of the cnpg.tuskpilot.com/v1alpha1 PostgresCluster API served by
+ * Shapes of the cnpg.cndev.nl/v1alpha1 PostgresCluster API served by
  * api/. The XRD is the source of truth (and the API server
  * validates every write against it); these types only cover what the portal
  * reads or sends.
@@ -9,22 +9,22 @@ import { specExtensions } from './extensions';
 import { ClusterProfile, clusterProfile } from './profiles';
 import type { ClusterResources } from './sizes';
 
-export const XR_GROUP = 'cnpg.tuskpilot.com';
+export const XR_GROUP = 'cnpg.cndev.nl';
 export const XR_VERSION = 'v1alpha1';
 export const XR_PLURAL = 'postgresclusters';
 export const XR_KIND = 'PostgresCluster';
 
 /** Annotation on catalog Resource entities: "<namespace>/<name>" of their PostgresCluster. */
-export const CNPG_ANNOTATION = 'cnpg.tuskpilot.com/postgrescluster';
+export const CNPG_ANNOTATION = 'cnpg.cndev.nl/postgrescluster';
 
-/** platform.tuskpilot.com/v1alpha1 Project (cluster-scoped): one namespace with its own Prometheus + Grafana. */
-export const PROJECT_GROUP = 'platform.tuskpilot.com';
+/** platform.cndev.nl/v1alpha1 Project (cluster-scoped): one namespace with its own Prometheus + Grafana. */
+export const PROJECT_GROUP = 'platform.cndev.nl';
 export const PROJECT_VERSION = 'v1alpha1';
 export const PROJECT_PLURAL = 'projects';
 export const PROJECT_KIND = 'Project';
 
 /** Annotation on catalog project entities: the Project (= namespace) name. */
-export const PROJECT_ANNOTATION = 'platform.tuskpilot.com/project';
+export const PROJECT_ANNOTATION = 'platform.cndev.nl/project';
 
 /**
  * Reserved location name. It used to stand for the platform cluster itself;

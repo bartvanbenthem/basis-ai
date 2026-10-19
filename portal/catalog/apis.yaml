@@ -5,7 +5,7 @@
 apiVersion: backstage.io/v1alpha1
 kind: API
 metadata:
-  description: A production-ready PostgreSQL cluster (cnpg.tuskpilot.com/v1alpha1), namespaced in its Project
+  description: A production-ready PostgreSQL cluster (cnpg.cndev.nl/v1alpha1), namespaced in its Project
   name: postgrescluster
   tags:
     - kubernetes
@@ -38,7 +38,7 @@ spec:
           properties:
             apiVersion:
               enum:
-                - cnpg.tuskpilot.com/v1alpha1
+                - cnpg.cndev.nl/v1alpha1
               type: string
             kind:
               enum:
@@ -377,7 +377,7 @@ spec:
                         instanceSelector:
                           additionalProperties:
                             type: string
-                          description: matchLabels selecting the Grafana instance(s). Defaults to dashboards.paas.tuskpilot.com/scope=<namespace>.
+                          description: matchLabels selecting the Grafana instance(s). Defaults to dashboards.paas.cndev.nl/scope=<namespace>.
                           type: object
                       type: object
                     podMonitorLabels:
@@ -786,7 +786,7 @@ spec:
           type: object
       securitySchemes:
         bearerAuth:
-          description: A Kubernetes token (OIDC or ServiceAccount) with RBAC on postgresclusters.cnpg.tuskpilot.com
+          description: A Kubernetes token (OIDC or ServiceAccount) with RBAC on postgresclusters.cnpg.cndev.nl
           scheme: bearer
           type: http
     info:
@@ -794,11 +794,11 @@ spec:
         A production-ready PostgreSQL cluster managed by CloudNativePG.
 
         A Crossplane composite resource on the platform's control plane, namespaced: it lives in its Project's namespace. Use it with `kubectl` (short name `pgc`), GitOps, or the Kubernetes API below; the portal and its software templates create it the same way. This is the CRD Crossplane makes of the XRD (api/apis): the platform's fields plus Crossplane's own (spec.crossplane, status.conditions), so it is what the API server validates: the schema, its defaults and the rules listed under each field.
-      title: PostgresCluster (cnpg.tuskpilot.com/v1alpha1)
+      title: PostgresCluster (cnpg.cndev.nl/v1alpha1)
       version: v1alpha1
     openapi: 3.0.3
     paths:
-      /apis/cnpg.tuskpilot.com/v1alpha1/namespaces/{namespace}/postgresclusters:
+      /apis/cnpg.cndev.nl/v1alpha1/namespaces/{namespace}/postgresclusters:
         get:
           operationId: listPostgresCluster
           responses:
@@ -867,7 +867,7 @@ spec:
           summary: Create a PostgresCluster
           tags:
             - PostgresCluster
-      /apis/cnpg.tuskpilot.com/v1alpha1/namespaces/{namespace}/postgresclusters/{name}:
+      /apis/cnpg.cndev.nl/v1alpha1/namespaces/{namespace}/postgresclusters/{name}:
         delete:
           operationId: deletePostgresCluster
           responses:
@@ -1010,7 +1010,7 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: API
 metadata:
-  description: A team's namespace with its locations, access, quota, Prometheus and Grafana (platform.tuskpilot.com/v1alpha1)
+  description: A team's namespace with its locations, access, quota, Prometheus and Grafana (platform.cndev.nl/v1alpha1)
   name: project
   tags:
     - kubernetes
@@ -1049,7 +1049,7 @@ spec:
           properties:
             apiVersion:
               enum:
-                - platform.tuskpilot.com/v1alpha1
+                - platform.cndev.nl/v1alpha1
               type: string
             kind:
               enum:
@@ -1434,7 +1434,7 @@ spec:
           type: object
       securitySchemes:
         bearerAuth:
-          description: A Kubernetes token (OIDC or ServiceAccount) with RBAC on projects.platform.tuskpilot.com
+          description: A Kubernetes token (OIDC or ServiceAccount) with RBAC on projects.platform.cndev.nl
           scheme: bearer
           type: http
     info:
@@ -1442,11 +1442,11 @@ spec:
         A team's namespace with its own Prometheus and Grafana, ready for PostgresClusters.
 
         A Crossplane composite resource on the platform's control plane, cluster-scoped. Use it with `kubectl` (short name `proj`), GitOps, or the Kubernetes API below; the portal and its software templates create it the same way. This is the CRD Crossplane makes of the XRD (api/apis): the platform's fields plus Crossplane's own (spec.crossplane, status.conditions), so it is what the API server validates: the schema, its defaults and the rules listed under each field.
-      title: Project (platform.tuskpilot.com/v1alpha1)
+      title: Project (platform.cndev.nl/v1alpha1)
       version: v1alpha1
     openapi: 3.0.3
     paths:
-      /apis/platform.tuskpilot.com/v1alpha1/projects:
+      /apis/platform.cndev.nl/v1alpha1/projects:
         get:
           operationId: listProject
           responses:
@@ -1509,7 +1509,7 @@ spec:
           summary: Create a Project
           tags:
             - Project
-      /apis/platform.tuskpilot.com/v1alpha1/projects/{name}:
+      /apis/platform.cndev.nl/v1alpha1/projects/{name}:
         delete:
           operationId: deleteProject
           responses:
@@ -1646,7 +1646,7 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: API
 metadata:
-  description: A Kubernetes cluster the platform runs databases in (platform.tuskpilot.com/v1alpha1)
+  description: A Kubernetes cluster the platform runs databases in (platform.cndev.nl/v1alpha1)
   name: location
   tags:
     - kubernetes
@@ -1666,7 +1666,7 @@ spec:
           properties:
             apiVersion:
               enum:
-                - platform.tuskpilot.com/v1alpha1
+                - platform.cndev.nl/v1alpha1
               type: string
             kind:
               enum:
@@ -1886,7 +1886,7 @@ spec:
           type: object
       securitySchemes:
         bearerAuth:
-          description: A Kubernetes token (OIDC or ServiceAccount) with RBAC on locations.platform.tuskpilot.com
+          description: A Kubernetes token (OIDC or ServiceAccount) with RBAC on locations.platform.cndev.nl
           scheme: bearer
           type: http
     info:
@@ -1894,11 +1894,11 @@ spec:
         A Kubernetes cluster the platform can run Projects' databases in.
 
         A Crossplane composite resource on the platform's control plane, cluster-scoped. Use it with `kubectl` (short name `loc`), GitOps, or the Kubernetes API below; the portal and its software templates create it the same way. This is the CRD Crossplane makes of the XRD (api/apis): the platform's fields plus Crossplane's own (spec.crossplane, status.conditions), so it is what the API server validates: the schema, its defaults and the rules listed under each field.
-      title: Location (platform.tuskpilot.com/v1alpha1)
+      title: Location (platform.cndev.nl/v1alpha1)
       version: v1alpha1
     openapi: 3.0.3
     paths:
-      /apis/platform.tuskpilot.com/v1alpha1/locations:
+      /apis/platform.cndev.nl/v1alpha1/locations:
         get:
           operationId: listLocation
           responses:
@@ -1961,7 +1961,7 @@ spec:
           summary: Create a Location
           tags:
             - Location
-      /apis/platform.tuskpilot.com/v1alpha1/locations/{name}:
+      /apis/platform.cndev.nl/v1alpha1/locations/{name}:
         delete:
           operationId: deleteLocation
           responses:

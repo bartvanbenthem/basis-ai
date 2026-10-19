@@ -65,11 +65,11 @@ status:
       kind: RoleBinding
       metadata:
         annotations:
-          platform.tuskpilot.com/group: payments-devs
+          platform.cndev.nl/group: payments-devs
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: project-edit-163c746e
         namespace: team-payments
       roleRef:
@@ -102,11 +102,11 @@ status:
       kind: RoleBinding
       metadata:
         annotations:
-          platform.tuskpilot.com/group: auditors
+          platform.cndev.nl/group: auditors
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: project-view-f2efb158
         namespace: team-payments
       roleRef:
@@ -141,7 +141,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: project-defaults
         namespace: team-payments
       spec:
@@ -174,13 +174,13 @@ status:
       kind: Namespace
       metadata:
         annotations:
-          platform.tuskpilot.com/description: Payment services
+          platform.cndev.nl/description: Payment services
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
           backstage.io/owner: team-payments
-          dashboards.paas.tuskpilot.com/scope: team-payments
-          platform.tuskpilot.com/project: team-payments
+          dashboards.paas.cndev.nl/scope: team-payments
+          platform.cndev.nl/project: team-payments
           pod-security.kubernetes.io/enforce: baseline
           pod-security.kubernetes.io/warn: restricted
         name: team-payments
@@ -210,7 +210,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: prometheus
         namespace: team-payments
       spec:
@@ -297,7 +297,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: platform:project:team-payments:prometheus
       roleRef:
         apiGroup: rbac.authorization.k8s.io
@@ -331,7 +331,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: prometheus-prometheus-db-prometheus-prometheus-0
         namespace: team-payments
       spec:
@@ -365,7 +365,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: prometheus
         namespace: team-payments
   conditions:
@@ -392,7 +392,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: project
         namespace: team-payments
       spec:
@@ -423,11 +423,11 @@ status:
       kind: RoleBinding
       metadata:
         annotations:
-          platform.tuskpilot.com/group: payments-devs
+          platform.cndev.nl/group: payments-devs
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: project-edit-163c746e
         namespace: team-payments
       roleRef:
@@ -460,11 +460,11 @@ status:
       kind: RoleBinding
       metadata:
         annotations:
-          platform.tuskpilot.com/group: auditors
+          platform.cndev.nl/group: auditors
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: project-view-f2efb158
         namespace: team-payments
       roleRef:
@@ -499,7 +499,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: project-defaults
         namespace: team-payments
       spec:
@@ -532,13 +532,13 @@ status:
       kind: Namespace
       metadata:
         annotations:
-          platform.tuskpilot.com/description: Payment services
+          platform.cndev.nl/description: Payment services
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
           backstage.io/owner: team-payments
-          dashboards.paas.tuskpilot.com/scope: team-payments
-          platform.tuskpilot.com/project: team-payments
+          dashboards.paas.cndev.nl/scope: team-payments
+          platform.cndev.nl/project: team-payments
           pod-security.kubernetes.io/enforce: baseline
           pod-security.kubernetes.io/warn: restricted
         name: team-payments
@@ -568,7 +568,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: prometheus
         namespace: team-payments
       spec:
@@ -655,7 +655,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: platform:project:team-payments:prometheus
       roleRef:
         apiGroup: rbac.authorization.k8s.io
@@ -689,7 +689,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: prometheus-prometheus-db-prometheus-prometheus-0
         namespace: team-payments
       spec:
@@ -723,7 +723,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: prometheus
         namespace: team-payments
   conditions:
@@ -750,7 +750,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-payments
+          platform.cndev.nl/project: team-payments
         name: project
         namespace: team-payments
       spec:

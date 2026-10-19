@@ -22,7 +22,7 @@ The right-hand panel always shows the manifest the form produces. You can copy i
 ### With kubectl
 
 ```yaml
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

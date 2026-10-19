@@ -6,10 +6,10 @@ kind: Composition
 metadata:
   name: postgrescluster
   labels:
-    cnpg.tuskpilot.com/api: postgrescluster
+    cnpg.cndev.nl/api: postgrescluster
 spec:
   compositeTypeRef:
-    apiVersion: cnpg.tuskpilot.com/v1alpha1
+    apiVersion: cnpg.cndev.nl/v1alpha1
     kind: PostgresCluster
   mode: Pipeline
   pipeline:

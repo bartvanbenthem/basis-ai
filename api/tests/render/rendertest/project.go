@@ -80,8 +80,8 @@ func assertProject(r *render) {
 	ns := composed["namespace"]
 	labels := mp(ns, "metadata", "labels")
 	check(str(ns, "metadata", "name") == name, "namespace name must equal the project name")
-	check(str(labels, "platform.tuskpilot.com/project") == name, "namespace missing platform.tuskpilot.com/project label")
-	check(str(labels, "dashboards.paas.tuskpilot.com/scope") == name,
+	check(str(labels, "platform.cndev.nl/project") == name, "namespace missing platform.cndev.nl/project label")
+	check(str(labels, "dashboards.paas.cndev.nl/scope") == name,
 		"namespace scope label must match the PostgresCluster dashboards' default instanceSelector")
 	check(str(labels, "pod-security.kubernetes.io/enforce") == "baseline", "pod security baseline not enforced")
 	if owner := str(xr, "spec", "owner"); owner != "" {
@@ -92,7 +92,7 @@ func assertProject(r *render) {
 		if key != "namespace" && !strings.HasPrefix(key, "usage-") && key != "backup-bucketclass" {
 			check(str(obj, "metadata", "namespace") == name, "%s: not in the project namespace", key)
 		}
-		check(str(obj, "metadata", "labels", "platform.tuskpilot.com/project") == name, "%s: missing project label", key)
+		check(str(obj, "metadata", "labels", "platform.cndev.nl/project") == name, "%s: missing project label", key)
 	}
 	sites := mp(xr, "spec", "locations")
 	siteLocs := []string{str(sites, "protected")} // in the order of sites.values()
@@ -100,22 +100,22 @@ func assertProject(r *render) {
 		siteLocs = append(siteLocs, str(sites, "recovery"))
 	}
 	ann := mp(ns, "metadata", "annotations")
-	check(equal(get(ann, "platform.tuskpilot.com/protected-location"), get(sites, "protected")) &&
-		equal(get(ann, "platform.tuskpilot.com/recovery-location"), get(sites, "recovery")),
+	check(equal(get(ann, "platform.cndev.nl/protected-location"), get(sites, "protected")) &&
+		equal(get(ann, "platform.cndev.nl/recovery-location"), get(sites, "recovery")),
 		"namespace must record the project's sites for the admission policy: %s", repr(ann))
-	check(!has(ann, "platform.tuskpilot.com/locations"), "the old location list annotation is gone")
+	check(!has(ann, "platform.cndev.nl/locations"), "the old location list annotation is gone")
 	check(!has(status, "locationNames"), "status.locationNames is gone")
 	// The Location of si-ske-demo (required/sites.yaml) says schedulable: false.
 	var unschedulable any
 	if kase == "sites" {
 		unschedulable = "si-ske-demo"
 	}
-	check(equal(get(ann, "platform.tuskpilot.com/unschedulable-locations"), unschedulable),
+	check(equal(get(ann, "platform.cndev.nl/unschedulable-locations"), unschedulable),
 		"namespace must list the locations closed to new databases for the admission policy")
 
 	// --- the COSI backup bucket
 	bucketCase := kase == "bucket" || kase == "bucket-long" || kase == "granting"
-	check((str(ann, "platform.tuskpilot.com/backup-bucket") == "true") == bucketCase,
+	check((str(ann, "platform.cndev.nl/backup-bucket") == "true") == bucketCase,
 		"namespace must say whether the project has a backup bucket, for the admission policy")
 	// COSI names the bucket <class><claim UID>: the class gets 63 - 36 characters.
 	bucketClass := fmt.Sprintf("project-%s-backups", name)
@@ -138,7 +138,7 @@ func assertProject(r *render) {
 		loc := strings.TrimPrefix(key, "usage-location-")
 		check(str(obj, "kind") == "ClusterUsage" && str(obj, "apiVersion") == "protection.crossplane.io/v1beta1",
 			"%s: must be a ClusterUsage", key)
-		check(equal(get(obj, "spec", "of"), M{"apiVersion": "platform.tuskpilot.com/v1alpha1", "kind": "Location",
+		check(equal(get(obj, "spec", "of"), M{"apiVersion": "platform.cndev.nl/v1alpha1", "kind": "Location",
 			"resourceRef": M{"name": loc}}), "%s: spec.of %s", key, repr(get(obj, "spec", "of")))
 		check(strings.Contains(str(obj, "spec", "reason"), name), "%s: reason must name the project", key)
 	}
@@ -166,7 +166,7 @@ func assertProject(r *render) {
 			manifest := mp(obj, "spec", "forProvider", "manifest")
 			var leaked []string
 			for _, a := range sortedKeys(mp(manifest, "metadata", "annotations")) {
-				if strings.Contains(a, "crossplane.io/") || a == "platform.tuskpilot.com/orphan" {
+				if strings.Contains(a, "crossplane.io/") || a == "platform.cndev.nl/orphan" {
 					leaked = append(leaked, a)
 				}
 			}
@@ -275,7 +275,7 @@ func assertProject(r *render) {
 	}
 
 	if graf, ok := composed["grafana"]; ok {
-		check(str(graf, "metadata", "labels", "dashboards.paas.tuskpilot.com/scope") == name,
+		check(str(graf, "metadata", "labels", "dashboards.paas.cndev.nl/scope") == name,
 			"Grafana must carry the scope label dashboards select on")
 		check(str(graf, "spec", "config", "security", "allow_embedding") == "true", "embedding must be allowed")
 		host := map[string]string{"minimal": "grafana-demo.10.0.0.1.nip.io", "full": "grafana-team-payments.example.com",
@@ -300,7 +300,7 @@ func assertProject(r *render) {
 		ds := mp(obj, "spec")
 		check(str(ds, "datasource", "name") == "prometheus", "datasource must be named 'prometheus'")
 		check(str(ds, "datasource", "url") == fmt.Sprintf("http://prometheus-operated.%s.svc:9090", name), "datasource url")
-		check(equal(get(ds, "instanceSelector", "matchLabels"), M{"dashboards.paas.tuskpilot.com/scope": name}), "datasource selector")
+		check(equal(get(ds, "instanceSelector", "matchLabels"), M{"dashboards.paas.cndev.nl/scope": name}), "datasource selector")
 	}
 
 	// --- access and quota: access on the control plane and in each location, quota only in the locations
@@ -495,7 +495,7 @@ func assertProjectBucket(r *render, bucketClass string, sites M, siteLocs []stri
 		}
 		check(str(obj, "spec", "providerConfigRef", "name") == loc && equal(get(obj, "spec", "references"), wantRefs) &&
 			!has(obj, "data", "spec", "forProvider", "manifest") &&
-			!has(obj, "platform.tuskpilot.com/copy-from", "spec", "forProvider", "manifest", "metadata", "annotations"),
+			!has(obj, "platform.cndev.nl/copy-from", "spec", "forProvider", "manifest", "metadata", "annotations"),
 			"%s: backup-check-s3 must copy backup-s3-%s from the control plane: %s", loc, loc, repr(get(obj, "spec")))
 		cj := mp(composed["location-"+loc+"-backup-check"], "spec", "forProvider", "manifest")
 		pod := mp(cj, "spec", "jobTemplate", "spec", "template", "spec")

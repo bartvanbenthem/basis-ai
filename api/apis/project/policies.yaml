@@ -16,12 +16,12 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: platform.tuskpilot.com-project-deletion-protection
+  name: platform.cndev.nl-project-deletion-protection
 spec:
   failurePolicy: Fail
   matchConstraints:
     resourceRules:
-      - apiGroups: [platform.tuskpilot.com]
+      - apiGroups: [platform.cndev.nl]
         apiVersions: ["*"]
         resources: [projects]
         operations: [DELETE]
@@ -36,15 +36,15 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
-  name: platform.tuskpilot.com-project-deletion-protection
+  name: platform.cndev.nl-project-deletion-protection
 spec:
-  policyName: platform.tuskpilot.com-project-deletion-protection
+  policyName: platform.cndev.nl-project-deletion-protection
   validationActions: [Deny]
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: platform.tuskpilot.com-project-namespace-protection
+  name: platform.cndev.nl-project-namespace-protection
 spec:
   failurePolicy: Fail
   matchConstraints:
@@ -67,38 +67,38 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
-  name: platform.tuskpilot.com-project-namespace-protection
+  name: platform.cndev.nl-project-namespace-protection
 spec:
-  policyName: platform.tuskpilot.com-project-namespace-protection
+  policyName: platform.cndev.nl-project-namespace-protection
   validationActions: [Deny]
   matchResources:
     # On DELETE the selector matches the existing object.
     objectSelector:
       matchExpressions:
-        - key: platform.tuskpilot.com/project
+        - key: platform.cndev.nl/project
           operator: Exists
 ---
 # 3. PostgresClusters run in their Project's locations, never on the control
 #    plane: a new one needs a namespace whose Project has a protected
 #    location, and turning on geoReplication needs a recovery location
-#    (namespace annotations platform.tuskpilot.com/protected-location and
-#    platform.tuskpilot.com/recovery-location, set by the Project composition).
+#    (namespace annotations platform.cndev.nl/protected-location and
+#    platform.cndev.nl/recovery-location, set by the Project composition).
 #    New databases must also find those locations open: the Project
 #    composition lists Locations with schedulable: false in
-#    platform.tuskpilot.com/unschedulable-locations. Existing clusters there stay
+#    platform.cndev.nl/unschedulable-locations. Existing clusters there stay
 #    editable. Backups without a destinationPath of their own go to the
 #    Project's backup bucket, so newly relying on it needs a Project that has
-#    one (annotation platform.tuskpilot.com/backup-bucket). So does a new cluster
+#    one (annotation platform.cndev.nl/backup-bucket). So does a new cluster
 #    restored from it (restore without a destinationPath of its own).
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: platform.tuskpilot.com-postgrescluster-locations
+  name: platform.cndev.nl-postgrescluster-locations
 spec:
   failurePolicy: Fail
   matchConstraints:
     resourceRules:
-      - apiGroups: [cnpg.tuskpilot.com]
+      - apiGroups: [cnpg.cndev.nl]
         apiVersions: ["*"]
         resources: [postgresclusters]
         operations: [CREATE, UPDATE]
@@ -106,13 +106,13 @@ spec:
     - name: annotations
       expression: "has(namespaceObject.metadata.annotations) ? namespaceObject.metadata.annotations : {}"
     - name: protected
-      expression: "'platform.tuskpilot.com/protected-location' in variables.annotations ? variables.annotations['platform.tuskpilot.com/protected-location'] : ''"
+      expression: "'platform.cndev.nl/protected-location' in variables.annotations ? variables.annotations['platform.cndev.nl/protected-location'] : ''"
     - name: recovery
-      expression: "'platform.tuskpilot.com/recovery-location' in variables.annotations ? variables.annotations['platform.tuskpilot.com/recovery-location'] : ''"
+      expression: "'platform.cndev.nl/recovery-location' in variables.annotations ? variables.annotations['platform.cndev.nl/recovery-location'] : ''"
     - name: closed
       expression: >-
-        'platform.tuskpilot.com/unschedulable-locations' in variables.annotations
-        ? variables.annotations['platform.tuskpilot.com/unschedulable-locations'].split(',')
+        'platform.cndev.nl/unschedulable-locations' in variables.annotations
+        ? variables.annotations['platform.cndev.nl/unschedulable-locations'].split(',')
         : []
     - name: geo
       expression: "has(object.spec.geoReplication) && has(object.spec.geoReplication.enabled) && object.spec.geoReplication.enabled"
@@ -148,12 +148,12 @@ spec:
       messageExpression: >-
         'location ' + variables.protected + ' (protected) is closed to new databases (Location spec.schedulable: false)'
       reason: Forbidden
-    - expression: "!variables.usesBucket || variables.usedBucket || 'platform.tuskpilot.com/backup-bucket' in variables.annotations"
+    - expression: "!variables.usesBucket || variables.usedBucket || 'platform.cndev.nl/backup-bucket' in variables.annotations"
       messageExpression: >-
         'Project ' + namespaceObject.metadata.name + ' has no backup bucket (Project spec.backup, COSI classes in '
         + 'project-defaults); set backup.destinationPath and backup.s3Credentials instead'
       reason: Forbidden
-    - expression: "!variables.restoresFromBucket || 'platform.tuskpilot.com/backup-bucket' in variables.annotations"
+    - expression: "!variables.restoresFromBucket || 'platform.cndev.nl/backup-bucket' in variables.annotations"
       messageExpression: >-
         'Project ' + namespaceObject.metadata.name + ' has no backup bucket to restore from; set '
         + 'restore.source.destinationPath and restore.source.s3Credentials instead'
@@ -166,7 +166,7 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
-  name: platform.tuskpilot.com-postgrescluster-locations
+  name: platform.cndev.nl-postgrescluster-locations
 spec:
-  policyName: platform.tuskpilot.com-postgrescluster-locations
+  policyName: platform.cndev.nl-postgrescluster-locations
   validationActions: [Deny]

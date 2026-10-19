@@ -524,7 +524,7 @@ export class CnpgKubernetesService {
     const kc = await this.#kubeConfig(location, kubeConfigFor);
     const core = kc.makeApiClient(CoreV1Api);
     const pods = await this.#call(() =>
-      core.listNamespacedPod({ namespace: project, labelSelector: 'platform.tuskpilot.com/check=backup' }),
+      core.listNamespacedPod({ namespace: project, labelSelector: 'platform.cndev.nl/check=backup' }),
     );
     const newest = <T extends { metadata?: { creationTimestamp?: Date } }>(items: T[]) =>
       items.sort(

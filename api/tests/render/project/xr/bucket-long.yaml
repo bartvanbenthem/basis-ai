@@ -5,7 +5,7 @@
 # project's own BucketClass (Retain), and in its namespace one BucketClaim, a
 # BucketAccess per location and their keys unpacked into Secrets
 # PostgresClusters copy to the locations.
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata:
   name: team-orders-and-invoices

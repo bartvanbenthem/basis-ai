@@ -4,7 +4,7 @@ A **Project** is a team's space on the platform: a namespace on the control plan
 PostgresClusters live) and in its locations, with its own Prometheus and Grafana.
 
 ```yaml
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata:
   name: team-payments        # also the namespace

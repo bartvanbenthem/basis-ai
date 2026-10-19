@@ -4,7 +4,7 @@
 # The databases run in the project's locations (Kubernetes clusters
 # registered with install/add-location.sh or the portal), never on the
 # control plane.
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata:
   name: team-payments

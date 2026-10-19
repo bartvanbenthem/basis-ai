@@ -1,5 +1,5 @@
 // Package postgrescluster composes a PostgresCluster
-// (cnpg.tuskpilot.com/v1alpha1).
+// (cnpg.cndev.nl/v1alpha1).
 //
 // The namespaced XR lives in its Project's namespace on the control plane,
 // which runs no databases. The CNPG and Prometheus Operator objects go to the
@@ -84,7 +84,7 @@ type Requirement struct {
 // after the XR's namespace and the two catalogs.
 func Requirements(namespace string) map[string]Requirement {
 	return map[string]Requirement{
-		RequiredProject:    {"platform.tuskpilot.com/v1alpha1", "Project", namespace},
+		RequiredProject:    {"platform.cndev.nl/v1alpha1", "Project", namespace},
 		RequiredSizes:      {"apiextensions.crossplane.io/v1beta1", "EnvironmentConfig", "postgres-sizes"},
 		RequiredExtensions: {"apiextensions.crossplane.io/v1beta1", "EnvironmentConfig", "postgres-extensions"},
 	}
@@ -150,9 +150,9 @@ func Compose(in Input) (*Output, error) {
 	c.spec = &c.xr.Spec
 	c.name, c.ns = c.xr.Metadata.Name, c.xr.Metadata.Namespace
 	c.labels = map[string]string{
-		"app.kubernetes.io/managed-by":       "crossplane",
-		"app.kubernetes.io/part-of":          "cnpg-platform",
-		"cnpg.tuskpilot.com/postgrescluster": c.name,
+		"app.kubernetes.io/managed-by":  "crossplane",
+		"app.kubernetes.io/part-of":     "cnpg-platform",
+		"cnpg.cndev.nl/postgrescluster": c.name,
 	}
 	if projects := in.Required[RequiredProject]; len(projects) > 0 {
 		c.project = projects[0]

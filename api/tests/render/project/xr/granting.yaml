@@ -1,6 +1,6 @@
 # xr/bucket.yaml while COSI grants the first BucketAccess: the next one waits
 # for it (concurrent grants race on the Bucket and can fail for good).
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata:
   name: team-orders

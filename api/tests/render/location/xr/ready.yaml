@@ -1,5 +1,5 @@
 # A location with everything in place.
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Location
 metadata:
   name: si-ske-demo

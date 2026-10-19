@@ -9,15 +9,15 @@ data:
   grafana:
     ingress:
       className: haproxy
-      # *.paas.tuskpilot.com points at the HAProxy LoadBalancer IP
+      # *.paas.cndev.nl points at the HAProxy LoadBalancer IP
       # (kubectl get svc -n haproxy-ingress); a new IP only needs that DNS
       # record changed. The wildcard covers one label: <x>-{project}.
-      hostTemplate: grafana-{project}.paas.tuskpilot.com
+      hostTemplate: grafana-{project}.paas.cndev.nl
   prometheus:
     # The locations' Prometheus send their samples here, through this
     # cluster's ingress (the same wildcard DNS name).
     remoteWrite:
-      hostTemplate: prometheus-{project}.paas.tuskpilot.com
+      hostTemplate: prometheus-{project}.paas.cndev.nl
       scheme: http
       className: haproxy
     # These describe the locations (where kube-prometheus-stack runs there).

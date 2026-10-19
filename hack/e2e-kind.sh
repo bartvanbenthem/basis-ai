@@ -135,7 +135,7 @@ YAML
 
 echo "==> Project demo (no Grafana ingress on kind)"
 "${C[@]}" apply -f - <<YAML
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata:
   name: demo
@@ -164,7 +164,7 @@ YAML
 echo "==> reserved Project names and Projects without a location are rejected by the XRD"
 for project in "kube-evil:{locations: {protected: ${LOCATION}}}" "no-location:{owner: x}"; do
   if "${C[@]}" apply --dry-run=server -f - 2>/dev/null <<YAML
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata: {name: ${project%%:*}}
 spec: ${project#*:}
@@ -184,11 +184,11 @@ fi
 "${C[@]}" get project demo
 "${C[@]}" get project demo -o jsonpath='{.status}' | jq .
 "${L[@]}" get namespace demo --show-labels
-"${L[@]}" -n demo get rolebinding -l platform.tuskpilot.com/project=demo -o wide
+"${L[@]}" -n demo get rolebinding -l platform.cndev.nl/project=demo -o wide
 
 echo "==> PostgresCluster demo/orders-db (1 instance to fit kind)"
 "${C[@]}" apply -f - <<'PGC'
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

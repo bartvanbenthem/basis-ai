@@ -36,8 +36,8 @@ status:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
           backstage.io/owner: team-demo
-          dashboards.paas.tuskpilot.com/scope: demo
-          platform.tuskpilot.com/project: demo
+          dashboards.paas.cndev.nl/scope: demo
+          platform.cndev.nl/project: demo
           pod-security.kubernetes.io/enforce: baseline
           pod-security.kubernetes.io/warn: restricted
         name: demo
@@ -67,7 +67,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: demo
+          platform.cndev.nl/project: demo
         name: prometheus
         namespace: demo
       spec:
@@ -159,7 +159,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: demo
+          platform.cndev.nl/project: demo
         name: platform:project:demo:prometheus
       roleRef:
         apiGroup: rbac.authorization.k8s.io
@@ -193,7 +193,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: demo
+          platform.cndev.nl/project: demo
         name: prometheus-prometheus-db-prometheus-prometheus-0
         namespace: demo
       spec:
@@ -226,7 +226,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: demo
+          platform.cndev.nl/project: demo
         name: prometheus
         namespace: demo
   conditions:

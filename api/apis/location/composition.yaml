@@ -1,4 +1,4 @@
-# Composition for platform.tuskpilot.com/v1alpha1 Location (see definition.yaml).
+# Composition for platform.cndev.nl/v1alpha1 Location (see definition.yaml).
 #
 # Composes, for Location <name>:
 #   ClusterProviderConfig <name>          provider-kubernetes, credentials from
@@ -27,10 +27,10 @@ kind: Composition
 metadata:
   name: location
   labels:
-    platform.tuskpilot.com/api: location
+    platform.cndev.nl/api: location
 spec:
   compositeTypeRef:
-    apiVersion: platform.tuskpilot.com/v1alpha1
+    apiVersion: platform.cndev.nl/v1alpha1
     kind: Location
   mode: Pipeline
   pipeline:
@@ -49,7 +49,7 @@ spec:
             {{- $ref := dig "credentials" "secretRef" (dict) $spec }}
             {{- $ns := $ref.namespace }}
             {{- $observed := .observed.resources | default (dict) }}
-            {{- $labels := dict "app.kubernetes.io/managed-by" "crossplane" "app.kubernetes.io/part-of" "cnpg-platform" "platform.tuskpilot.com/location" $name }}
+            {{- $labels := dict "app.kubernetes.io/managed-by" "crossplane" "app.kubernetes.io/part-of" "cnpg-platform" "platform.cndev.nl/location" $name }}
 
             {{- /* ---- observed state ---- */}}
             {{- $pc := dig "providerconfig" "resource" (dict) $observed }}
@@ -162,7 +162,7 @@ spec:
             {{- else if $missing }}{{ $msg = printf "Connected; %s not installed (run operator/install.sh against it)" (join " and " $missing) }}
             {{- end }}
             ---
-            apiVersion: platform.tuskpilot.com/v1alpha1
+            apiVersion: platform.cndev.nl/v1alpha1
             kind: Location
             status:
               ready: {{ $ready }}

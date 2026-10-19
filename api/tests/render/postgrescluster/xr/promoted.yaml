@@ -1,6 +1,6 @@
 # After a switchover: the recovery site is primary (status.primaryLocation)
 # and keeps the token it was promoted with until the next switch.
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

@@ -24,7 +24,7 @@ components:
       properties:
         apiVersion:
           enum:
-            - cnpg.tuskpilot.com/v1alpha1
+            - cnpg.cndev.nl/v1alpha1
           type: string
         kind:
           enum:
@@ -363,7 +363,7 @@ components:
                     instanceSelector:
                       additionalProperties:
                         type: string
-                      description: matchLabels selecting the Grafana instance(s). Defaults to dashboards.paas.tuskpilot.com/scope=<namespace>.
+                      description: matchLabels selecting the Grafana instance(s). Defaults to dashboards.paas.cndev.nl/scope=<namespace>.
                       type: object
                   type: object
                 podMonitorLabels:
@@ -772,7 +772,7 @@ components:
       type: object
   securitySchemes:
     bearerAuth:
-      description: A Kubernetes token (OIDC or ServiceAccount) with RBAC on postgresclusters.cnpg.tuskpilot.com
+      description: A Kubernetes token (OIDC or ServiceAccount) with RBAC on postgresclusters.cnpg.cndev.nl
       scheme: bearer
       type: http
 info:
@@ -780,11 +780,11 @@ info:
     A production-ready PostgreSQL cluster managed by CloudNativePG.
 
     A Crossplane composite resource on the platform's control plane, namespaced: it lives in its Project's namespace. Use it with `kubectl` (short name `pgc`), GitOps, or the Kubernetes API below; the portal and its software templates create it the same way. This is the CRD Crossplane makes of the XRD (api/apis): the platform's fields plus Crossplane's own (spec.crossplane, status.conditions), so it is what the API server validates: the schema, its defaults and the rules listed under each field.
-  title: PostgresCluster (cnpg.tuskpilot.com/v1alpha1)
+  title: PostgresCluster (cnpg.cndev.nl/v1alpha1)
   version: v1alpha1
 openapi: 3.0.3
 paths:
-  /apis/cnpg.tuskpilot.com/v1alpha1/namespaces/{namespace}/postgresclusters:
+  /apis/cnpg.cndev.nl/v1alpha1/namespaces/{namespace}/postgresclusters:
     get:
       operationId: listPostgresCluster
       responses:
@@ -853,7 +853,7 @@ paths:
       summary: Create a PostgresCluster
       tags:
         - PostgresCluster
-  /apis/cnpg.tuskpilot.com/v1alpha1/namespaces/{namespace}/postgresclusters/{name}:
+  /apis/cnpg.cndev.nl/v1alpha1/namespaces/{namespace}/postgresclusters/{name}:
     delete:
       operationId: deletePostgresCluster
       responses:

@@ -15,7 +15,7 @@ import { AuditService, auditServiceRef } from './service/AuditService';
 import { PostgresCluster, Project } from '@internal/backstage-plugin-cnpg-common';
 
 const ordersDb: PostgresCluster = {
-  apiVersion: 'cnpg.tuskpilot.com/v1alpha1',
+  apiVersion: 'cnpg.cndev.nl/v1alpha1',
   kind: 'PostgresCluster',
   metadata: {
     name: 'orders-db',
@@ -36,7 +36,7 @@ const ordersDb: PostgresCluster = {
 };
 
 const demoProject: Project = {
-  apiVersion: 'platform.tuskpilot.com/v1alpha1',
+  apiVersion: 'platform.cndev.nl/v1alpha1',
   kind: 'Project',
   metadata: { name: 'demo', creationTimestamp: '2026-10-07T08:00:00Z' },
   spec: { owner: 'team-demo', deletionProtection: true },

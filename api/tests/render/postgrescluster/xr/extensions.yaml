@@ -2,7 +2,7 @@
 # bootstrap database (a CNPG Database of its own, never dropped), and
 # pg_stat_statements in an extra database, which brings the setting that
 # makes CNPG preload its library.
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: docs-db

@@ -16,7 +16,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          cnpg.tuskpilot.com/postgrescluster: secrets-db
+          cnpg.cndev.nl/postgrescluster: secrets-db
         name: secrets-db
         namespace: vault
       spec:
@@ -31,7 +31,7 @@ status:
             localeCType: C
             localeCollate: C
             owner: app
-        description: PostgresCluster vault/secrets-db (cnpg.tuskpilot.com)
+        description: PostgresCluster vault/secrets-db (cnpg.cndev.nl)
         enableSuperuserAccess: false
         externalClusters:
         - name: secrets-db
@@ -54,7 +54,7 @@ status:
         inheritedMetadata:
           labels:
             backstage.io/kubernetes-id: secrets-db
-            cnpg.tuskpilot.com/postgrescluster: secrets-db
+            cnpg.cndev.nl/postgrescluster: secrets-db
         instances: 2
         plugins:
         - isWALArchiver: true
@@ -124,7 +124,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          cnpg.tuskpilot.com/postgrescluster: secrets-db
+          cnpg.cndev.nl/postgrescluster: secrets-db
         name: secrets-db-backup
         namespace: vault
       spec:
@@ -172,7 +172,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          cnpg.tuskpilot.com/postgrescluster: secrets-db
+          cnpg.cndev.nl/postgrescluster: secrets-db
         name: secrets-db
         namespace: vault
       spec:
@@ -206,7 +206,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          cnpg.tuskpilot.com/postgrescluster: secrets-db
+          cnpg.cndev.nl/postgrescluster: secrets-db
         name: secrets-db
         namespace: vault
       spec:
@@ -240,7 +240,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          cnpg.tuskpilot.com/postgrescluster: secrets-db
+          cnpg.cndev.nl/postgrescluster: secrets-db
         name: secrets-db-alerts
         namespace: vault
       spec:
@@ -714,7 +714,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          cnpg.tuskpilot.com/postgrescluster: secrets-db
+          cnpg.cndev.nl/postgrescluster: secrets-db
         name: secrets-db
         namespace: vault
       spec:
@@ -725,7 +725,7 @@ status:
         bootstrap:
           recovery:
             source: secrets-db
-        description: PostgresCluster vault/secrets-db (cnpg.tuskpilot.com)
+        description: PostgresCluster vault/secrets-db (cnpg.cndev.nl)
         enableSuperuserAccess: false
         externalClusters:
         - name: secrets-db
@@ -748,7 +748,7 @@ status:
         inheritedMetadata:
           labels:
             backstage.io/kubernetes-id: secrets-db
-            cnpg.tuskpilot.com/postgrescluster: secrets-db
+            cnpg.cndev.nl/postgrescluster: secrets-db
         instances: 2
         plugins:
         - isWALArchiver: true
@@ -811,7 +811,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          cnpg.tuskpilot.com/postgrescluster: secrets-db
+          cnpg.cndev.nl/postgrescluster: secrets-db
         name: secrets-db-backup
         namespace: vault
       spec:
@@ -859,7 +859,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          cnpg.tuskpilot.com/postgrescluster: secrets-db
+          cnpg.cndev.nl/postgrescluster: secrets-db
         name: secrets-db
         namespace: vault
       spec:
@@ -893,7 +893,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          cnpg.tuskpilot.com/postgrescluster: secrets-db
+          cnpg.cndev.nl/postgrescluster: secrets-db
         name: secrets-db
         namespace: vault
       spec:
@@ -927,7 +927,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          cnpg.tuskpilot.com/postgrescluster: secrets-db
+          cnpg.cndev.nl/postgrescluster: secrets-db
         name: secrets-db-alerts
         namespace: vault
       spec:
@@ -1401,7 +1401,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          cnpg.tuskpilot.com/postgrescluster: secrets-db
+          cnpg.cndev.nl/postgrescluster: secrets-db
         name: secrets-db-scheduled
         namespace: vault
       spec:
@@ -1437,7 +1437,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          cnpg.tuskpilot.com/postgrescluster: secrets-db
+          cnpg.cndev.nl/postgrescluster: secrets-db
         name: secrets-db-backup-s3
         namespace: vault
   conditions:
@@ -1464,7 +1464,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          cnpg.tuskpilot.com/postgrescluster: secrets-db
+          cnpg.cndev.nl/postgrescluster: secrets-db
         name: secrets-db-scheduled
         namespace: vault
       spec:
@@ -1500,7 +1500,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          cnpg.tuskpilot.com/postgrescluster: secrets-db
+          cnpg.cndev.nl/postgrescluster: secrets-db
         name: secrets-db-backup-s3
         namespace: vault
   conditions:

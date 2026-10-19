@@ -4,7 +4,7 @@
 # credentials in Secret demo/orders-db-app at orders-db-rw.demo.svc:5432,
 # or from outside it via the public IP of Service demo/orders-db-external
 # (STACKIT Network Load Balancer).
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

@@ -5,7 +5,7 @@ const cluster = (
   geo: Record<string, unknown> | undefined,
   status: PostgresCluster['status'] = {},
 ): PostgresCluster => ({
-  apiVersion: 'cnpg.tuskpilot.com/v1alpha1',
+  apiVersion: 'cnpg.cndev.nl/v1alpha1',
   kind: 'PostgresCluster',
   metadata: { name: 'orders-db', namespace: 'demo' },
   spec: { instances: 3, ...(geo ? { geoReplication: geo } : {}) },

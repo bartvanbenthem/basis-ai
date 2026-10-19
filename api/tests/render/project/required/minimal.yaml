@@ -8,7 +8,7 @@ data:
       className: haproxy
       hostTemplate: grafana-{project}.10.0.0.1.nip.io
 ---
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Location
 metadata:
   name: si-ske-demo

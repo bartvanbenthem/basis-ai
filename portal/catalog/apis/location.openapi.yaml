@@ -11,7 +11,7 @@ components:
       properties:
         apiVersion:
           enum:
-            - platform.tuskpilot.com/v1alpha1
+            - platform.cndev.nl/v1alpha1
           type: string
         kind:
           enum:
@@ -231,7 +231,7 @@ components:
       type: object
   securitySchemes:
     bearerAuth:
-      description: A Kubernetes token (OIDC or ServiceAccount) with RBAC on locations.platform.tuskpilot.com
+      description: A Kubernetes token (OIDC or ServiceAccount) with RBAC on locations.platform.cndev.nl
       scheme: bearer
       type: http
 info:
@@ -239,11 +239,11 @@ info:
     A Kubernetes cluster the platform can run Projects' databases in.
 
     A Crossplane composite resource on the platform's control plane, cluster-scoped. Use it with `kubectl` (short name `loc`), GitOps, or the Kubernetes API below; the portal and its software templates create it the same way. This is the CRD Crossplane makes of the XRD (api/apis): the platform's fields plus Crossplane's own (spec.crossplane, status.conditions), so it is what the API server validates: the schema, its defaults and the rules listed under each field.
-  title: Location (platform.tuskpilot.com/v1alpha1)
+  title: Location (platform.cndev.nl/v1alpha1)
   version: v1alpha1
 openapi: 3.0.3
 paths:
-  /apis/platform.tuskpilot.com/v1alpha1/locations:
+  /apis/platform.cndev.nl/v1alpha1/locations:
     get:
       operationId: listLocation
       responses:
@@ -306,7 +306,7 @@ paths:
       summary: Create a Location
       tags:
         - Location
-  /apis/platform.tuskpilot.com/v1alpha1/locations/{name}:
+  /apis/platform.cndev.nl/v1alpha1/locations/{name}:
     delete:
       operationId: deleteLocation
       responses:

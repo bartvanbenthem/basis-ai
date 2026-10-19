@@ -2,7 +2,7 @@
 # (they used to be hand-written prometheus.yaml / grafana.yaml here). Its
 # databases run in the location named below: register it first
 # (api/install/add-location.sh), or change the name.
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata:
   name: demo

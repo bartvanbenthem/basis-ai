@@ -10,7 +10,7 @@ const cluster = (
   spec: Record<string, any>,
   status: PostgresCluster['status'] = {},
 ): PostgresCluster => ({
-  apiVersion: 'cnpg.tuskpilot.com/v1alpha1',
+  apiVersion: 'cnpg.cndev.nl/v1alpha1',
   kind: 'PostgresCluster',
   metadata: { name: 'orders-db', namespace: 'demo' },
   spec,

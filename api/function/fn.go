@@ -15,7 +15,7 @@ import (
 	"github.com/bartvanbenthem/postgres-paas/api/function/postgrescluster"
 )
 
-var postgresClusterGVK = schema.GroupVersionKind{Group: "cnpg.tuskpilot.com", Version: "v1alpha1", Kind: "PostgresCluster"}
+var postgresClusterGVK = schema.GroupVersionKind{Group: "cnpg.cndev.nl", Version: "v1alpha1", Kind: "PostgresCluster"}
 
 // Function composes Tuskpilot's APIs. It dispatches on the kind of the XR.
 type Function struct {

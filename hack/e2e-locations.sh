@@ -192,7 +192,7 @@ done
 
 echo "==> Project ${NS}: protected ${PROTECTED}, recovery ${RECOVERY}"
 "${C[@]}" apply -f - <<YAML
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata:
   name: ${NS}
@@ -218,7 +218,7 @@ fi
 "${C[@]}" get namespace ${NS} -o jsonpath='{.metadata.annotations}'; echo
 for kc in "${PROT_KUBECONFIG}" "${REC_KUBECONFIG}"; do
   kubectl --kubeconfig "${kc}" get namespace ${NS} --show-labels
-  kubectl --kubeconfig "${kc}" -n ${NS} get rolebinding -l platform.tuskpilot.com/project=${NS}
+  kubectl --kubeconfig "${kc}" -n ${NS} get rolebinding -l platform.cndev.nl/project=${NS}
 done
 
 echo "==> guardrails"
@@ -232,33 +232,33 @@ reject() { # <what> <expected message part>: stdin must be refused by --dry-run=
 }
 "${C[@]}" create namespace not-a-project --dry-run=client -o yaml | "${C[@]}" apply -f - >/dev/null
 reject "a database outside a Project (on the control plane)" "never on the control plane" <<YAML
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata: {name: stray-db, namespace: not-a-project}
 spec: {instances: 1}
 YAML
 reject "geoReplication without backups" "geoReplication needs backup.enabled" <<YAML
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata: {name: nobackup-db, namespace: ${NS}}
 spec:
   geoReplication: {enabled: true}
 YAML
 reject "a recovery primary without geoReplication" "primarySite can only be recovery" <<YAML
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata: {name: noprimary-db, namespace: ${NS}}
 spec:
   geoReplication: {primarySite: recovery}
 YAML
 reject "changing the Project's protected location" "locations.protected can't be changed" <<YAML
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata: {name: ${NS}}
 spec: {locations: {protected: ${RECOVERY}, recovery: ${PROTECTED}}}
 YAML
 reject "removing the Project's recovery location" "can be added, but not changed or removed" <<YAML
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata: {name: ${NS}}
 spec: {locations: {protected: ${PROTECTED}}}
@@ -271,9 +271,9 @@ echo "rejected as expected: deleting a Location a Project uses"
 
 "${C[@]}" patch location ${RECOVERY} --type merge -p '{"spec":{"schedulable":false}}'
 wait_for "namespace ${NS} lists ${RECOVERY} as unschedulable" 30 bash -c \
-  "[[ \$(kubectl --kubeconfig '${CP_KUBECONFIG}' get ns ${NS} -o jsonpath='{.metadata.annotations.platform\.tuskpilot\.com/unschedulable-locations}') == ${RECOVERY} ]]"
+  "[[ \$(kubectl --kubeconfig '${CP_KUBECONFIG}' get ns ${NS} -o jsonpath='{.metadata.annotations.platform\.cndev\.nl/unschedulable-locations}') == ${RECOVERY} ]]"
 reject "a new replica cluster in a closed location" "closed to new replica clusters" <<YAML
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata: {name: closed-db, namespace: ${NS}}
 spec:
@@ -282,14 +282,14 @@ spec:
 YAML
 "${C[@]}" patch location ${RECOVERY} --type merge -p '{"spec":{"schedulable":true}}'
 wait_for "namespace ${NS} without unschedulable locations" 30 bash -c \
-  "[[ -z \$(kubectl --kubeconfig '${CP_KUBECONFIG}' get ns ${NS} -o jsonpath='{.metadata.annotations.platform\.tuskpilot\.com/unschedulable-locations}') ]]"
+  "[[ -z \$(kubectl --kubeconfig '${CP_KUBECONFIG}' get ns ${NS} -o jsonpath='{.metadata.annotations.platform\.cndev\.nl/unschedulable-locations}') ]]"
 
 echo "==> PostgresCluster ${NS}/ledger-db: primary in ${PROTECTED}, replica cluster in ${RECOVERY}"
 "${C[@]}" -n ${NS} create secret generic ledger-db-s3 \
   --from-literal=ACCESS_KEY_ID=e2e-access --from-literal=ACCESS_SECRET_KEY=e2e-secret-key \
   --dry-run=client -o yaml | "${C[@]}" apply -f -
 "${C[@]}" apply -f - <<YAML
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: ledger-db
@@ -361,14 +361,14 @@ TARGET="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 sleep 3
 psql_in "${P[@]}" "insert into e2e values ('after-target'); select pg_switch_wal();" >/dev/null
 reject "adding restore to an existing cluster" "restore can only be set when the cluster is created" <<YAML
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata: {name: ledger-db, namespace: ${NS}}
 spec:
   restore: {source: {serverName: ledger-db}}
 YAML
 "${C[@]}" apply -f - <<YAML
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: ledger-copy
@@ -420,7 +420,7 @@ wait_for "ledger-copy archives WAL to ${folder}" 30 bash -c \
 psql_in "${P[@]}" "select v from e2e" | grep -q after-target \
   || { echo "FAIL: the source lost data"; exit 1; }
 reject "changing restore on a restored cluster" "restore is immutable" <<YAML
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata: {name: ledger-copy, namespace: ${NS}}
 spec:

@@ -12,7 +12,7 @@ data:
         storagePolicy: replicated-3
       bucketAccessClassName: backups-keys
 ---
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Location
 metadata:
   name: si-ske-demo
@@ -22,7 +22,7 @@ spec:
       namespace: cnpg-locations
       name: si-ske-demo
 ---
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Location
 metadata:
   name: onprem-ams
@@ -49,7 +49,7 @@ data:
   BucketInfo: eyJtZXRhZGF0YSI6IHsibmFtZSI6ICJiYy1vbnByZW0tYW1zIn0sICJzcGVjIjogeyJidWNrZXROYW1lIjogInRlYW0tb3JkZXJzLWJhY2t1cHMtMGYzYSIsICJhdXRoZW50aWNhdGlvblR5cGUiOiAiSUFNIiwgInNlY3JldFMzIjogeyJlbmRwb2ludCI6ICJodHRwczovL3MzLmV4YW1wbGUuY29tIiwgInJlZ2lvbiI6ICJyZWdpb24tMSIsICJhY2Nlc3NLZXlJRCI6ICJGQUtFS0VZSUQxIiwgImFjY2Vzc1NlY3JldEtleSI6ICJmYWtlLXNlY3JldC0xIn0sICJzZWNyZXRBenVyZSI6IG51bGwsICJwcm90b2NvbHMiOiBbIlMzIl19fQ==
 ---
 # The PostgresClusters' backup stores (Objects labelled
-# cnpg.tuskpilot.com/backup-store): orders-db and its replica cluster archive to
+# cnpg.cndev.nl/backup-store): orders-db and its replica cluster archive to
 # the project's bucket, ledger-db to an object store of its own.
 apiVersion: kubernetes.m.crossplane.io/v1alpha1
 kind: Object
@@ -57,10 +57,10 @@ metadata:
   name: orders-db-objectstore
   namespace: team-orders
   labels:
-    cnpg.tuskpilot.com/backup-store: "true"
-    cnpg.tuskpilot.com/postgrescluster: orders-db
+    cnpg.cndev.nl/backup-store: "true"
+    cnpg.cndev.nl/postgrescluster: orders-db
   annotations:
-    platform.tuskpilot.com/location: si-ske-demo
+    platform.cndev.nl/location: si-ske-demo
 status:
   atProvider:
     manifest:
@@ -70,10 +70,10 @@ status:
         name: orders-db-backup
         namespace: team-orders
         annotations:
-          cnpg.tuskpilot.com/server-name: orders-db
-          cnpg.tuskpilot.com/postgres-version: "17"
-          cnpg.tuskpilot.com/database: orders
-          cnpg.tuskpilot.com/database-owner: orders
+          cnpg.cndev.nl/server-name: orders-db
+          cnpg.cndev.nl/postgres-version: "17"
+          cnpg.cndev.nl/database: orders
+          cnpg.cndev.nl/database-owner: orders
       spec:
         configuration:
           destinationPath: s3://team-orders-backups-0f3a/barman
@@ -89,10 +89,10 @@ metadata:
   name: orders-db-recovery-objectstore
   namespace: team-orders
   labels:
-    cnpg.tuskpilot.com/backup-store: "true"
-    cnpg.tuskpilot.com/postgrescluster: orders-db
+    cnpg.cndev.nl/backup-store: "true"
+    cnpg.cndev.nl/postgrescluster: orders-db
   annotations:
-    platform.tuskpilot.com/location: onprem-ams
+    platform.cndev.nl/location: onprem-ams
 status:
   atProvider:
     manifest:
@@ -102,10 +102,10 @@ status:
         name: orders-db-backup
         namespace: team-orders
         annotations:
-          cnpg.tuskpilot.com/server-name: orders-db-onprem-ams
-          cnpg.tuskpilot.com/postgres-version: "17"
-          cnpg.tuskpilot.com/database: orders
-          cnpg.tuskpilot.com/database-owner: orders
+          cnpg.cndev.nl/server-name: orders-db-onprem-ams
+          cnpg.cndev.nl/postgres-version: "17"
+          cnpg.cndev.nl/database: orders
+          cnpg.cndev.nl/database-owner: orders
       spec:
         configuration:
           destinationPath: s3://team-orders-backups-0f3a/barman
@@ -116,10 +116,10 @@ metadata:
   name: ledger-db-objectstore
   namespace: team-orders
   labels:
-    cnpg.tuskpilot.com/backup-store: "true"
-    cnpg.tuskpilot.com/postgrescluster: ledger-db
+    cnpg.cndev.nl/backup-store: "true"
+    cnpg.cndev.nl/postgrescluster: ledger-db
   annotations:
-    platform.tuskpilot.com/location: si-ske-demo
+    platform.cndev.nl/location: si-ske-demo
 status:
   atProvider:
     manifest:
@@ -129,7 +129,7 @@ status:
         name: ledger-db-backup
         namespace: team-orders
         annotations:
-          cnpg.tuskpilot.com/server-name: ledger-db
+          cnpg.cndev.nl/server-name: ledger-db
       spec:
         configuration:
           destinationPath: s3://elsewhere/postgres

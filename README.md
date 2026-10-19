@@ -65,7 +65,7 @@ See [Locations](api/README.md#locations) for how to configure this.
 |---|---|---|
 | [`deps/`](deps/) | cert-manager, Prometheus Operator, grafana-operator, ingress; the `demo` Project | Helm, kubectl |
 | [`operator/`](operator/) | CloudNativePG operator, Barman Cloud backup plugin and the PostgreSQL image catalog, installed from charts **vendored in this repo** | Helm |
-| [`api/`](api/) | `PostgresCluster` (`cnpg.tuskpilot.com/v1alpha1`): one namespaced API object that bundles everything a production CNPG cluster needs, including metrics, alerts and the CNPG Grafana dashboard. `Project` (`platform.tuskpilot.com/v1alpha1`): a namespace with its own Prometheus and Grafana, RoleBindings, an optional quota and deletion protection. Both place what runs in the locations through provider-kubernetes. The PostgresCluster composition is a Go composition function, function-tuskpilot ([`api/function/`](api/function/)) | Crossplane v2, Go |
+| [`api/`](api/) | `PostgresCluster` (`cnpg.cndev.nl/v1alpha1`): one namespaced API object that bundles everything a production CNPG cluster needs, including metrics, alerts and the CNPG Grafana dashboard. `Project` (`platform.cndev.nl/v1alpha1`): a namespace with its own Prometheus and Grafana, RoleBindings, an optional quota and deletion protection. Both place what runs in the locations through provider-kubernetes. The PostgresCluster composition is a Go composition function, function-tuskpilot ([`api/function/`](api/function/)) | Crossplane v2, Go |
 | [`portal/`](portal/) | Portal to create projects and clusters and to inspect them; catalog integration and Software Templates | Backstage (new frontend + backend system) |
 
 ## Install

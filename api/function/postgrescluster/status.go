@@ -211,7 +211,7 @@ func (c *composition) dashboard(uid string) GrafanaDashboard {
 		Metadata: Meta{Name: c.name + "-cnpg", Namespace: c.ns, Labels: c.labels}}
 	d.Spec.InstanceSelector.MatchLabels = g.InstanceSelector
 	if len(g.InstanceSelector) == 0 {
-		d.Spec.InstanceSelector.MatchLabels = map[string]string{"dashboards.paas.tuskpilot.com/scope": c.ns}
+		d.Spec.InstanceSelector.MatchLabels = map[string]string{"dashboards.paas.cndev.nl/scope": c.ns}
 	}
 	d.Spec.AllowCrossNamespaceImport = g.AllowCrossNamespaceImport
 	d.Spec.Folder = or(g.Folder, "CloudNativePG")

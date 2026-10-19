@@ -4,14 +4,14 @@ import { PostgresCluster, Project } from '@internal/backstage-plugin-cnpg-common
 import { LocationCore, VolumeService } from './VolumeService';
 
 const demo: Project = {
-  apiVersion: 'platform.tuskpilot.com/v1alpha1',
+  apiVersion: 'platform.cndev.nl/v1alpha1',
   kind: 'Project',
   metadata: { name: 'demo' },
   spec: { locations: { protected: 'prod-ams' } },
 };
 
 const ordersDb: PostgresCluster = {
-  apiVersion: 'cnpg.tuskpilot.com/v1alpha1',
+  apiVersion: 'cnpg.cndev.nl/v1alpha1',
   kind: 'PostgresCluster',
   metadata: { name: 'orders-db', namespace: 'demo' },
   spec: { location: 'prod-ams' },

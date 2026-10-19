@@ -1,9 +1,9 @@
-# Composition for platform.tuskpilot.com/v1alpha1 Project (see definition.yaml).
+# Composition for platform.cndev.nl/v1alpha1 Project (see definition.yaml).
 #
 # Composes, for Project <name>, on the control plane (which runs no
 # databases):
-#   Namespace <name>                      labels platform.tuskpilot.com/project and
-#                                         dashboards.paas.tuskpilot.com/scope = <name>;
+#   Namespace <name>                      labels platform.cndev.nl/project and
+#                                         dashboards.paas.cndev.nl/scope = <name>;
 #                                         where the PostgresCluster XRs live
 #   ServiceAccount + Prometheus           receives the samples of the project's
 #                                         locations (remote write), scrapes nothing
@@ -28,7 +28,7 @@
 #
 # With a backup bucket, status.backup.servers is an inventory of the backup
 # folders in it: every PostgresCluster's ObjectStore Object (label
-# cnpg.tuskpilot.com/backup-store) names its folder; entries stay, inactive, after
+# cnpg.cndev.nl/backup-store) names its folder; entries stay, inactive, after
 # the cluster is deleted, so it can still be restored from (restore.source).
 #
 # and in each of its locations, spec.locations.protected (where its
@@ -71,18 +71,18 @@
 # re-created). Every registered one gets a ClusterUsage, so the Location can't
 # be deleted while the Project uses it. The namespace on the control plane
 # records the locations for the admission policy and the PostgresCluster
-# composition (annotations platform.tuskpilot.com/protected-location,
-# platform.tuskpilot.com/recovery-location and, for Locations with schedulable:
-# false, platform.tuskpilot.com/unschedulable-locations).
+# composition (annotations platform.cndev.nl/protected-location,
+# platform.cndev.nl/recovery-location and, for Locations with schedulable:
+# false, platform.cndev.nl/unschedulable-locations).
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
   name: project
   labels:
-    platform.tuskpilot.com/api: project
+    platform.cndev.nl/api: project
 spec:
   compositeTypeRef:
-    apiVersion: platform.tuskpilot.com/v1alpha1
+    apiVersion: platform.cndev.nl/v1alpha1
     kind: Project
   mode: Pipeline
   pipeline:
@@ -131,8 +131,8 @@ spec:
             {{- if and $grafEnabled (dig "ingress" true $graf) $hostTemplate }}{{ $host = replace "{project}" $name $hostTemplate }}{{ end }}
             {{- $scheme := dig "scheme" "http" $ingress }}
             {{- $quota := $spec.quota | default (dict) }}
-            {{- $scope := dict "dashboards.paas.tuskpilot.com/scope" $ns }}
-            {{- $labels := dict "app.kubernetes.io/managed-by" "crossplane" "app.kubernetes.io/part-of" "cnpg-platform" "platform.tuskpilot.com/project" $name }}
+            {{- $scope := dict "dashboards.paas.cndev.nl/scope" $ns }}
+            {{- $labels := dict "app.kubernetes.io/managed-by" "crossplane" "app.kubernetes.io/part-of" "cnpg-platform" "platform.cndev.nl/project" $name }}
 
             {{- /* ---- readiness from observed state ---- */}}
             {{- $nsObs := index $observed "namespace" }}
@@ -157,28 +157,28 @@ spec:
                 {{ setResourceNameAnnotation "namespace" }}
                 gotemplating.fn.crossplane.io/ready: {{ if $nsReady }}"True"{{ else }}"False"{{ end }}
                 {{- with $spec.description }}
-                platform.tuskpilot.com/description: {{ . | quote }}
+                platform.cndev.nl/description: {{ . | quote }}
                 {{- end }}
                 {{- if $local }}
                 # Read by the admission policy that keeps PostgresClusters in
                 # the project's locations (policies.yaml).
                 {{- with dig "locations" "protected" "" $spec }}
-                platform.tuskpilot.com/protected-location: {{ . | quote }}
+                platform.cndev.nl/protected-location: {{ . | quote }}
                 {{- end }}
                 {{- with dig "locations" "recovery" "" $spec }}
-                platform.tuskpilot.com/recovery-location: {{ . | quote }}
+                platform.cndev.nl/recovery-location: {{ . | quote }}
                 {{- end }}
                 {{- if .backupBucket }}
                 # PostgresClusters may then leave backup.destinationPath out.
-                platform.tuskpilot.com/backup-bucket: "true"
+                platform.cndev.nl/backup-bucket: "true"
                 {{- end }}
                 {{- with .unschedulable }}
                 # Locations whose Location says schedulable: false; the same
                 # policy refuses PostgresClusters that newly add them.
-                platform.tuskpilot.com/unschedulable-locations: {{ join "," . | quote }}
+                platform.cndev.nl/unschedulable-locations: {{ join "," . | quote }}
                 {{- end }}
                 {{- else }}
-                platform.tuskpilot.com/orphan: "true"
+                platform.cndev.nl/orphan: "true"
                 {{- end }}
               labels:
                 {{- range $k, $v := merge (dict) $labels $scope }}
@@ -503,7 +503,7 @@ spec:
               annotations:
                 {{ setResourceNameAnnotation (printf "access-%d" $i) }}
                 gotemplating.fn.crossplane.io/ready: {{ if index $observed (printf "access-%d" $i) }}"True"{{ else }}"False"{{ end }}
-                platform.tuskpilot.com/group: {{ $a.group | quote }}
+                platform.cndev.nl/group: {{ $a.group | quote }}
               labels:
                 {{- range $k, $v := $labels }}
                 {{ $k }}: {{ $v | quote }}
@@ -589,7 +589,7 @@ spec:
               annotations:
                 {{ setResourceNameAnnotation "backup-check-s3" }}
                 gotemplating.fn.crossplane.io/ready: {{ if index $observed "backup-check-s3" }}"True"{{ else }}"False"{{ end }}
-                platform.tuskpilot.com/copy-from: {{ printf "%s/backup-s3-%s" $ns $m.location }}
+                platform.cndev.nl/copy-from: {{ printf "%s/backup-s3-%s" $ns $m.location }}
               labels:
                 {{- range $k, $v := $labels }}
                 {{ $k }}: {{ $v | quote }}
@@ -626,7 +626,7 @@ spec:
                         {{- range $k, $v := $labels }}
                         {{ $k }}: {{ $v | quote }}
                         {{- end }}
-                        platform.tuskpilot.com/check: backup
+                        platform.cndev.nl/check: backup
                     spec:
                       restartPolicy: Never
                       automountServiceAccountToken: false
@@ -728,7 +728,7 @@ spec:
             {{- $name := $xr.metadata.name }}
             {{- $ns := $name }}
             {{- $observed := .observed.resources | default (dict) }}
-            {{- $labels := dict "app.kubernetes.io/managed-by" "crossplane" "app.kubernetes.io/part-of" "cnpg-platform" "platform.tuskpilot.com/project" $name }}
+            {{- $labels := dict "app.kubernetes.io/managed-by" "crossplane" "app.kubernetes.io/part-of" "cnpg-platform" "platform.cndev.nl/project" $name }}
 
             {{- /* ---- cluster-wide settings: EnvironmentConfig project-defaults ---- */}}
             {{- /* function-go-templating hands namespaced requirements (COSI's Secrets)
@@ -770,7 +770,7 @@ spec:
                 matchName: project-defaults
               {{- range $siteLocations }}
               location-{{ . }}:
-                apiVersion: platform.tuskpilot.com/v1alpha1
+                apiVersion: platform.cndev.nl/v1alpha1
                 kind: Location
                 matchName: {{ . }}
               {{- if $bucketOn }}
@@ -789,7 +789,7 @@ spec:
                 kind: Object
                 namespace: {{ $ns }}
                 matchLabels:
-                  cnpg.tuskpilot.com/backup-store: "true"
+                  cnpg.cndev.nl/backup-store: "true"
               {{- end }}
             {{- $obs := $spec.observability | default (dict) }}
             {{- $promEnabled := dig "prometheus" "enabled" true $obs }}
@@ -799,7 +799,7 @@ spec:
             {{- $host := "" }}
             {{- if and $grafEnabled (dig "grafana" "ingress" true $obs) $hostTemplate }}{{ $host = replace "{project}" $name $hostTemplate }}{{ end }}
             {{- $scheme := dig "scheme" "http" $ingress }}
-            {{- $scope := dict "dashboards.paas.tuskpilot.com/scope" $ns }}
+            {{- $scope := dict "dashboards.paas.cndev.nl/scope" $ns }}
 
             {{- /* ---- observed, normalised: an Object stands for the object it manages ---- */}}
             {{- $live := dict }}
@@ -876,9 +876,9 @@ spec:
             {{ toYaml $obj }}
             {{- else }}
             {{- $ready := get $ann "gotemplating.fn.crossplane.io/ready" }}
-            {{- $orphan := eq (get $ann "platform.tuskpilot.com/orphan") "true" }}
-            {{- $copyFrom := get $ann "platform.tuskpilot.com/copy-from" }}
-            {{- range $a := list "gotemplating.fn.crossplane.io/composition-resource-name" "gotemplating.fn.crossplane.io/ready" "platform.tuskpilot.com/orphan" "platform.tuskpilot.com/copy-from" }}{{ $_ := unset $ann $a }}{{ end }}
+            {{- $orphan := eq (get $ann "platform.cndev.nl/orphan") "true" }}
+            {{- $copyFrom := get $ann "platform.cndev.nl/copy-from" }}
+            {{- range $a := list "gotemplating.fn.crossplane.io/composition-resource-name" "gotemplating.fn.crossplane.io/ready" "platform.cndev.nl/orphan" "platform.cndev.nl/copy-from" }}{{ $_ := unset $ann $a }}{{ end }}
             {{- if not $ann }}{{ $_ := unset $obj.metadata "annotations" }}{{ end }}
             ---
             apiVersion: kubernetes.m.crossplane.io/v1alpha1
@@ -889,7 +889,7 @@ spec:
               annotations:
                 gotemplating.fn.crossplane.io/composition-resource-name: {{ $key }}
                 gotemplating.fn.crossplane.io/ready: {{ $ready | quote }}
-                platform.tuskpilot.com/location: {{ $m.location }}
+                platform.cndev.nl/location: {{ $m.location }}
               labels:
                 {{- range $k, $v := $labels }}
                 {{ $k }}: {{ $v | quote }}
@@ -995,7 +995,7 @@ spec:
               annotations:
                 gotemplating.fn.crossplane.io/composition-resource-name: backup-sa-{{ $loc }}
                 gotemplating.fn.crossplane.io/ready: "True"
-                platform.tuskpilot.com/location: {{ $loc }}
+                platform.cndev.nl/location: {{ $loc }}
               labels:
                 {{- range $k, $v := $labels }}
                 {{ $k }}: {{ $v | quote }}
@@ -1013,7 +1013,7 @@ spec:
               annotations:
                 gotemplating.fn.crossplane.io/composition-resource-name: backup-access-{{ $loc }}
                 gotemplating.fn.crossplane.io/ready: {{ if $granted }}"True"{{ else }}"False"{{ end }}
-                platform.tuskpilot.com/location: {{ $loc }}
+                platform.cndev.nl/location: {{ $loc }}
               labels:
                 {{- range $k, $v := $labels }}
                 {{ $k }}: {{ $v | quote }}
@@ -1043,7 +1043,7 @@ spec:
               annotations:
                 gotemplating.fn.crossplane.io/composition-resource-name: backup-s3-{{ $loc }}
                 gotemplating.fn.crossplane.io/ready: "True"
-                platform.tuskpilot.com/location: {{ $loc }}
+                platform.cndev.nl/location: {{ $loc }}
               labels:
                 {{- range $k, $v := $labels }}
                 {{ $k }}: {{ $v | quote }}
@@ -1072,11 +1072,11 @@ spec:
             {{- $o := .resource }}
             {{- $os := dig "status" "atProvider" "manifest" (dict) $o }}
             {{- $ann := dig "metadata" "annotations" (dict) $os }}
-            {{- $srv := get $ann "cnpg.tuskpilot.com/server-name" }}
+            {{- $srv := get $ann "cnpg.cndev.nl/server-name" }}
             {{- if and $srv (eq (dig "spec" "configuration" "destinationPath" "" $os) $bucketPath) }}
             {{- $window := dig "status" "serverRecoveryWindow" $srv (dict) $os }}
             {{- $e := get $servers $srv | default (dict) }}
-            {{- $e = merge (dict "serverName" $srv "active" true "cluster" (dig "metadata" "labels" "cnpg.tuskpilot.com/postgrescluster" "" $o) "location" (dig "metadata" "annotations" "platform.tuskpilot.com/location" "" $o) "postgresVersion" (int (get $ann "cnpg.tuskpilot.com/postgres-version" | default 0)) "database" (get $ann "cnpg.tuskpilot.com/database") "owner" (get $ann "cnpg.tuskpilot.com/database-owner")) $e }}
+            {{- $e = merge (dict "serverName" $srv "active" true "cluster" (dig "metadata" "labels" "cnpg.cndev.nl/postgrescluster" "" $o) "location" (dig "metadata" "annotations" "platform.cndev.nl/location" "" $o) "postgresVersion" (int (get $ann "cnpg.cndev.nl/postgres-version" | default 0)) "database" (get $ann "cnpg.cndev.nl/database") "owner" (get $ann "cnpg.cndev.nl/database-owner")) $e }}
             {{- with $window.firstRecoverabilityPoint }}{{ $_ := set $e "firstRecoverabilityPoint" . }}{{ end }}
             {{- with $window.lastSuccessfulBackupTime }}{{ $_ := set $e "lastSuccessfulBackup" . }}{{ end }}
             {{- $_ := set $servers $srv $e }}
@@ -1100,7 +1100,7 @@ spec:
                 {{- end }}
             spec:
               of:
-                apiVersion: platform.tuskpilot.com/v1alpha1
+                apiVersion: platform.cndev.nl/v1alpha1
                 kind: Location
                 resourceRef:
                   name: {{ $loc }}
@@ -1123,7 +1123,7 @@ spec:
             {{- else if not $ready }}{{ $msg = printf "Waiting for %s" (join ", " $waiting) }}{{ end }}
             {{- if and $ready $hasRemote $promEnabled (not $rwUrl) }}{{ $msg = printf "Project %s is ready; metrics stay in its locations and Grafana shows none (no prometheus.remoteWrite in project-defaults)" $name }}{{ end }}
             ---
-            apiVersion: platform.tuskpilot.com/v1alpha1
+            apiVersion: platform.cndev.nl/v1alpha1
             kind: Project
             status:
               ready: {{ $ready }}

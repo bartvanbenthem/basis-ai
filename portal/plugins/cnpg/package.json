@@ -54,5 +54,5 @@
   "files": [
     "dist"
   ],
-  "description": "CNPG portal: deploy and inspect CloudNativePG PostgresClusters (cnpg.tuskpilot.com)"
+  "description": "CNPG portal: deploy and inspect CloudNativePG PostgresClusters (cnpg.cndev.nl)"
 }

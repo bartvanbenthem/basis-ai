@@ -1,7 +1,7 @@
 # Smallest useful PostgresCluster: 3 instances of PostgreSQL 17 with
 # metrics, alerts and a Grafana dashboard (all defaults). Connect with the
 # credentials in Secret demo/orders-db-app at orders-db-rw.demo.svc:5432.
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

@@ -23,14 +23,14 @@ kind: ClusterRole
 metadata:
   name: backstage-cnpg-portal
 rules:
-  - apiGroups: [cnpg.tuskpilot.com]
+  - apiGroups: [cnpg.cndev.nl]
     resources: [postgresclusters]
     verbs: [get, list, watch, create, update, patch, delete]
   # Projects (namespace + Prometheus + Grafana): list them for the project
   # picker, create new ones, change their settings, and delete them once they
   # have no PostgresClusters left (the backend checks, and patches
   # deletionProtection off for the delete).
-  - apiGroups: [platform.tuskpilot.com]
+  - apiGroups: [platform.cndev.nl]
     resources: [projects]
     verbs: [get, list, watch, create, patch, delete]
   - apiGroups: [""]
@@ -46,7 +46,7 @@ rules:
   # kubeconfig Secret (bottom); their composition creates the
   # ClusterProviderConfig Crossplane places objects through. The API server
   # refuses deleting one a Project uses.
-  - apiGroups: [platform.tuskpilot.com]
+  - apiGroups: [platform.cndev.nl]
     resources: [locations]
     verbs: [get, list, watch, create, update, delete]
   # The sizes (SKUs) a PostgresCluster can pick and the extensions it can

@@ -4,7 +4,7 @@ metadata:
   name: project
   title: Project (with Prometheus and Grafana)
   description: >-
-    Create a project through the platform.tuskpilot.com Project API, with
+    Create a project through the platform.cndev.nl Project API, with
     its own Prometheus and Grafana, RoleBindings for your team and an optional quota.
     PostgreSQL clusters created in the project report to that Prometheus and Grafana.
   tags: [project, observability]

@@ -35,7 +35,7 @@ export function createPostgresClusterAction(k8s: CnpgKubernetesService) {
   return createTemplateAction({
     id: 'cnpg:postgrescluster:create',
     description:
-      'Creates a CloudNativePG PostgresCluster (cnpg.tuskpilot.com/v1alpha1) through the Crossplane API',
+      'Creates a CloudNativePG PostgresCluster (cnpg.cndev.nl/v1alpha1) through the Crossplane API',
     supportsDryRun: true,
     schema: {
       input: {
@@ -85,7 +85,7 @@ export function createPostgresClusterAction(k8s: CnpgKubernetesService) {
 }
 
 /**
- * `cnpg:project:create` -- applies a Project (platform.tuskpilot.com/v1alpha1): a
+ * `cnpg:project:create` -- applies a Project (platform.cndev.nl/v1alpha1): a
  * namespace with its own Prometheus and Grafana that PostgresClusters can
  * then be created in.
  */
@@ -93,7 +93,7 @@ export function createProjectAction(k8s: CnpgKubernetesService) {
   return createTemplateAction({
     id: 'cnpg:project:create',
     description:
-      'Creates a Project (platform.tuskpilot.com/v1alpha1): a namespace with its own Prometheus and Grafana',
+      'Creates a Project (platform.cndev.nl/v1alpha1): a namespace with its own Prometheus and Grafana',
     supportsDryRun: true,
     schema: {
       input: {

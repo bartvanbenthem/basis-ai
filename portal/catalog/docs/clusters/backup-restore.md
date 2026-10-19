@@ -28,7 +28,7 @@ In the portal: **Restore to a new cluster** on a cluster's **Backups** tab, or o
 the folder of a deleted cluster. With kubectl:
 
 ```yaml
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db-restored

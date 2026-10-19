@@ -5,7 +5,7 @@
 # Needs the S3 credentials Secret first, e.g.:
 #   kubectl -n payments create secret generic payments-db-s3 \
 #     --from-literal=ACCESS_KEY_ID=... --from-literal=ACCESS_SECRET_KEY=...
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: payments-db

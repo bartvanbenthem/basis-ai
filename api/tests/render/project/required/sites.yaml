@@ -15,7 +15,7 @@ data:
         nginx.ingress.kubernetes.io/whitelist-source-range: 192.0.2.0/24
 ---
 # Registered, but closed to new databases.
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Location
 metadata:
   name: si-ske-demo
@@ -26,7 +26,7 @@ spec:
       namespace: cnpg-locations
       name: si-ske-demo
 ---
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Location
 metadata:
   name: onprem-ams

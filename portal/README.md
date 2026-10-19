@@ -104,7 +104,7 @@ CNPG_GRAFANA_URL=https://grafana.example.com yarn start
 ```
 
 - `{namespace}` in the fallback URL is replaced by the cluster's namespace, for one Grafana per
-  namespace (the composition's default `instanceSelector` is `dashboards.paas.tuskpilot.com/scope: <namespace>`).
+  namespace (the composition's default `instanceSelector` is `dashboards.paas.cndev.nl/scope: <namespace>`).
 - Grafana must allow embedding and give the browser a session inside the iframe:
 
   ```yaml
@@ -125,7 +125,7 @@ CNPG_GRAFANA_URL=https://grafana.example.com yarn start
 A location is a Kubernetes cluster the databases run in: a `Location` object (cluster-scoped, see
 [`api`](../api/README.md#locations)) with the settings, pointing at a Secret
 in the control plane's `cnpg-locations` namespace (`cnpg.locations.namespace`, label
-`platform.tuskpilot.com/location=true`) that holds the kubeconfig under the `kubeconfig` key. The backend
+`platform.cndev.nl/location=true`) that holds the kubeconfig under the `kubeconfig` key. The backend
 writes the Secret first, then the Location. The kubeconfig never leaves the backend; the API returns
 only server, context and auth type. The Location's composition creates the provider-kubernetes
 `ClusterProviderConfig` the Project and PostgresCluster compositions place objects through. Its status

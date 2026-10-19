@@ -71,7 +71,7 @@ describe('create-project form', () => {
 });
 
 const live: Project = {
-  apiVersion: 'platform.tuskpilot.com/v1alpha1',
+  apiVersion: 'platform.cndev.nl/v1alpha1',
   kind: 'Project',
   metadata: { name: 'team-a' },
   spec: {

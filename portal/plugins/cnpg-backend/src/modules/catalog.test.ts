@@ -3,7 +3,7 @@ import { PostgresClusterEntityProvider } from './catalog';
 
 describe('PostgresClusterEntityProvider', () => {
   const cluster = {
-    apiVersion: 'cnpg.tuskpilot.com/v1alpha1',
+    apiVersion: 'cnpg.cndev.nl/v1alpha1',
     kind: 'PostgresCluster',
     metadata: {
       name: 'payments-db',
@@ -34,7 +34,7 @@ describe('PostgresClusterEntityProvider', () => {
         name: 'payments--payments-db',
         title: 'payments-db (payments)',
         annotations: {
-          'cnpg.tuskpilot.com/postgrescluster': 'payments/payments-db',
+          'cnpg.cndev.nl/postgrescluster': 'payments/payments-db',
           'backstage.io/kubernetes-id': 'payments-db',
           'backstage.io/kubernetes-namespace': 'payments',
         },
@@ -73,7 +73,7 @@ describe('PostgresClusterEntityProvider', () => {
 
   it('maps a Project to a project Resource entity', () => {
     const entity = make().toProjectEntity({
-      apiVersion: 'platform.tuskpilot.com/v1alpha1',
+      apiVersion: 'platform.cndev.nl/v1alpha1',
       kind: 'Project',
       metadata: { name: 'payments' },
       spec: { owner: 'team-payments', description: 'Payment services' },
@@ -85,7 +85,7 @@ describe('PostgresClusterEntityProvider', () => {
         name: 'payments',
         description: 'Payment services',
         annotations: {
-          'platform.tuskpilot.com/project': 'payments',
+          'platform.cndev.nl/project': 'payments',
           'backstage.io/kubernetes-namespace': 'payments',
         },
       },
@@ -106,7 +106,7 @@ describe('PostgresClusterEntityProvider', () => {
     const provider = make({
       list: jest.fn(async () => [cluster]),
       listProjects: jest.fn(async () => [
-        { apiVersion: 'platform.tuskpilot.com/v1alpha1', kind: 'Project', metadata: { name: 'payments' }, spec: {} },
+        { apiVersion: 'platform.cndev.nl/v1alpha1', kind: 'Project', metadata: { name: 'payments' }, spec: {} },
       ]),
     });
     const connection = { applyMutation: jest.fn(), refresh: jest.fn() };

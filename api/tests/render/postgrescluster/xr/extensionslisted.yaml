@@ -1,6 +1,6 @@
 # The bootstrap database also listed in databases[]: that entry manages it,
 # so there is one CNPG Database for it, with the entry's extensions.
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: docs-db

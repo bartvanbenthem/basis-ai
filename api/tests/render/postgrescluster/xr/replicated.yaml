@@ -1,7 +1,7 @@
 # Primary in the protected location, a replica cluster in the recovery
 # location fed from the shared object store (CloudNativePG distributed
 # topology).
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

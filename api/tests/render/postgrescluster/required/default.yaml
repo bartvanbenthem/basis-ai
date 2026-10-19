@@ -1,7 +1,7 @@
 # The Projects the PostgresCluster composition reads (extra resource
 # "project", named after the XR's namespace): their spec.locations say where
 # the clusters run. Cases without required/<case>.yaml use this file.
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata:
   name: demo
@@ -9,7 +9,7 @@ spec:
   locations:
     protected: si-ske-demo
 ---
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata:
   name: sandbox
@@ -17,7 +17,7 @@ spec:
   locations:
     protected: si-ske-demo
 ---
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata:
   name: payments

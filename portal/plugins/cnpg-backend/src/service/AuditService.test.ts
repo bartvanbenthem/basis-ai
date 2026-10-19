@@ -2,7 +2,7 @@ import { PostgresCluster, Project } from '@internal/backstage-plugin-cnpg-common
 import { AuditCore, AuditService } from './AuditService';
 
 const demo: Project = {
-  apiVersion: 'platform.tuskpilot.com/v1alpha1',
+  apiVersion: 'platform.cndev.nl/v1alpha1',
   kind: 'Project',
   metadata: { name: 'demo' },
   spec: { locations: { protected: 'prod-ams' } },
@@ -10,7 +10,7 @@ const demo: Project = {
 
 const cluster = (name: string, parameters?: Record<string, string>): PostgresCluster =>
   ({
-    apiVersion: 'cnpg.tuskpilot.com/v1alpha1',
+    apiVersion: 'cnpg.cndev.nl/v1alpha1',
     kind: 'PostgresCluster',
     metadata: { name, namespace: 'demo' },
     spec: parameters ? { postgresql: { parameters } } : {},

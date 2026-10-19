@@ -18,9 +18,9 @@
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: locations.platform.tuskpilot.com
+  name: locations.platform.cndev.nl
 spec:
-  group: platform.tuskpilot.com
+  group: platform.cndev.nl
   scope: Cluster
   names:
     kind: Location

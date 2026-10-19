@@ -23,7 +23,7 @@ const apiError = (code: number, message: string) =>
   new ApiException(code, message, JSON.stringify({ message }), {});
 
 const LOCATION = {
-  apiVersion: 'platform.tuskpilot.com/v1alpha1',
+  apiVersion: 'platform.cndev.nl/v1alpha1',
   kind: 'Location',
   metadata: { name: 'prod-ams', creationTimestamp: '2026-10-01T00:00:00Z' },
   spec: {
@@ -45,7 +45,7 @@ const SECRET = {
   metadata: {
     name: 'prod-ams',
     namespace: 'cnpg-locations',
-    labels: { 'platform.tuskpilot.com/location': 'true' },
+    labels: { 'platform.cndev.nl/location': 'true' },
   },
   data: { kubeconfig: b64(KUBECONFIG) },
 };
@@ -115,13 +115,13 @@ describe('LocationService', () => {
     expect(core.createNamespacedSecret.mock.calls[0][0]).toMatchObject({
       namespace: 'cnpg-locations',
       body: {
-        metadata: { name: 'dr-rtm', labels: { 'platform.tuskpilot.com/location': 'true' } },
+        metadata: { name: 'dr-rtm', labels: { 'platform.cndev.nl/location': 'true' } },
         stringData: { kubeconfig: expect.stringContaining('127.0.0.1:9') },
       },
     });
     const body = (custom.createClusterCustomObject.mock.calls[0][0] as any).body;
     expect(body).toEqual({
-      apiVersion: 'platform.tuskpilot.com/v1alpha1',
+      apiVersion: 'platform.cndev.nl/v1alpha1',
       kind: 'Location',
       metadata: {
         name: 'dr-rtm',
@@ -183,7 +183,7 @@ describe('LocationService', () => {
     const { service, core, custom } = setup();
     await service.delete('prod-ams');
     expect(custom.deleteClusterCustomObject).toHaveBeenCalledWith(
-      expect.objectContaining({ group: 'platform.tuskpilot.com', plural: 'locations', name: 'prod-ams' }),
+      expect.objectContaining({ group: 'platform.cndev.nl', plural: 'locations', name: 'prod-ams' }),
     );
     expect(core.deleteNamespacedSecret).toHaveBeenCalledWith({ namespace: 'cnpg-locations', name: 'prod-ams' });
   });

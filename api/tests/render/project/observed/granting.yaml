@@ -109,7 +109,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-orders
+          platform.cndev.nl/project: team-orders
         name: backup-check
         namespace: team-orders
       spec:
@@ -124,8 +124,8 @@ status:
                 labels:
                   app.kubernetes.io/managed-by: crossplane
                   app.kubernetes.io/part-of: cnpg-platform
-                  platform.tuskpilot.com/check: backup
-                  platform.tuskpilot.com/project: team-orders
+                  platform.cndev.nl/check: backup
+                  platform.cndev.nl/project: team-orders
               spec:
                 automountServiceAccountToken: false
                 containers:
@@ -226,7 +226,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-orders
+          platform.cndev.nl/project: team-orders
         name: backup-check-s3
         namespace: team-orders
   conditions:
@@ -254,8 +254,8 @@ status:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
           backstage.io/owner: team-orders
-          dashboards.paas.tuskpilot.com/scope: team-orders
-          platform.tuskpilot.com/project: team-orders
+          dashboards.paas.cndev.nl/scope: team-orders
+          platform.cndev.nl/project: team-orders
           pod-security.kubernetes.io/enforce: baseline
           pod-security.kubernetes.io/warn: restricted
         name: team-orders
@@ -285,7 +285,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-orders
+          platform.cndev.nl/project: team-orders
         name: prometheus
         namespace: team-orders
       spec:
@@ -377,7 +377,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-orders
+          platform.cndev.nl/project: team-orders
         name: platform:project:team-orders:prometheus
       roleRef:
         apiGroup: rbac.authorization.k8s.io
@@ -411,7 +411,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-orders
+          platform.cndev.nl/project: team-orders
         name: prometheus-prometheus-db-prometheus-prometheus-0
         namespace: team-orders
       spec:
@@ -444,7 +444,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-orders
+          platform.cndev.nl/project: team-orders
         name: prometheus
         namespace: team-orders
   conditions:
@@ -471,7 +471,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-orders
+          platform.cndev.nl/project: team-orders
         name: backup-check
         namespace: team-orders
       spec:
@@ -486,8 +486,8 @@ status:
                 labels:
                   app.kubernetes.io/managed-by: crossplane
                   app.kubernetes.io/part-of: cnpg-platform
-                  platform.tuskpilot.com/check: backup
-                  platform.tuskpilot.com/project: team-orders
+                  platform.cndev.nl/check: backup
+                  platform.cndev.nl/project: team-orders
               spec:
                 automountServiceAccountToken: false
                 containers:
@@ -588,7 +588,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-orders
+          platform.cndev.nl/project: team-orders
         name: backup-check-s3
         namespace: team-orders
   conditions:
@@ -616,8 +616,8 @@ status:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
           backstage.io/owner: team-orders
-          dashboards.paas.tuskpilot.com/scope: team-orders
-          platform.tuskpilot.com/project: team-orders
+          dashboards.paas.cndev.nl/scope: team-orders
+          platform.cndev.nl/project: team-orders
           pod-security.kubernetes.io/enforce: baseline
           pod-security.kubernetes.io/warn: restricted
         name: team-orders
@@ -647,7 +647,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-orders
+          platform.cndev.nl/project: team-orders
         name: prometheus
         namespace: team-orders
       spec:
@@ -739,7 +739,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-orders
+          platform.cndev.nl/project: team-orders
         name: platform:project:team-orders:prometheus
       roleRef:
         apiGroup: rbac.authorization.k8s.io
@@ -773,7 +773,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-orders
+          platform.cndev.nl/project: team-orders
         name: prometheus-prometheus-db-prometheus-prometheus-0
         namespace: team-orders
       spec:
@@ -806,7 +806,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-orders
+          platform.cndev.nl/project: team-orders
         name: prometheus
         namespace: team-orders
   conditions:

@@ -1,7 +1,7 @@
 /**
  * Locations: the Kubernetes clusters the platform runs data services in; the
  * control plane (where Crossplane and the portal run) runs none. Each one is
- * a Location (platform.tuskpilot.com/v1alpha1, cluster-scoped, see
+ * a Location (platform.cndev.nl/v1alpha1, cluster-scoped, see
  * api/apis/location) with the settings below, pointing at a
  * Secret on the control plane (namespace `cnpg.locations.namespace`) that
  * holds its kubeconfig under the `kubeconfig` key. The Location composition
@@ -12,7 +12,7 @@
  */
 
 /** Label on every location Secret. */
-export const LOCATION_LABEL = 'platform.tuskpilot.com/location';
+export const LOCATION_LABEL = 'platform.cndev.nl/location';
 
 export const LOCATION_ENVIRONMENTS = ['production', 'acceptance', 'test', 'development'] as const;
 export type LocationEnvironment = (typeof LOCATION_ENVIRONMENTS)[number];

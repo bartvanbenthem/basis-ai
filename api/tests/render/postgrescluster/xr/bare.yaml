@@ -1,5 +1,5 @@
 # Everything optional switched off: only the CNPG Cluster is composed.
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: scratch-db

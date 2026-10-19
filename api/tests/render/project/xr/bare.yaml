@@ -1,6 +1,6 @@
 # Observability switched off and no EnvironmentConfig: just the namespace,
 # here and in the protected location.
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata:
   name: sandbox

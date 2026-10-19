@@ -1,5 +1,5 @@
 # No Project for the namespace: nothing is placed anywhere.
-apiVersion: platform.tuskpilot.com/v1alpha1
+apiVersion: platform.cndev.nl/v1alpha1
 kind: Project
 metadata:
   name: some-other-project

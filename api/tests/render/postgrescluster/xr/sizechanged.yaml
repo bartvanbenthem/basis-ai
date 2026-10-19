@@ -1,7 +1,7 @@
 # A running cluster moved to a size the catalog doesn't have (the admission
 # policy would refuse it): the change isn't applied, the instances keep what
 # status.sizing says, and the status says why.
-apiVersion: cnpg.tuskpilot.com/v1alpha1
+apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

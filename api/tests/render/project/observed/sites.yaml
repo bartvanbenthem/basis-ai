@@ -49,11 +49,11 @@ status:
       kind: RoleBinding
       metadata:
         annotations:
-          platform.tuskpilot.com/group: ledger-devs
+          platform.cndev.nl/group: ledger-devs
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-ledger
+          platform.cndev.nl/project: team-ledger
         name: project-edit-b0951c34
         namespace: team-ledger
       roleRef:
@@ -88,7 +88,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-ledger
+          platform.cndev.nl/project: team-ledger
         name: project-defaults
         namespace: team-ledger
       spec:
@@ -124,8 +124,8 @@ status:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
           backstage.io/owner: team-ledger
-          dashboards.paas.tuskpilot.com/scope: team-ledger
-          platform.tuskpilot.com/project: team-ledger
+          dashboards.paas.cndev.nl/scope: team-ledger
+          platform.cndev.nl/project: team-ledger
           pod-security.kubernetes.io/enforce: baseline
           pod-security.kubernetes.io/warn: restricted
         name: team-ledger
@@ -155,7 +155,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-ledger
+          platform.cndev.nl/project: team-ledger
         name: prometheus
         namespace: team-ledger
       spec:
@@ -249,7 +249,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-ledger
+          platform.cndev.nl/project: team-ledger
         name: platform:project:team-ledger:prometheus
       roleRef:
         apiGroup: rbac.authorization.k8s.io
@@ -283,7 +283,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-ledger
+          platform.cndev.nl/project: team-ledger
         name: prometheus-prometheus-db-prometheus-prometheus-0
         namespace: team-ledger
       spec:
@@ -316,7 +316,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-ledger
+          platform.cndev.nl/project: team-ledger
         name: prometheus
         namespace: team-ledger
   conditions:
@@ -343,7 +343,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-ledger
+          platform.cndev.nl/project: team-ledger
         name: project
         namespace: team-ledger
       spec:
@@ -371,11 +371,11 @@ status:
       kind: RoleBinding
       metadata:
         annotations:
-          platform.tuskpilot.com/group: ledger-devs
+          platform.cndev.nl/group: ledger-devs
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-ledger
+          platform.cndev.nl/project: team-ledger
         name: project-edit-b0951c34
         namespace: team-ledger
       roleRef:
@@ -410,7 +410,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-ledger
+          platform.cndev.nl/project: team-ledger
         name: project-defaults
         namespace: team-ledger
       spec:
@@ -446,8 +446,8 @@ status:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
           backstage.io/owner: team-ledger
-          dashboards.paas.tuskpilot.com/scope: team-ledger
-          platform.tuskpilot.com/project: team-ledger
+          dashboards.paas.cndev.nl/scope: team-ledger
+          platform.cndev.nl/project: team-ledger
           pod-security.kubernetes.io/enforce: baseline
           pod-security.kubernetes.io/warn: restricted
         name: team-ledger
@@ -477,7 +477,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-ledger
+          platform.cndev.nl/project: team-ledger
         name: prometheus
         namespace: team-ledger
       spec:
@@ -571,7 +571,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-ledger
+          platform.cndev.nl/project: team-ledger
         name: platform:project:team-ledger:prometheus
       roleRef:
         apiGroup: rbac.authorization.k8s.io
@@ -605,7 +605,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-ledger
+          platform.cndev.nl/project: team-ledger
         name: prometheus-prometheus-db-prometheus-prometheus-0
         namespace: team-ledger
       spec:
@@ -638,7 +638,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-ledger
+          platform.cndev.nl/project: team-ledger
         name: prometheus
         namespace: team-ledger
   conditions:
@@ -665,7 +665,7 @@ status:
         labels:
           app.kubernetes.io/managed-by: crossplane
           app.kubernetes.io/part-of: cnpg-platform
-          platform.tuskpilot.com/project: team-ledger
+          platform.cndev.nl/project: team-ledger
         name: project
         namespace: team-ledger
       spec:

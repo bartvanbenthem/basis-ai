@@ -7,7 +7,7 @@
 #
 # Cluster-scoped because it creates the Namespace; the Project name *is* the
 # namespace name. The labels on that namespace are what the PostgresCluster
-# composition already keys on (dashboards.paas.tuskpilot.com/scope=<namespace>), so
+# composition already keys on (dashboards.paas.cndev.nl/scope=<namespace>), so
 # PostgresClusters need no changes to land in a Project's Grafana.
 #
 # Cluster-wide settings (Grafana ingress domain, where kube-prometheus-stack
@@ -24,9 +24,9 @@
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: projects.platform.tuskpilot.com
+  name: projects.platform.cndev.nl
 spec:
-  group: platform.tuskpilot.com
+  group: platform.cndev.nl
   scope: Cluster
   names:
     kind: Project
