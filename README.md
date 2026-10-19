@@ -117,6 +117,7 @@ Work to make the platform run more of itself, without a platform engineer in the
 | Item | What it automates |
 |---|---|
 | Automatic major upgrades | Opt-in in-place `pg_upgrade` to the next major in a maintenance window: pre-flight checks (health, extensions, recent backup), a fresh base backup afterwards, statistics refreshed; geo-replicated clusters too |
+| Self-fencing at each site | Prevents split brain on a failover. Today the site that is cut off is not fenced: it can't receive the update, so its primary keeps taking writes. With this, the primary site keeps renewing a lease somewhere both sites can reach (the object store or a witness in a third site), and a small agent in each site sets `cnpg.io/fencedInstances` on its own cluster when the lease can't be renewed. A failover is only allowed once the lease has expired plus a safety margin, so there is never more than one primary (as in Patroni-style setups) |
 | Maintenance windows | A window per cluster or Project in which image rollouts, restarts and upgrades may run, instead of whenever the catalog or spec changes |
 | Image catalog updates | A bot that bumps the digests in the ClusterImageCatalog, rolls them out to a canary location first and promotes them when it stays healthy |
 | Storage autoscaling | Grow a cluster's volumes when disk or WAL usage crosses a threshold, before PostgreSQL stops on a full disk |
