@@ -548,6 +548,42 @@ kubectl get project,postgrescluster -A
 [`install/function-tuskpilot.yaml`](install/function-tuskpilot.yaml) and waits until it's Healthy;
 `FUNCTION_MANIFEST=<file> install/install.sh` installs another one. See below for publishing it.
 
+### Migrating from `*.tuskpilot.com`
+
+The APIs moved from `platform.tuskpilot.com` and `cnpg.tuskpilot.com` to `platform.cndev.nl` and
+`cnpg.cndev.nl`. To Kubernetes these are different APIs. Objects created under the old groups don't
+move to the new ones, and `install.sh` installs the new XRDs next to the old XRDs without removing
+them. On a control plane that ran the old groups:
+
+1. Roll out a function version built after the rename (v0.1.1 or later, see
+   [Roll out a version](#roll-out-a-version)). Until then, every new PostgresCluster fails to compose.
+2. Run `install/install.sh` to install the new XRDs, Compositions and policies.
+3. List what is still under the old groups:
+
+   ```sh
+   kubectl get locations.platform.tuskpilot.com,projects.platform.tuskpilot.com
+   kubectl get postgresclusters.cnpg.tuskpilot.com -A
+   ```
+
+4. Recreate each one under the new group. Locations and Projects can be re-applied with the new
+   `apiVersion`. For a PostgresCluster, deleting the old object deletes its CNPG Clusters **and their
+   PVCs** (see [Notes](#notes)). Back it up first, then create the new PostgresCluster with
+   `spec.restore` from its backup folder (see
+   [PostgresCluster: restore](#postgrescluster-restore)).
+5. Once the old groups have no objects left, delete the old XRDs and admission policies. The
+   Compositions keep their names, so `install.sh` already switched them to the new groups:
+
+   ```sh
+   kubectl delete xrd postgresclusters.cnpg.tuskpilot.com projects.platform.tuskpilot.com \
+     locations.platform.tuskpilot.com
+   kubectl get validatingadmissionpolicy,validatingadmissionpolicybinding -o name | grep tuskpilot.com \
+     | xargs -r kubectl delete
+   ```
+
+`install/uninstall.sh` only knows the new groups and leaves the old ones in place. While both
+XRDs exist, the short names `pgc`, `proj` and `loc` match both groups, so name the group in full
+(`kubectl get postgresclusters.cnpg.cndev.nl -A`).
+
 ## function-tuskpilot
 
 The PostgresCluster composition runs in a composition function of its own, built from
@@ -618,6 +654,22 @@ you publish (the render tests fail on any unexpected one).
 
 To roll back, apply the previous tag the same way: the old version's package is still in the
 registry.
+
+### When the API group or version changes
+
+The function only composes the one group, version and kind compiled into it (`postgresClusterGVK`
+in [`function/fn.go`](function/fn.go)). Changing the group or version in
+[`apis/postgrescluster/definition.yaml`](apis/postgrescluster/definition.yaml) therefore takes a new
+function version too. Without one, every PostgresCluster of the new group stays `SYNCED=False` with:
+
+```
+cannot compose resources: pipeline step "compose" returned a fatal result:
+function-tuskpilot doesn't compose cnpg.example.com/v1alpha1, Kind=PostgresCluster
+```
+
+Change `postgresClusterGVK` together with the XRD and Composition. Then publish and roll out a new
+version (above) before, or together with, applying the new XRD. The Location and Project
+compositions use `function-go-templating` and don't depend on this.
 
 ### Develop and test it
 
