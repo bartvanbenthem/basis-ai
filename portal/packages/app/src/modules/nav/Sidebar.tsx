@@ -1,6 +1,6 @@
 import { NavContentBlueprint } from '@backstage/plugin-app-react';
 import { Link, useLocation } from 'react-router-dom';
-import { TuskpilotLogo } from './TuskpilotLogo';
+import { BasisLogo } from './BasisLogo';
 
 type Item = {
   label: string;
@@ -93,9 +93,9 @@ const sections: Array<{ title: string; items: Item[] }> = [
     title: 'Docs',
     items: [
       {
-        // TechDocs of the tuskpilot System (portal/catalog/mkdocs.yml).
+        // TechDocs of the basis System (portal/catalog/mkdocs.yml).
         label: 'Platform docs',
-        to: '/docs/default/system/tuskpilot',
+        to: '/docs/default/system/basis',
         isActive: p => p.startsWith('/docs'),
       },
       {
@@ -109,12 +109,12 @@ const sections: Array<{ title: string; items: Item[] }> = [
   },
 ];
 
-const TuskpilotNav = () => {
+const BasisNav = () => {
   const { pathname, search } = useLocation();
   return (
     <nav className="tp-nav" aria-label="sidebar nav">
       <Link to={CNPG} className="tp-nav__brand" aria-label="Home">
-        <TuskpilotLogo height={26} />
+        <BasisLogo height={26} />
         <span className="tp-nav__product">AI optimized Postgres</span>
       </Link>
       <div className="tp-nav__sections">
@@ -142,5 +142,5 @@ const TuskpilotNav = () => {
 };
 
 export const SidebarContent = NavContentBlueprint.make({
-  params: { component: () => <TuskpilotNav /> },
+  params: { component: () => <BasisNav /> },
 });

@@ -1,7 +1,7 @@
 import { createFrontendModule } from '@backstage/frontend-plugin-api';
-import { tuskpilotTheme } from '../theme';
+import { basisTheme } from '../theme';
 import { AppShell, RootRedirect } from './AppShell';
-import { TuskpilotSignInPage } from './SignIn';
+import { BasisSignInPage } from './SignIn';
 import { SidebarContent } from './Sidebar';
 
 export const navModule = createFrontendModule({
@@ -10,7 +10,7 @@ export const navModule = createFrontendModule({
     SidebarContent,
     AppShell,
     RootRedirect,
-    TuskpilotSignInPage,
-    tuskpilotTheme,
+    BasisSignInPage,
+    basisTheme,
   ],
 });

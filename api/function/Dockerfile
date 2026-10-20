@@ -1,5 +1,5 @@
-# function-tuskpilot. Build from the api directory:
-#   docker build -f function/Dockerfile -t function-tuskpilot .
+# function-basis. Build from the api directory:
+#   docker build -f function/Dockerfile -t function-basis .
 FROM docker.io/library/golang:1.26 AS build
 WORKDIR /src
 ENV CGO_ENABLED=0

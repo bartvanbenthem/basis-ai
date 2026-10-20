@@ -86,7 +86,7 @@ function describe(e: unknown): string {
 const IMAGE_VOLUME_POD: V1Pod = {
   apiVersion: 'v1',
   kind: 'Pod',
-  metadata: { generateName: 'tuskpilot-preflight-' },
+  metadata: { generateName: 'basis-preflight-' },
   spec: {
     // Pod Security "restricted" compliant, so an enforcing namespace doesn't refuse it.
     securityContext: { runAsNonRoot: true, runAsUser: 65534, seccompProfile: { type: 'RuntimeDefault' } },

@@ -1,7 +1,7 @@
 # CloudNativePG alert rules, rendered from the upstream cnpg/cluster Helm
 # chart 0.9.0 (Apache-2.0, https://github.com/cloudnative-pg/charts) by
 # hack/refresh-alerts.sh -- do not edit by hand; change a rule by adding its
-# replacement to local-rules.yaml. function-tuskpilot substitutes, per cluster:
+# replacement to local-rules.yaml. function-basis substitutes, per cluster:
 #   zzclusterzz   -> the PostgresCluster name
 #   zznamespacezz -> the PostgresCluster namespace
 - alert: CNPGClusterHACritical

@@ -168,7 +168,7 @@ spec:
   provider-kubernetes `Object`s; only the `GrafanaDashboard` and the Project's own objects are
   composed directly. RBAC is a ClusterRole for exactly those kinds, aggregated into Crossplane's
   own ServiceAccount ([`install/rbac.yaml`](install/rbac.yaml)), instead of `*/*`.
-- The PostgresCluster composition is Go: a composition function of its own, function-tuskpilot
+- The PostgresCluster composition is Go: a composition function of its own, function-basis
   ([`function/`](function/)), with typed inputs, the switchover state machine as a pure function
   ([`topology.go`](function/postgrescluster/topology.go)) and unit tests. It emits only the fields
   it sets (not the upstream CNPG Go types, which would apply defaulted and empty fields to every
@@ -498,8 +498,8 @@ taken after the switchover: restore from before it out of the protected site's f
 
 ```
 apis/postgrescluster/definition.yaml       XRD (the API contract)
-apis/postgrescluster/composition.yaml      one pipeline step: function-tuskpilot
-function/                                  function-tuskpilot: the PostgresCluster composition in Go
+apis/postgrescluster/composition.yaml      one pipeline step: function-basis
+function/                                  function-basis: the PostgresCluster composition in Go
 function/postgrescluster/                  what gets composed (compose.go), per location (member.go),
                                            the primary/switchover state machine (topology.go), status
 function/postgrescluster/assets/           what it embeds: monitoring queries, GENERATED dashboard and alerts
@@ -545,12 +545,12 @@ kubectl get project,postgrescluster -A
 ```
 
 `install/install.sh` installs the published function package from
-[`install/function-tuskpilot.yaml`](install/function-tuskpilot.yaml) and waits until it's Healthy;
+[`install/function-basis.yaml`](install/function-basis.yaml) and waits until it's Healthy;
 `FUNCTION_MANIFEST=<file> install/install.sh` installs another one. See below for publishing it.
 
-### Migrating from `*.tuskpilot.com`
+### Migrating from `*.basis.com`
 
-The APIs moved from `platform.tuskpilot.com` and `cnpg.tuskpilot.com` to `platform.cndev.nl` and
+The APIs moved from `platform.basis.com` and `cnpg.basis.com` to `platform.cndev.nl` and
 `cnpg.cndev.nl`. To Kubernetes these are different APIs. Objects created under the old groups don't
 move to the new ones, and `install.sh` installs the new XRDs next to the old XRDs without removing
 them. On a control plane that ran the old groups:
@@ -561,8 +561,8 @@ them. On a control plane that ran the old groups:
 3. List what is still under the old groups:
 
    ```sh
-   kubectl get locations.platform.tuskpilot.com,projects.platform.tuskpilot.com
-   kubectl get postgresclusters.cnpg.tuskpilot.com -A
+   kubectl get locations.platform.basis.com,projects.platform.basis.com
+   kubectl get postgresclusters.cnpg.basis.com -A
    ```
 
 4. Recreate each one under the new group. Locations and Projects can be re-applied with the new
@@ -574,9 +574,9 @@ them. On a control plane that ran the old groups:
    Compositions keep their names, so `install.sh` already switched them to the new groups:
 
    ```sh
-   kubectl delete xrd postgresclusters.cnpg.tuskpilot.com projects.platform.tuskpilot.com \
-     locations.platform.tuskpilot.com
-   kubectl get validatingadmissionpolicy,validatingadmissionpolicybinding -o name | grep tuskpilot.com \
+   kubectl delete xrd postgresclusters.cnpg.basis.com projects.platform.basis.com \
+     locations.platform.basis.com
+   kubectl get validatingadmissionpolicy,validatingadmissionpolicybinding -o name | grep basis.com \
      | xargs -r kubectl delete
    ```
 
@@ -584,12 +584,12 @@ them. On a control plane that ran the old groups:
 XRDs exist, the short names `pgc`, `proj` and `loc` match both groups, so name the group in full
 (`kubectl get postgresclusters.cnpg.cndev.nl -A`).
 
-## function-tuskpilot
+## function-basis
 
 The PostgresCluster composition runs in a composition function of its own, built from
 [`function/`](function/) and published as a Crossplane package to
-`ghcr.io/bartvanbenthem/function-tuskpilot`. The Composition only names it
-(`functionRef: function-tuskpilot`), so a new version of the function changes how every
+`ghcr.io/bartvanbenthem/function-basis`. The Composition only names it
+(`functionRef: function-basis`), so a new version of the function changes how every
 PostgresCluster is composed without touching the Composition.
 
 ### Publish a version
@@ -613,7 +613,7 @@ embeds it as the package's runtime (`function/package/crossplane.yaml` is the pa
 
 ghcr.io makes a new package **private**, and Crossplane pulls without credentials: the Function then
 stays `Installed=False` with `UNAUTHORIZED: authentication required`, and `install.sh` waits until it
-times out. Either make the package public (GitHub: Packages, `function-tuskpilot`, Package settings,
+times out. Either make the package public (GitHub: Packages, `function-basis`, Package settings,
 Change visibility), or keep it private and give Crossplane a pull secret (a token with
 `read:packages`) on every control plane:
 
@@ -624,7 +624,7 @@ kubectl apply -f - <<'EOF'
 apiVersion: pkg.crossplane.io/v1beta1
 kind: ImageConfig
 metadata:
-  name: ghcr-tuskpilot
+  name: ghcr-basis
 spec:
   matchImages:
     - {type: Prefix, prefix: ghcr.io/bartvanbenthem/}
@@ -636,13 +636,13 @@ EOF
 
 ### Roll out a version
 
-Set the new tag in [`install/function-tuskpilot.yaml`](install/function-tuskpilot.yaml) and in the
+Set the new tag in [`install/function-basis.yaml`](install/function-basis.yaml) and in the
 `FUNCTION_VERSION` default of the [`Makefile`](Makefile), commit, then on every control plane:
 
 ```sh
-kubectl apply -f install/function-tuskpilot.yaml      # or re-run install/install.sh
-kubectl get function function-tuskpilot -w            # INSTALLED/HEALTHY True on the new package
-kubectl get functionrevision | grep function-tuskpilot   # the new revision is Active
+kubectl apply -f install/function-basis.yaml      # or re-run install/install.sh
+kubectl get function function-basis -w            # INSTALLED/HEALTHY True on the new package
+kubectl get functionrevision | grep function-basis   # the new revision is Active
 kubectl get postgrescluster -A                        # SYNCED/READY stay True
 ```
 
@@ -664,7 +664,7 @@ function version too. Without one, every PostgresCluster of the new group stays 
 
 ```
 cannot compose resources: pipeline step "compose" returned a fatal result:
-function-tuskpilot doesn't compose cnpg.example.com/v1alpha1, Kind=PostgresCluster
+function-basis doesn't compose cnpg.example.com/v1alpha1, Kind=PostgresCluster
 ```
 
 Change `postgresClusterGVK` together with the XRD and Composition. Then publish and roll out a new
@@ -681,7 +681,7 @@ make test                         # + every case rendered through the function b
 
 The render tests and the e2e scripts never use the published package: they build the image from
 the checkout (the e2e scripts load it into kind and seed Crossplane's package cache, see
-[`../hack/lib/function-tuskpilot.sh`](../hack/lib/function-tuskpilot.sh)).
+[`../hack/lib/function-basis.sh`](../hack/lib/function-basis.sh)).
 
 ## Connect from outside the cluster
 
@@ -723,7 +723,7 @@ make test       # make unit, then crossplane render for every API, PostgresClust
                 # the CNPG/Barman/Prometheus/Grafana/provider-kubernetes/ClusterUsage CRDs
                 # (manifests inside Objects too), assertions
 go run ./hack/observe project full   # regenerate an observed-state fixture after changing a composition
-make function-push FUNCTION_VERSION=v0.1.1   # publish the function: see "function-tuskpilot" above
+make function-push FUNCTION_VERSION=v0.1.1   # publish the function: see "function-basis" above
 # crossplane render doesn't resolve namespaced extra resources (Crossplane itself does), so the
 # render tests can't show COSI's credentials Secrets being unpacked; they check the rest.
 ../hack/e2e-kind.sh        # the real thing: a control plane and one location on kind

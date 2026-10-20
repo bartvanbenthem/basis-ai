@@ -1,5 +1,5 @@
-/** The Tuskpilot mark (from logos/tuskpilot-icon.svg) with its wordmark. */
-export const TuskpilotLogo = ({ height = 30 }: { height?: number }) => (
+/** The BASIS mark (from logos/basis-icon.svg) with its wordmark. */
+export const BasisLogo = ({ height = 30 }: { height?: number }) => (
   <span
     style={{
       display: 'inline-flex',
@@ -12,7 +12,7 @@ export const TuskpilotLogo = ({ height = 30 }: { height?: number }) => (
       width={height}
       viewBox="4 4 112 112"
       role="img"
-      aria-label="Tuskpilot"
+      aria-label="BASIS"
       xmlns="http://www.w3.org/2000/svg"
     >
       <circle cx="60" cy="60" r="56" fill="#0F3A4A" />
@@ -72,7 +72,7 @@ export const TuskpilotLogo = ({ height = 30 }: { height?: number }) => (
         lineHeight: 1,
       }}
     >
-      Tuskpilot
+      BASIS
     </span>
   </span>
 );

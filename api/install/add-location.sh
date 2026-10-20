@@ -67,7 +67,7 @@ fi
 if ! "${LOCATION[@]}" -n default create --dry-run=server -o jsonpath='{.spec.volumes[0].image.reference}' -f - >/dev/null 2>&1 <<'YAML'
 apiVersion: v1
 kind: Pod
-metadata: {generateName: tuskpilot-preflight-}
+metadata: {generateName: basis-preflight-}
 spec:
   securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
   containers:

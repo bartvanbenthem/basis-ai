@@ -92,7 +92,7 @@ func openAPIDocs(base string) ([]struct{ path, content string }, error) {
 			"apiVersion": "backstage.io/v1alpha1",
 			"kind":       "API",
 			"metadata":   map[string]any{"name": api, "title": a.title, "description": a.description, "tags": []any{"kubernetes", "crossplane"}},
-			"spec": map[string]any{"type": "openapi", "lifecycle": "experimental", "owner": "guests", "system": "tuskpilot",
+			"spec": map[string]any{"type": "openapi", "lifecycle": "experimental", "owner": "guests", "system": "basis",
 				"definition": buf.String()},
 		}
 		var eb bytes.Buffer

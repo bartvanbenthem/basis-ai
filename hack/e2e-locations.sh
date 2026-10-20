@@ -38,8 +38,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=lib/function-tuskpilot.sh
-source "${ROOT}/hack/lib/function-tuskpilot.sh"
+# shellcheck source=lib/function-basis.sh
+source "${ROOT}/hack/lib/function-basis.sh"
 CP="${CONTROL_PLANE_CLUSTER:-cnpg-e2e-cp}"
 PROT="${PROTECTED_CLUSTER:-cnpg-e2e-protected}"
 REC="${RECOVERY_CLUSTER:-cnpg-e2e-recovery}"
@@ -167,8 +167,8 @@ S3_ENDPOINT="http://$(node_ip "${CP}"):30900"
 "${C[@]}" -n minio wait job/mkbucket --for=condition=Complete --timeout=180s
 
 echo "==> api on the control plane"
-# function-tuskpilot from this checkout, not the published package.
-local_function_tuskpilot "${CP}" "${CP_KUBECONFIG}" "${WORK}" "${RUNTIME}"
+# function-basis from this checkout, not the published package.
+local_function_basis "${CP}" "${CP_KUBECONFIG}" "${WORK}" "${RUNTIME}"
 KUBECONFIG="${CP_KUBECONFIG}" "${ROOT}/api/install/install.sh"
 if "${C[@]}" get crd clusters.postgresql.cnpg.io >/dev/null 2>&1; then
   echo "FAIL: the control plane has CloudNativePG; this test must show it doesn't need it"; exit 1

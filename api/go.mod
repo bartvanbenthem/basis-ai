@@ -1,4 +1,4 @@
-module github.com/bartvanbenthem/postgres-paas/api
+module github.com/bartvanbenthem/basis-ai/api
 
 go 1.26.0
 

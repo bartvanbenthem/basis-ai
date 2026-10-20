@@ -42,7 +42,7 @@ fi
 kubectl delete -f "${API_DIR}/location/composition.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/location/definition.yaml" --ignore-not-found
 kubectl delete -f "${SCRIPT_DIR}/functions.yaml" --ignore-not-found
-kubectl delete function.pkg.crossplane.io/function-tuskpilot --ignore-not-found
+kubectl delete function.pkg.crossplane.io/function-basis --ignore-not-found
 # The postgres-sizes and postgres-extensions catalogs stay, like project-defaults.
 # Location kubeconfig Secrets stay (the portal's, or add-location.sh's).
 # Leftovers of locations registered before the Location API:

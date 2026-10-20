@@ -7,7 +7,7 @@ import {
   UnifiedThemeProvider,
 } from '@backstage/theme';
 
-/** Tuskpilot brand colours; mirrored as CSS tokens in ./tuskpilot.css for Backstage UI. */
+/** BASIS brand colours; mirrored as CSS tokens in ./basis.css for Backstage UI. */
 export const tp = {
   green: '#00c300',
   bg: '#0e0f13',
@@ -49,18 +49,18 @@ const theme = createUnifiedTheme({
 });
 
 /**
- * The only theme in the portal. The `data-theme-name="tuskpilot"` attribute it sets
- * on <body> scopes the Backstage UI token overrides in ./tuskpilot.css.
+ * The only theme in the portal. The `data-theme-name="basis"` attribute it sets
+ * on <body> scopes the Backstage UI token overrides in ./basis.css.
  */
-export const tuskpilotTheme = ThemeBlueprint.make({
-  name: 'tuskpilot',
+export const basisTheme = ThemeBlueprint.make({
+  name: 'basis',
   params: {
     theme: {
-      id: 'tuskpilot',
-      title: 'Tuskpilot',
+      id: 'basis',
+      title: 'BASIS',
       variant: 'dark',
       Provider: ({ children }) => (
-        <UnifiedThemeProvider theme={theme} themeName="tuskpilot">
+        <UnifiedThemeProvider theme={theme} themeName="basis">
           {children}
         </UnifiedThemeProvider>
       ),

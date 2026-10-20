@@ -1,15 +1,21 @@
-# Tuskpilot
+# BASIS
 
-Tuskpilot is PostgreSQL as a service on Kubernetes, built on
-[CloudNativePG](https://cloudnative-pg.io/) (CNPG), [Crossplane](https://www.crossplane.io/) and
-[Backstage](https://backstage.io/). Teams order production-ready PostgreSQL clusters themselves,
-through this portal or the Kubernetes API, and the platform runs them.
+BASIS (Build AI Services In Sovereign infrastructure) is a platform for building generative AI
+services on Kubernetes clusters you own. Teams order the building blocks of an AI service
+themselves, through this portal or the Kubernetes API, and the platform runs them. It is built on
+[Crossplane](https://www.crossplane.io/) and [Backstage](https://backstage.io/).
 
-## What you get
+The target stack covers self-hosted models (vLLM, KServe, llm-d), an AI gateway, prompt and
+semantic caches, RAG, guardrails, observability and orchestration. Today the platform provides the
+context and data layer: PostgreSQL with pgvector on [CloudNativePG](https://cloudnative-pg.io/)
+(CNPG), Prometheus and Grafana, and object storage. See [Platform scope](scope.md) for the full
+stack and what is available now.
+
+## What you get today
 
 - **Self-service:** one `PostgresCluster` object, or the **New cluster** form, gives you a highly
   available cluster in a size from the platform's catalog (XS to XL), with PostgreSQL tuned to it.
-- **AI workloads:** the **Vector & RAG** profile (PostgreSQL 18) brings pgvector, VectorChord for
+- **Context / RAG:** the **Vector & RAG** profile (PostgreSQL 18) brings pgvector, VectorChord for
   large vector indexes and pg_search for BM25 and hybrid search. See [Vector & RAG](clusters/vector-rag.md).
 - **Projects:** each team works in its own Project, with access control, an optional quota and
   deletion protection, and its own Prometheus and Grafana.
@@ -17,16 +23,17 @@ through this portal or the Kubernetes API, and the platform runs them.
   Project's Grafana.
 - **Backups and resilience:** continuous backups to object storage, point-in-time restore into a new
   cluster, and a replica cluster in a second location that can take over.
+- **Sovereign:** everything runs in your own clusters, in the data centers or regions you choose.
 
 ## How it fits together
 
-![Teams use the portal or the API on the control plane; function-tuskpilot deploys every site; the protected location archives WAL and backups to the bucket, the recovery location replays them; metrics go back to the control plane](diagrams/architecture.png){ width="784" }
+![Teams use the portal or the API on the control plane; function-basis deploys every site; the protected location archives WAL and backups to the bucket, the recovery location replays them; metrics go back to the control plane](diagrams/architecture.png){ width="784" }
 
 <!-- Source: diagrams/architecture.mmd; ../render-diagrams.sh renders it. -->
 
-- The **control plane** runs the APIs (Crossplane) and the portal, but no databases.
-- **Locations** are the Kubernetes clusters the databases run in.
-- A **Project** has a **protected** location, where its databases run, and optionally a **recovery**
+- The **control plane** runs the APIs (Crossplane) and the portal, but no workloads.
+- **Locations** are the Kubernetes clusters the services run in.
+- A **Project** has a **protected** location, where its services run, and optionally a **recovery**
   location for replica clusters. The replica is fed through the Project's backup bucket, so the two
   locations need no network path to each other.
 
@@ -34,6 +41,7 @@ through this portal or the Kubernetes API, and the platform runs them.
 
 | I want to | Read |
 |---|---|
+| See the full stack and what's coming | [Platform scope](scope.md) |
 | Create my first database | [Getting started](getting-started.md) |
 | Pick a size, extensions, HA or pooling | [Configure a cluster](clusters/configure.md) |
 | Store embeddings and build RAG search | [Vector & RAG](clusters/vector-rag.md) |

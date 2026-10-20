@@ -31,5 +31,5 @@ The replication-lag alerts skip replica clusters: their lag follows WAL archivin
 | Can the control plane reach a location? | `kubectl get locations -o wide` (`CONNECTED`, `READY`), the portal's location health |
 | Can a location reach its Project's bucket? | Project `status.backup.reachability` (a check every five minutes from each location), the project page |
 | Is a cluster healthy? | `kubectl get postgrescluster -A`: `READY`, and `status.message` / the `PostgresReady` condition |
-| Is the function healthy? | `kubectl get function function-tuskpilot` |
+| Is the function healthy? | `kubectl get function function-basis` |
 | The operator | its PodMonitor in `cnpg-system` in every location |

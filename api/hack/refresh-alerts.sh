@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Re-renders ../src/alerts/cnpg-cluster-rules.yaml from the upstream
 # cnpg/cluster Helm chart's PrometheusRule, with placeholder names that
-# function-tuskpilot swaps for each cluster's. Run, review the diff,
+# function-basis swaps for each cluster's. Run, review the diff,
 # re-check src/alerts/local-rules.yaml (our replacements for some of these
 # rules), then `make generate`.
 #

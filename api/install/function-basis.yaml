@@ -1,9 +1,9 @@
-# function-tuskpilot: the composition function behind PostgresCluster
+# function-basis: the composition function behind PostgresCluster
 # (../function). Publish a new version with `make function-push
 # FUNCTION_VERSION=...` and bump the tag here; re-run `make test` first.
 apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
-  name: function-tuskpilot
+  name: function-basis
 spec:
-  package: ghcr.io/bartvanbenthem/function-tuskpilot:v0.1.1
+  package: ghcr.io/bartvanbenthem/function-basis:v0.1.1

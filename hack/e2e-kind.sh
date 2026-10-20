@@ -19,8 +19,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=lib/function-tuskpilot.sh
-source "${ROOT}/hack/lib/function-tuskpilot.sh"
+# shellcheck source=lib/function-basis.sh
+source "${ROOT}/hack/lib/function-basis.sh"
 CP="${CONTROL_PLANE_CLUSTER:-cnpg-e2e-cp}"
 LOC="${LOCATION_CLUSTER:-cnpg-e2e-loc}"
 LOCATION=e2e-loc
@@ -107,8 +107,8 @@ kube_prometheus_stack "${LOC_KUBECONFIG}"
 KUBECONFIG="${LOC_KUBECONFIG}" "${ROOT}/operator/install.sh"
 
 echo "==> api on the control plane"
-# function-tuskpilot from this checkout, not the published package.
-local_function_tuskpilot "${CP}" "${CP_KUBECONFIG}" "${WORK}" "${RUNTIME}"
+# function-basis from this checkout, not the published package.
+local_function_basis "${CP}" "${CP_KUBECONFIG}" "${WORK}" "${RUNTIME}"
 KUBECONFIG="${CP_KUBECONFIG}" "${ROOT}/api/install/install.sh"
 
 echo "==> register the location"

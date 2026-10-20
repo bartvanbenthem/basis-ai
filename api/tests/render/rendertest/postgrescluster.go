@@ -314,9 +314,9 @@ func assertPostgresCluster(r *render, dashboardSrc string) {
 			sum := sha256.Sum256([]byte(pgPrevToken))
 			marker = L{nil, hex.EncodeToString(sum[:])[:16]}
 		}
-		got = L{get(main, "postgresql", "parameters", "tuskpilot.last_promotion"),
-			get(replica, "postgresql", "parameters", "tuskpilot.last_promotion")}
-		check(equal(got, marker), "tuskpilot.last_promotion %s", repr(got))
+		got = L{get(main, "postgresql", "parameters", "basis.last_promotion"),
+			get(replica, "postgresql", "parameters", "basis.last_promotion")}
+		check(equal(got, marker), "basis.last_promotion %s", repr(got))
 	} else if !slices.Contains([]string{"noproject", "bucketpending", "projectbucket", "restored", "restorepending", "sizeunknown"}, kase) {
 		spec := mp(r.live("cluster"), "spec")
 		var ext []string
@@ -382,10 +382,10 @@ func assertPostgresCluster(r *render, dashboardSrc string) {
 			}
 			spec := mp(r.live(key), "spec")
 			check(equal(get(spec, "resources"), sz.resources), "%s: resources %s != %s", key, repr(get(spec, "resources")), repr(sz.resources))
-			// tuskpilot.last_promotion is the CNPG reload workaround, checked with the topology.
+			// basis.last_promotion is the CNPG reload workaround, checked with the topology.
 			got := M{}
 			for k, v := range mp(spec, "postgresql", "parameters") {
-				if k != "tuskpilot.last_promotion" {
+				if k != "basis.last_promotion" {
 					got[k] = v
 				}
 			}

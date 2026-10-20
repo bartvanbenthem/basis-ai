@@ -1,6 +1,6 @@
 # CNPG promotion leaves the new primary on its old config (workaround)
 
-Status: workaround in the composition function (`function-tuskpilot`), upstream fix pending
+Status: workaround in the composition function (`function-basis`), upstream fix pending
 Affects: CloudNativePG 1.30.1 (also present on upstream `main` as of 2026-10-13),
 distributed PostgresClusters (replica clusters switched with a promotion token)
 
@@ -80,7 +80,7 @@ add a placeholder GUC
 ```yaml
 postgresql:
   parameters:
-    tuskpilot.last_promotion: <first 16 hex chars of sha256(lastPromotionToken)>
+    basis.last_promotion: <first 16 hex chars of sha256(lastPromotionToken)>
 ```
 
 `lastPromotionToken` is only set after the token was verified and the instance
@@ -132,7 +132,7 @@ Any of:
   `current_setting('cnpg.config_sha256')` instead of a per-pass flag, or
 - persist "reload pending" across passes.
 
-Remove the workaround (the `tuskpilot.last_promotion` block in `member.go`,
+Remove the workaround (the `basis.last_promotion` block in `member.go`,
 `TestPromotionReloadMarker`, and the render fixture/assertion) once the
 operator version deployed contains the fix.
 

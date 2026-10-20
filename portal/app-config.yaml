@@ -1,5 +1,5 @@
 app:
-  title: Tuskpilot Managed PostgreSQL
+  title: BASIS
   baseUrl: http://localhost:3000
 
   # CNPG-only portal: load just the catalog (for the PostgresCluster entities),
@@ -15,7 +15,7 @@ app:
       - '@internal/backstage-plugin-cnpg'
 
   extensions:
-    # The Tuskpilot theme (packages/app/src/modules/theme) is the only theme.
+    # The BASIS theme (packages/app/src/modules/theme) is the only theme.
     - theme:app/light: false
     - theme:app/dark: false
 
@@ -202,5 +202,5 @@ permission:
 
 # see https://backstage.io/docs/ai/mcp-actions for more details
 mcpActions:
-  name: 'Tuskpilot Managed PostgreSQL'
+  name: 'BASIS'
   description: 'Tools for managing CloudNativePG PostgreSQL clusters'
