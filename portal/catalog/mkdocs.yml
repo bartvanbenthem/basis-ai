@@ -1,5 +1,7 @@
 site_name: BASIS
-site_description: Build AI Services In Sovereign infrastructure — a platform for generative AI services on Kubernetes
+site_description: >-
+  Build AI Services In Sovereign infrastructure — a platform for generative AI
+  services on Kubernetes
 repo_url: https://github.com/bartvanbenthem/basis
 edit_uri: edit/main/portal/catalog/docs/
 nav:
