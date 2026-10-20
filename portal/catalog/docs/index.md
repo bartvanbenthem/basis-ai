@@ -27,12 +27,15 @@ stack and what is available now.
 
 ## How it fits together
 
-![Teams use the portal or the API on the control plane; function-basis deploys every site; the protected location archives WAL and backups to the bucket, the recovery location replays them; metrics go back to the control plane](diagrams/architecture.png){ width="784" }
+![Teams use the portal or the API on the control plane, which deploys the AI stack to every location: apps and agents send prompts through the AI gateway, which checks the cache and calls the model servers, and pull context from PostgreSQL; PostgreSQL archives WAL and backups to object storage, the recovery location replays them; metrics and traces go back to the control plane](diagrams/architecture.png){ width="784" }
 
 <!-- Source: diagrams/architecture.mmd; ../render-diagrams.sh renders it. -->
 
 - The **control plane** runs the APIs (Crossplane) and the portal, but no workloads.
-- **Locations** are the Kubernetes clusters the services run in.
+- **Locations** are the Kubernetes clusters the services run in. In a location, apps and agents
+  send prompts through the AI gateway, which applies guardrails, answers from the cache where it
+  can and otherwise calls the self-hosted models; context for RAG comes from PostgreSQL.
+- Solid green boxes are available today; dashed boxes are planned (see [Platform scope](scope.md)).
 - A **Project** has a **protected** location, where its services run, and optionally a **recovery**
   location for replica clusters. The replica is fed through the Project's backup bucket, so the two
   locations need no network path to each other.
