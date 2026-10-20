@@ -12,12 +12,12 @@ import (
 	"github.com/crossplane/function-sdk-go/response"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/bartvanbenthem/postgres-paas/api/function/postgrescluster"
+	"github.com/bartvanbenthem/basis-ai/api/function/postgrescluster"
 )
 
 var postgresClusterGVK = schema.GroupVersionKind{Group: "cnpg.cndev.nl", Version: "v1alpha1", Kind: "PostgresCluster"}
 
-// Function composes Tuskpilot's APIs. It dispatches on the kind of the XR.
+// Function composes BASIS's APIs. It dispatches on the kind of the XR.
 type Function struct {
 	fnv1.UnimplementedFunctionRunnerServiceServer
 
@@ -39,7 +39,7 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 	case postgresClusterGVK:
 		f.postgresCluster(req, rsp, oxr)
 	default:
-		response.Fatal(rsp, errors.Errorf("function-tuskpilot doesn't compose %s", gvk))
+		response.Fatal(rsp, errors.Errorf("function-basis doesn't compose %s", gvk))
 	}
 	log.Debug("Composed", "results", len(rsp.GetResults()))
 	return rsp, nil

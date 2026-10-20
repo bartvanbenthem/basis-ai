@@ -5,7 +5,7 @@
 | | Control plane | Location |
 |---|---|---|
 | Purpose | APIs, portal, each Project's observability | Runs the databases |
-| Runs | Crossplane 2.4 + function-tuskpilot + provider-kubernetes, the portal (Backstage), per Project a Prometheus and Grafana, the COSI controller and driver | CloudNativePG 1.30 + Barman Cloud plugin, image catalogs, per Project a Prometheus |
+| Runs | Crossplane 2.4 + function-basis + provider-kubernetes, the portal (Backstage), per Project a Prometheus and Grafana, the COSI controller and driver | CloudNativePG 1.30 + Barman Cloud plugin, image catalogs, per Project a Prometheus |
 | Needs | Prometheus Operator, grafana-operator, an ingress controller | cert-manager, Prometheus Operator (kube-prometheus-stack without Prometheus) |
 | Databases | none (the admission policy refuses them) | the CNPG Clusters |
 
@@ -18,7 +18,7 @@ run) and optionally a **recovery** location (replica clusters).
  PostgresCluster (XR, in the Project's namespace on the control plane)
    │  Crossplane runs the Composition's pipeline
    ▼
- function-tuskpilot (Go)          reads: the XR, its Project, the size and extension catalogs,
+ function-basis (Go)          reads: the XR, its Project, the size and extension catalogs,
    │                                     the observed state of what it composed before
    │  desired state
    ▼
@@ -62,5 +62,13 @@ run) and optionally a **recovery** location (replica clusters).
 | Schema, defaults, immutable fields | The XRDs (`api/apis/*/definition.yaml`), enforced by the API server |
 | Sizes, extensions, Project defaults | EnvironmentConfigs on the control plane: see [Catalogs](catalogs.md) |
 | Cross-object rules (size in catalog, sites set, deletion protection) | ValidatingAdmissionPolicies (`api/apis/*/policies.yaml`) |
-| What gets composed, switchover/failover | function-tuskpilot (`api/function/postgrescluster`) |
+| What gets composed, switchover/failover | function-basis (`api/function/postgrescluster`) |
 | Who may do what in the portal | Backstage permissions (`cnpg.*`) |
+
+## Growing the stack
+
+The planned layers (model API, gateway, caches, guardrails, orchestration; see
+[Platform scope](../scope.md)) follow the same pattern: a namespaced API object per service in the
+Project's namespace on the control plane, composed by Crossplane into the Project's locations, with
+its metrics in the Project's Prometheus and Grafana. The control plane stays free of workloads; GPUs
+and model servers run in the locations.

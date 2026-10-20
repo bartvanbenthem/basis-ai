@@ -99,7 +99,7 @@ func (c *composition) member(m *member, members []*member, distributed bool) (ma
 	// instance rewrite and reload its config, unblocking the rollout.
 	if t := m.status.LastPromotionToken; distributed && t != "" {
 		sum := sha256.Sum256([]byte(t))
-		params["tuskpilot.last_promotion"] = hex.EncodeToString(sum[:])[:16]
+		params["basis.last_promotion"] = hex.EncodeToString(sum[:])[:16]
 	}
 
 	cs := ClusterSpec{

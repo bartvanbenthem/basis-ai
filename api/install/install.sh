@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs Crossplane v2 core, function-go-templating, function-tuskpilot (the
+# Installs Crossplane v2 core, function-go-templating, function-basis (the
 # PostgresCluster composition, ../function), provider-kubernetes
 # (which places everything in the locations), the RBAC Crossplane needs, and
 # the Location, PostgresCluster and Project APIs (XRDs + Compositions +
@@ -13,8 +13,8 @@
 # (../../deps), or switch them off per Project. Every location needs
 # ../../operator/install.sh and the Prometheus Operator.
 #
-#   FUNCTION_MANIFEST=<file>        install function-tuskpilot from this
-#                                   manifest instead of function-tuskpilot.yaml
+#   FUNCTION_MANIFEST=<file>        install function-basis from this
+#                                   manifest instead of function-basis.yaml
 #   CROSSPLANE_HELM_ARGS="--set ..." extra arguments for Crossplane's chart
 set -euo pipefail
 
@@ -23,7 +23,7 @@ API_DIR="${SCRIPT_DIR}/../apis"
 CROSSPLANE_NAMESPACE="${CROSSPLANE_NAMESPACE:-crossplane-system}"
 CROSSPLANE_VERSION="${CROSSPLANE_VERSION:-2.4.2}"
 SKIP_CROSSPLANE="${SKIP_CROSSPLANE:-false}"
-FUNCTION_MANIFEST="${FUNCTION_MANIFEST:-${SCRIPT_DIR}/function-tuskpilot.yaml}"
+FUNCTION_MANIFEST="${FUNCTION_MANIFEST:-${SCRIPT_DIR}/function-basis.yaml}"
 read -r -a CROSSPLANE_HELM_ARGS <<<"${CROSSPLANE_HELM_ARGS:-}"
 
 if [[ "${SKIP_CROSSPLANE}" != "true" ]]; then
@@ -44,9 +44,9 @@ echo "==> function-go-templating"
 kubectl apply -f "${SCRIPT_DIR}/functions.yaml"
 kubectl wait function.pkg.crossplane.io/function-go-templating --for=condition=Healthy --timeout=300s
 
-echo "==> function-tuskpilot"
+echo "==> function-basis"
 kubectl apply -f "${FUNCTION_MANIFEST}"
-kubectl wait function.pkg.crossplane.io/function-tuskpilot --for=condition=Healthy --timeout=300s
+kubectl wait function.pkg.crossplane.io/function-basis --for=condition=Healthy --timeout=300s
 
 echo "==> provider-kubernetes (locations)"
 kubectl apply -f "${SCRIPT_DIR}/provider-kubernetes.yaml"

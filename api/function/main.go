@@ -1,5 +1,5 @@
-// Command function is function-tuskpilot, the Crossplane composition
-// function behind Tuskpilot's APIs (see postgrescluster/ for PostgresCluster).
+// Command function is function-basis, the Crossplane composition
+// function behind BASIS's APIs (see postgrescluster/ for PostgresCluster).
 //
 //	function --insecure --debug   # local, for `crossplane render` (see tests/render/run.sh)
 //

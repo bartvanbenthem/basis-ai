@@ -2,7 +2,7 @@
 
 Status: design notes, not implemented
 Relates to: the *Single sign-on* and *Personal database access* items in the
-[README TODO](https://github.com/bartvanbenthem/tuskpilot/blob/main/README.md#todo)
+[README TODO](https://github.com/bartvanbenthem/basis/blob/main/README.md#todo)
 
 There are two separate problems here, and they differ a lot in difficulty:
 
@@ -16,7 +16,7 @@ There are two separate problems here, and they differ a lot in difficulty:
 ## 1. SSO for the platform
 
 Today the portal uses the `guest` provider (`auth.providers.guest` in
-[`app-config.production.yaml`](https://github.com/bartvanbenthem/tuskpilot/blob/main/portal/app-config.production.yaml)).
+[`app-config.production.yaml`](https://github.com/bartvanbenthem/basis/blob/main/portal/app-config.production.yaml)).
 
 | Component | What to do |
 |---|---|
@@ -30,7 +30,7 @@ The risk is low and nothing changes in the data path.
 
 The `PostgresCluster` API already exposes the two hooks every option below needs:
 `pgHba` (extra `pg_hba.conf` lines) and `roles[]` (CNPG managed roles), see the
-[definition](https://github.com/bartvanbenthem/tuskpilot/blob/main/api/apis/postgrescluster/definition.yaml).
+[definition](https://github.com/bartvanbenthem/basis/blob/main/api/apis/postgrescluster/definition.yaml).
 
 ### Options
 

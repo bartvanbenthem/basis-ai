@@ -16,7 +16,7 @@
     "titleColor": "#9197a6",
     "edgeLabelBackground": "#0e0f13"
   },
-  "flowchart": { "curve": "basis", "padding": 22, "nodeSpacing": 30, "rankSpacing": 60, "diagramPadding": 28, "htmlLabels": true, "wrappingWidth": 260 }
+  "flowchart": { "curve": "basis", "padding": 22, "nodeSpacing": 30, "rankSpacing": 50, "diagramPadding": 28, "htmlLabels": true, "wrappingWidth": 260 }
 }}%%
 flowchart TB
   team(["<b>Teams</b><br/><span style='color:#9197a6'>portal · kubectl · GitOps&nbsp;&nbsp;</span>"])
@@ -24,39 +24,57 @@ flowchart TB
   subgraph cp["CONTROL PLANE"]
     direction LR
     portal["<b>Portal</b><br/><span style='color:#9197a6'>Backstage&nbsp;&nbsp;</span>"]
-    xr["<b>Crossplane</b><br/><span style='color:#9197a6'>PostgresCluster · Project · Location&nbsp;&nbsp;</span>"]
-    fn["<b>function-tuskpilot</b><br/><span style='color:#9197a6'>composes every site&nbsp;&nbsp;</span>"]
-    obs["<b>Observability</b><br/><span style='color:#9197a6'>Prometheus · Grafana per Project&nbsp;&nbsp;</span>"]
+    xr["<b>Crossplane</b><br/><span style='color:#9197a6'>Project · Location · AI services&nbsp;&nbsp;</span>"]
+    fn["<b>function-basis</b><br/><span style='color:#9197a6'>composes every site&nbsp;&nbsp;</span>"]
+    obs["<b>Observability</b><br/><span style='color:#9197a6'>Prometheus · Grafana · OpenTelemetry&nbsp;&nbsp;</span>"]
     portal --> xr --> fn
     fn ~~~ obs
   end
 
-  subgraph loc["LOCATIONS"]
-    direction LR
-    pg1["<b>PostgreSQL</b><br/><span style='color:#9197a6'>protected · primary + standbys&nbsp;&nbsp;</span>"]
-    bucket[("<b>Backup bucket</b><br/><span style='color:#9197a6'>per Project · COSI&nbsp;&nbsp;</span>")]
-    pg2["<b>PostgreSQL</b><br/><span style='color:#9197a6'>recovery · replica cluster&nbsp;&nbsp;</span>"]
-    pg1 == "WAL + backups" ==> bucket
-    bucket == "replays WAL" ==> pg2
+  subgraph prot["PROTECTED LOCATION"]
+    direction TB
+    app["<b>Orchestration</b><br/><span style='color:#9197a6'>apps · agents · LangGraph&nbsp;&nbsp;</span>"]
+    gw["<b>AI gateway</b><br/><span style='color:#9197a6'>Envoy AI Gateway / agentgateway<br/>guardrails · auth · token budgets&nbsp;&nbsp;</span>"]
+    cache["<b>Exact / semantic cache</b><br/><span style='color:#9197a6'>Valkey&nbsp;&nbsp;</span>"]
+    models["<b>Model API</b><br/><span style='color:#9197a6'>vLLM on KServe · llm-d<br/>prefix-cache-aware routing&nbsp;&nbsp;</span>"]
+    rag["<b>Context / RAG</b><br/><span style='color:#9197a6'>PostgreSQL · pgvector · CNPG&nbsp;&nbsp;</span>"]
+    bucket[("<b>Object storage</b><br/><span style='color:#9197a6'>per Project · COSI&nbsp;&nbsp;</span>")]
+    app -- "prompts" --> gw
+    gw <-- "hit / store" --> cache
+    gw -- "inference" --> models
+    app -- "context" --> rag
+    rag == "WAL + backups" ==> bucket
+    bucket -. "model weights" .-> models
+  end
+
+  subgraph rec["RECOVERY LOCATION"]
+    pg2["<b>Context / RAG</b><br/><span style='color:#9197a6'>replica cluster&nbsp;&nbsp;</span>"]
   end
 
   team --> cp
-  cp -- "deploys every site" --> loc
-  cp <-.-|"▲ metrics"| loc
+  cp -- "deploys every site" --> prot
+  cp -- "deploys" --> rec
+  bucket == "replays WAL" ==> pg2
+  cp <-.-|"▲ metrics · traces"| prot
 
   classDef node fill:#1d2029,stroke:#2d3240,stroke-width:1px,color:#e9ebf0,rx:10,ry:10
-  classDef db fill:#0f2a12,stroke:#00c300,stroke-width:1.5px,color:#e9ebf0,rx:10,ry:10
+  classDef live fill:#0f2a12,stroke:#00c300,stroke-width:1.5px,color:#e9ebf0,rx:10,ry:10
   classDef store fill:#1d2029,stroke:#00c300,stroke-width:1px,color:#e9ebf0
+  classDef planned fill:#16181f,stroke:#5b6170,stroke-width:1.2px,color:#e9ebf0,stroke-dasharray:5 4,rx:10,ry:10
   classDef actor fill:#0e0f13,stroke:#5b6170,stroke-width:1px,color:#e9ebf0,stroke-dasharray:3 3
   class portal,xr,fn,obs node
-  class pg1,pg2 db
+  class rag,pg2 live
   class bucket store
+  class app,gw,cache,models planned
   class team actor
 
   style cp fill:#16181f,stroke:#272a35,stroke-width:1px,color:#9197a6,rx:14,ry:14
-  style loc fill:#16181f,stroke:#272a35,stroke-width:1px,color:#9197a6,rx:14,ry:14
+  style prot fill:#16181f,stroke:#272a35,stroke-width:1px,color:#9197a6,rx:14,ry:14
+  style rec fill:#16181f,stroke:#272a35,stroke-width:1px,color:#9197a6,rx:14,ry:14
 
   linkStyle 0,1 stroke:#5b6170,stroke-width:1.2px
-  linkStyle 3,4 stroke:#00c300,stroke-width:2.2px
-  linkStyle 5,6 stroke:#9197a6,stroke-width:1.2px
-  linkStyle 7 stroke:#5b6170,stroke-width:1.2px,stroke-dasharray:4 4
+  linkStyle 3,4,5,6 stroke:#9197a6,stroke-width:1.2px
+  linkStyle 7,12 stroke:#00c300,stroke-width:2.2px
+  linkStyle 8 stroke:#5b6170,stroke-width:1.2px,stroke-dasharray:4 4
+  linkStyle 9,10,11 stroke:#9197a6,stroke-width:1.2px
+  linkStyle 13 stroke:#5b6170,stroke-width:1.2px,stroke-dasharray:4 4

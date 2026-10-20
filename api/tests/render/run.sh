@@ -2,7 +2,7 @@
 # Offline tests for the compositions -- no Kubernetes cluster.
 #
 #  1. The function's embedded assets are up to date with src/, and
-#     function-tuskpilot (../../function) builds into a local image.
+#     function-basis (../../function) builds into a local image.
 #  2. `crossplane render` (that image for PostgresCluster, the real
 #     function-go-templating image for the others, XRD defaults
 #     applied via --xrd) for every <api>/xr/<case>.yaml, first with nothing
@@ -28,7 +28,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 API_ROOT="$(cd "${HERE}/../.." && pwd)"
 OPERATOR_CHARTS="$(cd "${API_ROOT}/../operator/charts" && pwd)"
 # Built from ../../function by this script; never pulled.
-FUNCTION_IMAGE="${FUNCTION_IMAGE:-localhost/function-tuskpilot:render}"
+FUNCTION_IMAGE="${FUNCTION_IMAGE:-localhost/function-basis:render}"
 APIS=(postgrescluster project location)
 
 if [[ -z "${DOCKER_HOST:-}" && -S "/run/user/${UID}/podman/podman.sock" ]]; then
@@ -45,7 +45,7 @@ RT="${OUT}/rendertest"
 echo "=== generate --check"
 (cd "${API_ROOT}" && go run ./hack/generate --check)
 
-echo "=== build function-tuskpilot (${FUNCTION_IMAGE})"
+echo "=== build function-basis (${FUNCTION_IMAGE})"
 docker build -q -f "${API_ROOT}/function/Dockerfile" -t "${FUNCTION_IMAGE}" "${API_ROOT}" >/dev/null
 FUNCTIONS="${OUT}/functions.yaml"
 cat "${API_ROOT}/install/functions.yaml" - >"${FUNCTIONS}" <<EOF
@@ -53,7 +53,7 @@ cat "${API_ROOT}/install/functions.yaml" - >"${FUNCTIONS}" <<EOF
 apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
-  name: function-tuskpilot
+  name: function-basis
   annotations:
     render.crossplane.io/runtime-docker-pull-policy: Never
 spec:

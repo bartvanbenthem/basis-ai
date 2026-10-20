@@ -1,11 +1,14 @@
-site_name: Tuskpilot
-site_description: AI optimized PostgreSQL as a service on Kubernetes
-repo_url: https://github.com/bartvanbenthem/tuskpilot
+site_name: BASIS
+site_description: >-
+  Build AI Services In Sovereign infrastructure — a platform for generative AI
+  services on Kubernetes
+repo_url: https://github.com/bartvanbenthem/basis
 edit_uri: edit/main/portal/catalog/docs/
 nav:
   - Overview: index.md
+  - Platform scope: scope.md
   - Getting started: getting-started.md
-  - PostgreSQL clusters:
+  - Context / RAG (PostgreSQL):
       - Configure a cluster: clusters/configure.md
       - Vector & RAG: clusters/vector-rag.md
       - Geo replication and disaster recovery: clusters/disaster-recovery.md

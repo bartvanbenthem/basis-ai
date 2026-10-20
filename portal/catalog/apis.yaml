@@ -1004,7 +1004,7 @@ spec:
         name: PostgresCluster
   lifecycle: experimental
   owner: guests
-  system: tuskpilot
+  system: basis
   type: openapi
 ---
 apiVersion: backstage.io/v1alpha1
@@ -1640,7 +1640,7 @@ spec:
         name: Project
   lifecycle: experimental
   owner: guests
-  system: tuskpilot
+  system: basis
   type: openapi
 ---
 apiVersion: backstage.io/v1alpha1
@@ -2092,5 +2092,5 @@ spec:
         name: Location
   lifecycle: experimental
   owner: guests
-  system: tuskpilot
+  system: basis
   type: openapi

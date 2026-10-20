@@ -15,7 +15,7 @@ portal shows the same, plus events and pod logs from the location.
 | `Waiting for CNPG Cluster ...` for long | Pods don't start in the location | The portal's events and logs, or `kubectl get pods` in the location |
 | `extensions ... are mounted from images, which needs postgresVersion 18` | An image extension on an older PostgreSQL | Use PostgreSQL 18, or drop the extension |
 | A pod fails to mount an extension image | The location doesn't support image volumes | The location's **Image volumes** health check |
-| `Synced=False`, e.g. `... has composed resources but no site` | The function refuses to render a desired state that would tear down a running database (an input went missing) | Restore the input it names (the Project, `status.sites`, the size catalog); `kubectl get function function-tuskpilot` |
+| `Synced=False`, e.g. `... has composed resources but no site` | The function refuses to render a desired state that would tear down a running database (an input went missing) | Restore the input it names (the Project, `status.sites`, the size catalog); `kubectl get function function-basis` |
 
 ## Geo replication
 

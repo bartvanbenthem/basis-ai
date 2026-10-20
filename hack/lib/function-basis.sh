@@ -1,8 +1,8 @@
-# Sourced by the e2e scripts: installs function-tuskpilot built from this
+# Sourced by the e2e scripts: installs function-basis built from this
 # checkout (api/function) instead of the published package, without a
 # registry (Crossplane can't pull packages from a plain-HTTP one).
 #
-#   local_function_tuskpilot <kind cluster> <kubeconfig> <work dir> <runtime>
+#   local_function_basis <kind cluster> <kubeconfig> <work dir> <runtime>
 #
 # 1. Builds the image and loads it into the kind cluster.
 # 2. Puts the package metadata into a PersistentVolumeClaim that Crossplane
@@ -13,21 +13,21 @@
 #    that runs the loaded image) and CROSSPLANE_HELM_ARGS for
 #    api/install/install.sh.
 
-local_function_tuskpilot() {
+local_function_basis() {
   local cluster="$1" kubeconfig="$2" work="$3" runtime="$4"
-  local root image=localhost/function-tuskpilot:e2e
+  local root image=localhost/function-basis:e2e
   root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
   local k=(kubectl --kubeconfig "${kubeconfig}")
   local ns="${CROSSPLANE_NAMESPACE:-crossplane-system}"
 
-  echo "==> function-tuskpilot from this checkout (${image})"
+  echo "==> function-basis from this checkout (${image})"
   "${runtime}" build -q -f "${root}/api/function/Dockerfile" -t "${image}" "${root}/api" >/dev/null
-  "${runtime}" save -o "${work}/function-tuskpilot.tar" "${image}" >/dev/null
-  kind load image-archive "${work}/function-tuskpilot.tar" --name "${cluster}" >/dev/null
+  "${runtime}" save -o "${work}/function-basis.tar" "${image}" >/dev/null
+  kind load image-archive "${work}/function-basis.tar" --name "${cluster}" >/dev/null
 
   local cache="${work}/package-cache" ref
   rm -rf "${cache}" && mkdir -p "${cache}"
-  ref="$(cd "${root}/api" && go run ./hack/xpkgcache function/package ghcr.io/bartvanbenthem/function-tuskpilot "${cache}")"
+  ref="$(cd "${root}/api" && go run ./hack/xpkgcache function/package ghcr.io/bartvanbenthem/function-basis "${cache}")"
 
   "${k[@]}" create namespace "${ns}" --dry-run=client -o yaml | "${k[@]}" apply -f - >/dev/null
   "${k[@]}" apply -f - >/dev/null <<EOF
@@ -67,12 +67,12 @@ EOF
   done
   "${k[@]}" -n "${ns}" delete pod package-cache-seed --wait=false >/dev/null
 
-  FUNCTION_MANIFEST="${work}/function-tuskpilot.yaml"
+  FUNCTION_MANIFEST="${work}/function-basis.yaml"
   cat >"${FUNCTION_MANIFEST}" <<EOF
 apiVersion: pkg.crossplane.io/v1beta1
 kind: DeploymentRuntimeConfig
 metadata:
-  name: function-tuskpilot-e2e
+  name: function-basis-e2e
 spec:
   deploymentTemplate:
     spec:
@@ -87,12 +87,12 @@ spec:
 apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
-  name: function-tuskpilot
+  name: function-basis
 spec:
   package: ${ref}
   packagePullPolicy: Never
   runtimeConfigRef:
-    name: function-tuskpilot-e2e
+    name: function-basis-e2e
 EOF
   CROSSPLANE_HELM_ARGS="--set packageCache.pvc=crossplane-package-cache"
   export FUNCTION_MANIFEST CROSSPLANE_HELM_ARGS

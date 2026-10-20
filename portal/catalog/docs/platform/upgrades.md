@@ -2,16 +2,16 @@
 
 | What | Effect on running databases | How |
 |---|---|---|
-| function-tuskpilot | Only where the new version composes differently | Publish, then roll out the package |
+| function-basis | Only where the new version composes differently | Publish, then roll out the package |
 | An XRD or Composition | New fields, rules or defaults | `api/install/install.sh` |
 | CloudNativePG operator | Operator restarts; instances get the new instance manager (rolling) | `operator/update-charts.sh`, then `operator/install.sh` per location |
 | Image catalog | PostgreSQL **minor** version on every cluster (rolling, switchover of the primary) | `operator/update-charts.sh`, then `operator/install.sh` per location |
 | PostgreSQL major | A major upgrade of that cluster | `postgresVersion` on the cluster, forward only |
 | Portal | None | New image, `kubectl apply -k portal/deploy/` |
 
-## function-tuskpilot
+## function-basis
 
-The Composition only names the function (`functionRef: function-tuskpilot`), so a new version
+The Composition only names the function (`functionRef: function-basis`), so a new version
 changes how every PostgresCluster is composed without touching the Composition.
 
 ```sh
@@ -20,12 +20,12 @@ make test                                     # unit + render tests: fail on any
 make function-push FUNCTION_VERSION=v0.1.2    # image → package → ghcr.io
 ```
 
-Set the tag in `api/install/function-tuskpilot.yaml` and the Makefile's `FUNCTION_VERSION`, commit,
+Set the tag in `api/install/function-basis.yaml` and the Makefile's `FUNCTION_VERSION`, commit,
 then on every control plane:
 
 ```sh
-kubectl apply -f api/install/function-tuskpilot.yaml
-kubectl get function function-tuskpilot -w            # INSTALLED and HEALTHY True
+kubectl apply -f api/install/function-basis.yaml
+kubectl get function function-basis -w            # INSTALLED and HEALTHY True
 kubectl get postgrescluster -A                        # SYNCED and READY stay True
 ```
 

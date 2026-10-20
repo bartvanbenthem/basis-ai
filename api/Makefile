@@ -1,9 +1,9 @@
 .PHONY: generate check unit test function-image function-xpkg function-push install uninstall
 
-# function-tuskpilot, the composition function behind PostgresCluster.
-FUNCTION_IMAGE ?= ghcr.io/bartvanbenthem/function-tuskpilot
+# function-basis, the composition function behind PostgresCluster.
+FUNCTION_IMAGE ?= ghcr.io/bartvanbenthem/function-basis
 FUNCTION_VERSION ?= v0.1.1
-XPKG := _output/function-tuskpilot-$(FUNCTION_VERSION).xpkg
+XPKG := _output/function-basis-$(FUNCTION_VERSION).xpkg
 
 # Rebuild the function's embedded assets from src/ (dashboard, alert rules)
 generate:
@@ -30,12 +30,12 @@ function-image:
 # (--embed-runtime-image needs a Docker API socket).
 function-xpkg: function-image
 	mkdir -p _output
-	rm -f _output/function-tuskpilot-$(FUNCTION_VERSION).tar  # podman won't overwrite an archive
-	docker save -o _output/function-tuskpilot-$(FUNCTION_VERSION).tar $(FUNCTION_IMAGE):$(FUNCTION_VERSION)
+	rm -f _output/function-basis-$(FUNCTION_VERSION).tar  # podman won't overwrite an archive
+	docker save -o _output/function-basis-$(FUNCTION_VERSION).tar $(FUNCTION_IMAGE):$(FUNCTION_VERSION)
 	crossplane xpkg build --package-root=function/package \
-	  --embed-runtime-image-tarball=_output/function-tuskpilot-$(FUNCTION_VERSION).tar --package-file=$(XPKG)
+	  --embed-runtime-image-tarball=_output/function-basis-$(FUNCTION_VERSION).tar --package-file=$(XPKG)
 
-# Push the package; install/function-tuskpilot.yaml installs this tag
+# Push the package; install/function-basis.yaml installs this tag
 function-push: function-xpkg
 	crossplane xpkg push --package-files=$(XPKG) $(FUNCTION_IMAGE):$(FUNCTION_VERSION)
 

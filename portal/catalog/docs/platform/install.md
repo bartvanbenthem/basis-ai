@@ -31,7 +31,7 @@ api/install/install.sh      # Crossplane 2.4, functions, provider-kubernetes, RB
                             # Compositions, policies, and the size and extension catalogs (once)
 ```
 
-`install.sh` installs the published function-tuskpilot package and waits until it's Healthy. The
+`install.sh` installs the published function-basis package and waits until it's Healthy. The
 package must be public, or Crossplane needs a pull secret (see [Upgrades](upgrades.md)).
 
 ## 4. Locations

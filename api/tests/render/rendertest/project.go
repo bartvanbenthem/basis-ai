@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bartvanbenthem/postgres-paas/api/internal/doc"
+	"github.com/bartvanbenthem/basis-ai/api/internal/doc"
 )
 
 var (

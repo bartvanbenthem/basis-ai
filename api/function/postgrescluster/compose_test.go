@@ -154,10 +154,10 @@ status: {atProvider: {manifest: {apiVersion: postgresql.cnpg.io/v1, kind: Cluste
 		t.Fatal(err)
 	}
 	// sha256("abc")[:16]
-	if got := dig(clusterSpec(t, out, "recovery-cluster"), "postgresql", "parameters", "tuskpilot.last_promotion"); got != "ba7816bf8f01cfea" {
+	if got := dig(clusterSpec(t, out, "recovery-cluster"), "postgresql", "parameters", "basis.last_promotion"); got != "ba7816bf8f01cfea" {
 		t.Errorf("recovery site marker %v", got)
 	}
-	if got := dig(clusterSpec(t, out, "cluster"), "postgresql", "parameters", "tuskpilot.last_promotion"); got != nil {
+	if got := dig(clusterSpec(t, out, "cluster"), "postgresql", "parameters", "basis.last_promotion"); got != nil {
 		t.Errorf("protected site never promoted, marker %v", got)
 	}
 }

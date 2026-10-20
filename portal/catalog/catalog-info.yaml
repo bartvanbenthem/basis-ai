@@ -5,13 +5,13 @@
 apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
-  name: tuskpilot
-  title: Tuskpilot
-  description: AI optimized PostgreSQL as a service on Kubernetes (CloudNativePG, Crossplane, Backstage)
+  name: basis
+  title: BASIS
+  description: Platform for generative AI services on Kubernetes in sovereign infrastructure (Crossplane, Backstage)
   annotations:
     backstage.io/techdocs-ref: dir:.
   links:
-    - url: https://github.com/bartvanbenthem/tuskpilot
+    - url: https://github.com/bartvanbenthem/basis
       title: Source
       icon: github
 spec:

@@ -69,7 +69,7 @@ func run(src, out, version string) error {
 	header := fmt.Sprintf(`# CloudNativePG alert rules, rendered from the upstream cnpg/cluster Helm
 # chart %s (Apache-2.0, https://github.com/cloudnative-pg/charts) by
 # hack/refresh-alerts.sh -- do not edit by hand; change a rule by adding its
-# replacement to local-rules.yaml. function-tuskpilot substitutes, per cluster:
+# replacement to local-rules.yaml. function-basis substitutes, per cluster:
 #   zzclusterzz   -> the PostgresCluster name
 #   zznamespacezz -> the PostgresCluster namespace
 `, version)

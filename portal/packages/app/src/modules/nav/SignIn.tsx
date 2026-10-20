@@ -1,8 +1,8 @@
 import { SignInPageBlueprint } from '@backstage/plugin-app-react';
-import { TuskpilotLogo } from './TuskpilotLogo';
+import { BasisLogo } from './BasisLogo';
 
 /** The default guest sign-in, centred and branded. */
-export const TuskpilotSignInPage = SignInPageBlueprint.make({
+export const BasisSignInPage = SignInPageBlueprint.make({
   params: {
     loader: async () => {
       const { SignInPage } = await import('@backstage/core-components');
@@ -11,7 +11,7 @@ export const TuskpilotSignInPage = SignInPageBlueprint.make({
           {...props}
           providers={['guest']}
           align="center"
-          titleComponent={<TuskpilotLogo height={34} />}
+          titleComponent={<BasisLogo height={34} />}
         />
       );
     },

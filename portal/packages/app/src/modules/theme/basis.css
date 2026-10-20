@@ -1,9 +1,9 @@
 /*
- * Tuskpilot look for the portal: dark, quiet surfaces with the brand green as the only
+ * BASIS look for the portal: dark, quiet surfaces with the brand green as the only
  * accent. Overrides Backstage UI (BUI) tokens under the theme name set by
- * tuskpilotTheme.tsx; unlayered rules win over BUI's @layer tokens.
+ * basisTheme.tsx; unlayered rules win over BUI's @layer tokens.
  */
-body[data-theme-name='tuskpilot'] {
+body[data-theme-name='basis'] {
   --brand-green: #00c300;
   --brand-green-hover: #2fd62f;
 
