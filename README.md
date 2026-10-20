@@ -1,4 +1,5 @@
-# BASIS - Build AI Services In Sovereign infrastructure
+# BASIS
+<strong>Build AI Services In Sovereign infrastructure</strong>
 
 <p align="center">
   <img src="portal/logos/basis-icon.svg" alt="BASIS logo" width="160">
