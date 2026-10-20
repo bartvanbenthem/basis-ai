@@ -290,7 +290,7 @@ export function bucketsConfig(config: RootConfigService): BucketsConfig | undefi
     endpoint,
     region: c.getOptionalString('region') ?? 'us-east-1',
     secret: {
-      namespace: c.getOptionalString('credentialsSecret.namespace') ?? 'kpn-system',
+      namespace: c.getOptionalString('credentialsSecret.namespace') ?? 'cloudian-cosi',
       name: c.getOptionalString('credentialsSecret.name') ?? 'cloudian-cosi-secret',
     },
   };

@@ -57,7 +57,8 @@ yarn install
 # MkDocs for the platform docs (TechDocs), once; .techdocs-venv is git-ignored
 python3 -m venv .techdocs-venv && .techdocs-venv/bin/pip install mkdocs-techdocs-core==1.6.1
 
-PATH=$PWD/.techdocs-venv/bin:$PATH CNPG_KUBE_CONTEXT=$(kubectl config current-context) yarn start
+PATH=$PWD/.techdocs-venv/bin:$PATH CNPG_KUBE_CONTEXT=$(kubectl config current-context) \
+  CNPG_BUCKETS_ENDPOINT=https://s3.example.com yarn start
 # http://localhost:3000 → Enter as guest
 ```
 
@@ -66,7 +67,9 @@ If `python3 -m venv` complains about a missing `ensurepip` (Debian/Ubuntu withou
 `python3 -m venv --without-pip .techdocs-venv` and install pip into it with
 [`get-pip.py`](https://bootstrap.pypa.io/get-pip.py).
 
-Without `CNPG_KUBE_CONTEXT` the backend uses your **current** kubeconfig context. Other settings are
+Without `CNPG_KUBE_CONTEXT` the backend uses your **current** kubeconfig context. The **Buckets** page
+needs `CNPG_BUCKETS_ENDPOINT`, the COSI driver's S3 endpoint (`COSI_S3_ENDPOINT` in
+[`deps/cosi/install.sh`](../deps/cosi/install.sh)); without it the page says no object store is configured. Other settings are
 under `cnpg:` in `app-config.yaml` (schema: `plugins/cnpg-backend/config.d.ts`).
 
 ### Platform docs and API reference
@@ -186,7 +189,7 @@ yarn lint:all
 ```sh
 yarn install --immutable && yarn tsc && yarn build:backend
 docker build -t <registry>/cnpg-portal:<tag> -f packages/backend/Dockerfile .
-# set the image in deploy/backstage.yaml, then
+# set the image and CNPG_BUCKETS_ENDPOINT in deploy/backstage.yaml, then
 kubectl apply -k deploy/
 ```
 
@@ -195,7 +198,8 @@ Deploy it on the control plane. `deploy/rbac.yaml` gives the ServiceAccount full
 without PostgresClusters, and turns its deletion protection off for that), get/list/create/update/delete
 on `locations`, get on the `postgres-sizes` EnvironmentConfig (the size catalog), read
 access to namespaces, and access to Secrets **only** in the `cnpg-locations` namespace (the
-locations' kubeconfigs). Pods, pod logs, events and CNPG Clusters are read in the locations with
+locations' kubeconfigs), plus get on the COSI driver's `cloudian-cosi-secret` in `cloudian-cosi`
+for the Buckets page. Pods, pod logs, events and CNPG Clusters are read in the locations with
 their kubeconfigs. Backstage's own database is a plain CloudNativePG `Cluster`
 (`deploy/database.yaml`): no PostgresCluster can run on the control plane, so install
 [`operator`](../operator) there for it. Plugins share it per schema

@@ -15,10 +15,10 @@ De scheiding is vergelijkbaar met CSI: de API en de orkestratie zijn vendor-onaf
 | Driver | Cloudian | Maakt buckets en credentials aan in HyperStore |
 
 ## Installatie
-CRD's en controller (`cosi-system`) en de driver (`kpn-system`) staan allemaal in `upstream/`, de scripts hebben geen netwerk nodig behalve het cluster:
+CRD's en controller (`cosi-system`) en de driver (`cloudian-cosi`) staan allemaal in `upstream/`, de scripts hebben geen netwerk nodig behalve het cluster:
 
 ```bash
-./install.sh     # keys uit env/00-env.sh; ook om keys of endpoints te wijzigen
+./install.sh     # keys en endpoints uit env/00-env.sh; ook om ze te wijzigen
 ./uninstall.sh   # alleen de driver; buckets en keys blijven
 ```
 

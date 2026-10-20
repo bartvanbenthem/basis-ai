@@ -14,7 +14,7 @@ const OTHER = 'bck01-usr001-grp01';
 const CONFIG: BucketsConfig = {
   endpoint: 'https://s3.example.com',
   region: 'us-east-01',
-  secret: { namespace: 'kpn-system', name: 'cloudian-cosi-secret' },
+  secret: { namespace: 'cloudian-cosi', name: 'cloudian-cosi-secret' },
 };
 
 const demo: Project = {

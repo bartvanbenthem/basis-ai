@@ -16,10 +16,10 @@
 # Required (from the environment or ../../env/00-env.sh, kept out of git):
 #   COSI_ACCESS_KEY / COSI_SECRET_ACCESS_KEY  HyperStore keys the driver creates
 #                                             buckets and IAM users with
+#   COSI_S3_ENDPOINT    HyperStore S3 endpoint, e.g. https://s3.example.com
+#   COSI_IAM_ENDPOINT   HyperStore IAM endpoint, e.g. https://s3.example.com:16443
 # Optional:
-#   NAMESPACE           default kpn-system
-#   COSI_S3_ENDPOINT    default https://s3-eu.ring1.kos.kpn.com
-#   COSI_IAM_ENDPOINT   default https://s3-eu.ring1.kos.kpn.com:16443
+#   NAMESPACE           default cloudian-cosi
 #   COSI_REGION         default us-east-01
 #
 # To bump the chart:
@@ -29,11 +29,12 @@ cd "$(dirname "$0")"
 # shellcheck disable=SC1091
 [ -f ../../env/00-env.sh ] && source ../../env/00-env.sh
 
-NAMESPACE="${NAMESPACE:-kpn-system}"
+NAMESPACE="${NAMESPACE:-cloudian-cosi}"
 RELEASE=cloudian-cosi-driver
 # Projects' BucketAccesses reference it by name; renaming means re-creating them.
 ACCESS_CLASS=cloudian-iam
 : "${COSI_ACCESS_KEY:?set COSI_ACCESS_KEY}" "${COSI_SECRET_ACCESS_KEY:?set COSI_SECRET_ACCESS_KEY}"
+: "${COSI_S3_ENDPOINT:?set COSI_S3_ENDPOINT}" "${COSI_IAM_ENDPOINT:?set COSI_IAM_ENDPOINT}"
 
 other="$(kubectl get deploy -A -l app.kubernetes.io/name=${RELEASE} \
   -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' | grep -vx "${NAMESPACE}" || true)"
@@ -53,8 +54,8 @@ kubectl create clusterrolebinding "${RELEASE}-${NAMESPACE}" \
 helm upgrade --install "${RELEASE}" upstream/charts/cosi-driver \
   --namespace "${NAMESPACE}" --create-namespace --wait --timeout 5m -f - <<EOF
 s3:
-  s3Endpoint: ${COSI_S3_ENDPOINT:-https://s3-eu.ring1.kos.kpn.com}
-  iamEndpoint: ${COSI_IAM_ENDPOINT:-https://s3-eu.ring1.kos.kpn.com:16443}
+  s3Endpoint: ${COSI_S3_ENDPOINT}
+  iamEndpoint: ${COSI_IAM_ENDPOINT}
   region: ${COSI_REGION:-us-east-01}
   accessKey: "${COSI_ACCESS_KEY}"
   secretAccessKey: "${COSI_SECRET_ACCESS_KEY}"

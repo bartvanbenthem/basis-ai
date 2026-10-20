@@ -33,6 +33,10 @@ spec:
             - { name: POSTGRES_DB, valueFrom: { secretKeyRef: { name: backstage-db-app, key: dbname } } }
             - name: CNPG_GRAFANA_URL
               value: "" # e.g. https://grafana.example.com
+            # The Buckets page: the COSI driver's S3 endpoint (COSI_S3_ENDPOINT
+            # in deps/cosi/install.sh); empty leaves the page unconfigured.
+            - name: CNPG_BUCKETS_ENDPOINT
+              value: "" # e.g. https://s3.example.com
           readinessProbe:
             httpGet: { path: /.backstage/health/v1/readiness, port: http }
           livenessProbe:

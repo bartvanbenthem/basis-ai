@@ -4,7 +4,7 @@
 # Upstream hardcodes the "default" namespace (not templated); patched here to
 # deploy into a dedicated cosi-system namespace instead (added below) so this
 # cluster-wide, single-replica controller - shared by every COSI driver on
-# the cluster, not part of the driver's release in kpn-system -
+# the cluster, not part of the driver's release in cloudian-cosi -
 # doesn't share a lifecycle with any one driver's namespace.
 # See cosi-api.yaml for why this got vendored instead of applied via -k.
 apiVersion: v1

@@ -8,12 +8,12 @@
 # Bucket is left (deleting a CRD deletes all its objects).
 #
 # Optional:
-#   NAMESPACE     default kpn-system
+#   NAMESPACE     default cloudian-cosi
 #   REMOVE_CRDS   default false
 set -euo pipefail
 cd "$(dirname "$0")"
 
-NAMESPACE="${NAMESPACE:-kpn-system}"
+NAMESPACE="${NAMESPACE:-cloudian-cosi}"
 RELEASE=cloudian-cosi-driver
 
 helm uninstall "${RELEASE}" --namespace "${NAMESPACE}" --ignore-not-found --wait

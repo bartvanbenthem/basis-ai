@@ -37,13 +37,13 @@ export interface Config {
      * page. Unset: the page says so and lists nothing.
      */
     buckets?: {
-      /** S3 endpoint, e.g. https://s3-eu.ring1.kos.kpn.com. */
-      endpoint: string;
+      /** S3 endpoint, e.g. https://s3.example.com. Unset: as if buckets were. */
+      endpoint?: string;
       /** Signing region. Defaults to us-east-1. */
       region?: string;
       /**
        * The COSI driver's credentials Secret (keys S3_ACCESS_KEY and
-       * S3_SECRET_KEY). Defaults to kpn-system/cloudian-cosi-secret.
+       * S3_SECRET_KEY). Defaults to cloudian-cosi/cloudian-cosi-secret.
        */
       credentialsSecret?: { namespace?: string; name?: string };
     };

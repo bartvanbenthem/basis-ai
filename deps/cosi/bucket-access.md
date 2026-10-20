@@ -71,7 +71,7 @@ Een applicatie kan dus niet simpelweg `envFrom: secretRef` gebruiken. Mogelijkhe
 | `s3.accessKey` / `secretAccessKey` | De identiteit waarmee de driver buckets en users aanmaakt. Dit is het krachtigste credential in de hele keten |
 | `existingCredentialsSecret` | Verwijst naar een bestaand Secret in plaats van de keys via Helm-values mee te geven. Beter voor productie, want dan staan de keys niet in de Helm-release |
 | `existingS3CertificateSecret` | Een eigen CA mounten voor de driver, voor endpoints met een private CA |
-| `disableTLSCertificateCheck` | Alleen voor self-signed. De KPN-endpoints valideren tegen de system store |
+| `disableTLSCertificateCheck` | Alleen voor self-signed. De huidige HyperStore-endpoints valideren tegen de system store |
 | `admin.*` | Alleen voor KEY-mode, zie hierboven |
 
 ### 3. Buckets (`BucketClass`, één per Project)
@@ -84,8 +84,8 @@ Een applicatie kan dus niet simpelweg `envFrom: secretRef` gebruiken. Mogelijkhe
 | Variabele | Standaard | Opmerking |
 |---|---|---|
 | `COSI_ACCESS_KEY` / `COSI_SECRET_ACCESS_KEY` | verplicht | Zie §2 (`s3.accessKey` / `secretAccessKey`) |
-| `NAMESPACE` | `kpn-system` | Waar de driver draait |
-| `COSI_S3_ENDPOINT` | `https://s3-eu.ring1.kos.kpn.com` | |
-| `COSI_IAM_ENDPOINT` | `https://s3-eu.ring1.kos.kpn.com:16443` | |
+| `NAMESPACE` | `cloudian-cosi` | Waar de driver draait |
+| `COSI_S3_ENDPOINT` | verplicht | HyperStore S3-endpoint, bv. `https://s3.example.com` |
+| `COSI_IAM_ENDPOINT` | verplicht | HyperStore IAM-endpoint, bv. `https://s3.example.com:16443` |
 | `COSI_REGION` | `us-east-01` | |
 | `REMOVE_CRDS` | `false` | Alleen `uninstall.sh`; weigert zolang er nog `Bucket`s zijn |
