@@ -16,51 +16,16 @@ export const BasisLogo = ({ height = 30 }: { height?: number }) => (
       xmlns="http://www.w3.org/2000/svg"
     >
       <circle cx="60" cy="60" r="56" fill="#0F3A4A" />
-      <circle
-        cx="60"
-        cy="60"
-        r="45"
-        fill="none"
-        stroke="#EFE8D6"
-        strokeOpacity=".28"
-        strokeWidth="2"
-      />
-      <rect x="58.5" y="10" width="3" height="10" rx="1.5" fill="#D2232A" />
-      <rect
-        x="100"
-        y="58.5"
-        width="10"
-        height="3"
-        rx="1.5"
+      <path d="M60 73 L89 86 L60 99 L31 86 Z" fill="#EFE8D6" />
+      <path d="M60 57 L89 70 L60 83 L31 70 Z" fill="#EFE8D6" fillOpacity=".7" />
+      <path
+        d="M60 41 L89 54 L60 67 L31 54 Z"
         fill="#EFE8D6"
-        fillOpacity=".55"
-      />
-      <rect
-        x="58.5"
-        y="100"
-        width="3"
-        height="10"
-        rx="1.5"
-        fill="#EFE8D6"
-        fillOpacity=".55"
-      />
-      <rect
-        x="10"
-        y="58.5"
-        width="10"
-        height="3"
-        rx="1.5"
-        fill="#EFE8D6"
-        fillOpacity=".55"
+        fillOpacity=".42"
       />
       <path
-        d="M26 72 C 30 102, 80 106, 91 25 C 76 74, 54 80, 42 60 Z"
-        fill="#EFE8D6"
-      />
-      <path
-        d="M26 72 L42 60 L45.5 66 C 40 70, 34 75, 29.5 79 Z"
-        fill="#0F3A4A"
-        fillOpacity=".35"
+        d="M60 18 C 61.2 27, 63 28.8, 72 30 C 63 31.2, 61.2 33, 60 42 C 58.8 33, 57 31.2, 48 30 C 57 28.8, 58.8 27, 60 18 Z"
+        fill="#D2232A"
       />
     </svg>
     <span
