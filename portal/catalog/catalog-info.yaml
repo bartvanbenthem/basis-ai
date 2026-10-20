@@ -7,7 +7,7 @@ kind: System
 metadata:
   name: basis
   title: BASIS
-  description: AI optimized PostgreSQL as a service on Kubernetes (CloudNativePG, Crossplane, Backstage)
+  description: Platform for generative AI services on Kubernetes in sovereign infrastructure (Crossplane, Backstage)
   annotations:
     backstage.io/techdocs-ref: dir:.
   links:

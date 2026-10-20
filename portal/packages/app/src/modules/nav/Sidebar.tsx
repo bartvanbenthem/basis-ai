@@ -115,7 +115,7 @@ const BasisNav = () => {
     <nav className="tp-nav" aria-label="sidebar nav">
       <Link to={CNPG} className="tp-nav__brand" aria-label="Home">
         <BasisLogo height={26} />
-        <span className="tp-nav__product">AI optimized Postgres</span>
+        <span className="tp-nav__product">Sovereign AI services</span>
       </Link>
       <div className="tp-nav__sections">
         {sections.map(section => (
@@ -136,7 +136,7 @@ const BasisNav = () => {
           </div>
         ))}
       </div>
-      <div className="tp-nav__footer">Powered by CloudNativePG</div>
+      <div className="tp-nav__footer">Powered by cndev.nl</div>
     </nav>
   );
 };
