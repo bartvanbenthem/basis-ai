@@ -331,6 +331,19 @@ export const StackDetails = ({
               ['Sites', summary.recovery ? `protected + recovery (warm standby); active: ${summary.activeSite}` : 'protected only'],
               ['Owner', summary.owner ?? '-'],
               ['Deletion protection', summary.deletionProtection ? 'on' : 'off'],
+              ...(summary.gatewayExternalEndpoint || summary.databaseExternalService
+                ? [[
+                    'External access',
+                    <Flex key="ext" direction="column" gap="1">
+                      {summary.gatewayExternalEndpoint && <Mono>Gateway: {summary.gatewayExternalEndpoint}</Mono>}
+                      {summary.databaseExternalService && (
+                        <Mono>
+                          Database: Service {ns}/{summary.databaseExternalService} (TLS)
+                        </Mono>
+                      )}
+                    </Flex>,
+                  ] as [string, React.ReactNode]]
+                : [['External access', 'internal only']] as Array<[string, React.ReactNode]>),
               ['Created', summary.createdAt ? `${new Date(summary.createdAt).toLocaleString()} (${age(summary.createdAt)} ago)` : '-'],
             ]}
           />

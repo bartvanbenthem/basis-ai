@@ -18,14 +18,16 @@ pgvector), a cache (Valkey) and a model gateway for your models, wired together.
 
 1. Open **AI services → New stack**.
 2. Pick your **Project** and a **name**, and add your **models**: what your app sends as `model`,
-   the provider's endpoint, and the Secret with the provider's API key. Or pick a shared
+   the provider's endpoint, and the provider's API key. The portal stores the key in a Secret in
+   your project; it never appears in the stack's manifest. Or pick a shared
    [model gateway](ai/model-gateways.md) of the project.
 3. **Validate** checks the manifest against the API without creating anything; **Create stack**
    creates it.
 
 ### With kubectl
 
-Put the provider's key in a Secret first, then the stack:
+Without the portal, put the provider's key in a Secret first (the token where it says `sk-ant-...`;
+`apiKey` is the name it's stored under), then the stack:
 
 ```sh
 kubectl -n team-payments create secret generic anthropic --from-literal=apiKey=sk-ant-...

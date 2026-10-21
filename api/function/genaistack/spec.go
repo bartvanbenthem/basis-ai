@@ -29,6 +29,8 @@ type Spec struct {
 		StorageSize string    `json:"storageSize"`
 		Backup      bool      `json:"backup"`
 		Extensions  *[]string `json:"extensions"`
+		// Expose goes to the PostgresCluster's spec.expose as it is.
+		Expose Object `json:"expose"`
 	} `json:"retrieval"`
 	Cache struct {
 		Enabled        *bool  `json:"enabled"`
@@ -46,6 +48,8 @@ type Spec struct {
 		// of the stack's own; Client is the stack's client there.
 		Ref    string `json:"ref"`
 		Client string `json:"client"`
+		// Expose goes to the stack's own ModelGateway's spec.expose as it is.
+		Expose Object `json:"expose"`
 	} `json:"gateway"`
 }
 

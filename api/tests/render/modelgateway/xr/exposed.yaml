@@ -1,0 +1,22 @@
+# geo.yaml, exposed: an HTTPS Gateway of its own on a LoadBalancer in each
+# site, with a cert-manager certificate for the hostname.
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelGateway
+metadata:
+  name: llm
+  namespace: ai-team
+spec:
+  recovery:
+    enabled: true
+  activeSite: recovery
+  expose:
+    enabled: true
+    hostname: llm.example.com
+    loadBalancerSourceRanges: [203.0.113.0/24]
+  models:
+    - name: claude
+      endpoint: https://api.anthropic.com/v1
+      schema: Anthropic
+      apiKeySecretRef:
+        name: anthropic
+        key: token

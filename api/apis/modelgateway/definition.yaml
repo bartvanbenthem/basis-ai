@@ -9,7 +9,8 @@
 # with spec.recovery.enabled. Clients in a location reach it at
 # http://<name>.<namespace>.svc/v1 with Authorization: Bearer <key>; it routes
 # on the request's model to the model's backend and swaps the client key for
-# the provider's.
+# the provider's. spec.expose adds https://<hostname>/v1 for clients outside
+# the location: a LoadBalancer of its own, with a cert-manager certificate.
 #
 # A GenAIStack composes one (<stack>-gateway) unless spec.gateway.ref names
 # a ModelGateway to share. Composed by function-basis (../../function/modelgateway).
@@ -47,6 +48,10 @@ spec:
         - name: Endpoint
           type: string
           jsonPath: .status.endpoint
+          priority: 1
+        - name: External
+          type: string
+          jsonPath: .status.externalEndpoint
           priority: 1
         # Crossplane appends SYNCED, READY, COMPOSITION and AGE itself.
       schema:
@@ -155,6 +160,48 @@ spec:
                             type: string
                             default: apiKey
                             pattern: '^[-._a-zA-Z0-9]+$'
+                expose:
+                  type: object
+                  description: >-
+                    The gateway for clients outside its location too, at https://<hostname>/v1: a
+                    Gateway <name>-external of its own on a LoadBalancer Service, HTTPS only, with a
+                    certificate from cert-manager. The internal endpoint stays as it is. Clients
+                    still need a key (spec.clients); the source ranges limit who reaches it at all.
+                    With recovery each site gets a LoadBalancer of its own: point the hostname's
+                    DNS at the active site's (status.sites[].address).
+                  default: {}
+                  x-kubernetes-validations:
+                    - rule: "!has(self.enabled) || !self.enabled || (has(self.hostname) && has(self.loadBalancerSourceRanges) && size(self.loadBalancerSourceRanges) > 0)"
+                      message: expose.enabled needs a hostname (the certificate's) and loadBalancerSourceRanges (the clients' CIDRs; 0.0.0.0/0 for everyone)
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    hostname:
+                      type: string
+                      description: The DNS name clients use, e.g. llm.example.com; the certificate is for it. Its DNS record is yours.
+                      maxLength: 253
+                      pattern: '^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)+$'
+                    issuer:
+                      type: string
+                      description: >-
+                        The cert-manager ClusterIssuer in each location that issues the certificate
+                        (the platform team sets it up; deps/README.md). With recovery, one that can
+                        issue in a site the hostname doesn't point at (ACME DNS-01, a private CA).
+                      default: basis
+                      pattern: '^[a-z0-9]([-.a-z0-9]{0,251}[a-z0-9])?$'
+                    annotations:
+                      type: object
+                      description: On the LoadBalancer Service, e.g. for the cloud's load balancer settings.
+                      additionalProperties:
+                        type: string
+                    loadBalancerSourceRanges:
+                      type: array
+                      description: CIDRs allowed to connect, e.g. [203.0.113.0/24]. Required when enabled.
+                      maxItems: 50
+                      items:
+                        type: string
+                        pattern: '^[0-9a-fA-F:.]+/[0-9]{1,3}$'
             status:
               type: object
               properties:
@@ -171,6 +218,9 @@ spec:
                 endpoint:
                   type: string
                   description: Base URL for OpenAI clients in each site's location (OPENAI_BASE_URL).
+                externalEndpoint:
+                  type: string
+                  description: Base URL for clients outside the location (spec.expose).
                 keysSecret:
                   type: string
                   description: Secret in this namespace with an API key per client.
@@ -187,3 +237,6 @@ spec:
                         type: boolean
                       replicas:
                         type: integer
+                      address:
+                        type: string
+                        description: The site's external LoadBalancer address (spec.expose), once it has one.

@@ -10,8 +10,9 @@ import {
   GATEWAY_VERSION,
   type ModelGateway,
 } from '@internal/backstage-plugin-basis-common';
+import { defaultExpose, type ExposeFields, fromExpose, toExpose, validateExpose } from './expose';
 import { mergePatch } from './form';
-import { emptyModel, fromModel, type ModelRow, toModels, validateModels } from './ModelFields';
+import { emptyModel, fromModel, type ModelRow, providerKeys, toModels, validateModels } from './ModelFields';
 
 export interface GatewayForm {
   name: string;
@@ -23,6 +24,8 @@ export interface GatewayForm {
   /** Who may call the gateway; each gets an API key of its own. */
   clients: string[];
   models: ModelRow[];
+  /** spec.expose: HTTPS at a hostname for clients outside the location. */
+  expose: ExposeFields;
 }
 
 export const defaultGatewayForm = (): GatewayForm => ({
@@ -34,6 +37,7 @@ export const defaultGatewayForm = (): GatewayForm => ({
   recoveryReplicas: 1,
   clients: ['apps'],
   models: [emptyModel()],
+  expose: defaultExpose(),
 });
 
 export function fromGateway(gw: ModelGateway): GatewayForm {
@@ -47,14 +51,19 @@ export function fromGateway(gw: ModelGateway): GatewayForm {
     recovery: Boolean(spec.recovery?.enabled),
     recoveryReplicas: spec.recovery?.replicas ?? d.recoveryReplicas,
     clients: (spec.clients ?? [{ name: 'apps' }]).map(c => c.name),
-    models: (spec.models ?? []).map(fromModel),
+    models: (spec.models ?? []).map(m => fromModel(m, metadata.name)),
+    expose: fromExpose(spec.expose),
   };
 }
 
 const NAME = /^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$/;
 const CLIENT = /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/;
 
-export type GatewayErrors = Partial<Record<keyof GatewayForm, string>> & { modelRows?: Record<number, string> };
+export type GatewayErrors = Partial<Record<Exclude<keyof GatewayForm, 'expose'>, string>> & {
+  modelRows?: Record<number, string>;
+  exposeHostname?: string;
+  exposeSourceRanges?: string;
+};
 
 /** Field-level errors shown inline; mirrors the XRD's rules. */
 export function validateGateway(f: GatewayForm): GatewayErrors {
@@ -68,6 +77,9 @@ export function validateGateway(f: GatewayForm): GatewayErrors {
   else if (new Set(clients).size !== clients.length) e.clients = 'A client is listed twice.';
   const rows = validateModels(f.models);
   if (Object.keys(rows).length) e.modelRows = rows;
+  const expose = validateExpose(f.expose);
+  if (expose.hostname) e.exposeHostname = expose.hostname;
+  if (expose.sourceRanges) e.exposeSourceRanges = expose.sourceRanges;
   return e;
 }
 
@@ -81,7 +93,8 @@ export function toGatewaySpec(f: GatewayForm): Record<string, unknown> {
       .map(c => c.trim())
       .filter(Boolean)
       .map(name => ({ name })),
-    models: toModels(f.models),
+    models: toModels(f.models, f.name),
+    ...(f.expose.enabled ? { expose: toExpose(f.expose) } : {}),
   };
 }
 
@@ -102,3 +115,6 @@ export function toGatewayManifest(f: GatewayForm) {
 export function toGatewayEditPatch(original: GatewayForm, f: GatewayForm): Record<string, unknown> {
   return (mergePatch(toGatewaySpec(original), toGatewaySpec(f)) ?? {}) as Record<string, unknown>;
 }
+
+/** The provider keys entered in the form, by model name (never in the spec). */
+export const gatewayProviderKeys = (f: GatewayForm) => providerKeys(f.models);

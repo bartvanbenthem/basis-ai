@@ -93,7 +93,9 @@ func TestCompose(t *testing.T) {
 			t.Errorf("image %v", spec["image"])
 		}
 		args, _ := json.Marshal(spec["containers"])
-		if !strings.Contains(string(args), "libsearch.so --reader-threads 3 --writer-threads 3") {
+		// Each word its own argument, the threads as the module's configs:
+		// valkey-server reads one "<path> --reader-threads ..." argument as the path.
+		if !strings.Contains(string(args), `["--loadmodule","/usr/lib/valkey/libsearch.so","--search.reader-threads","3","--search.writer-threads","3"]`) {
 			t.Errorf("containers %s", args)
 		}
 		exporter, _ := json.Marshal(spec["exporter"])

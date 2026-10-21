@@ -110,6 +110,34 @@ func assertPostgresCluster(r *render, dashboardSrc string) {
 		check(false, "no expectations for case %s", kase)
 		return
 	}
+	// Nothing observed yet: a new Cluster waits until the location reports the
+	// ObjectStores its Barman Cloud plugin reads (the plugin stops the
+	// Cluster's reconcile for good otherwise). The "stores" pass renders
+	// again with them reported; it gets every other check, as nothing else
+	// is observed there either.
+	if state == "empty" {
+		withheld := map[string]bool{}
+		for _, prefix := range []string{"", "recovery-"} {
+			_, store := r.composed[prefix+"objectstore"]
+			_, restore := r.composed[prefix+"restore-objectstore"]
+			if store || restore {
+				withheld[prefix+"cluster"] = true
+			}
+		}
+		if len(withheld) > 0 {
+			rest := map[string]bool{}
+			for k := range expected {
+				if !withheld[k] {
+					rest[k] = true
+				}
+			}
+			check(sameKeys(r.composed, rest), "composed resources %v != expected %v (no Cluster before its ObjectStore)", r.keys(), sortedKeys(rest))
+			return
+		}
+	}
+	if state == "stores" {
+		state, r.state = "empty", "empty"
+	}
 	check(sameKeys(r.composed, expected), "composed resources %v != expected %v", r.keys(), sortedKeys(expected))
 
 	// --- sites: the protected location from the Project (or status.sites), the

@@ -182,3 +182,41 @@ func TestAssets(t *testing.T) {
 		t.Errorf("dashboard uid %v title %v", dash["uid"], dash["title"])
 	}
 }
+
+func TestClusterWaitsForItsObjectStore(t *testing.T) {
+	x := obj(t, xrYAML)
+	x["spec"] = obj(t, "backup: {enabled: true, destinationPath: s3://b/p, s3Credentials: {secretName: s3}}")
+	req := map[string][]Object{RequiredProject: project(t, "spec: {locations: {protected: "+rtm+"}}")}
+	compose := func(observed map[string]Object) map[string]Composed {
+		out, err := Compose(Input{XR: x, Observed: observed, Required: req})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out.Composed
+	}
+
+	// First round: the ObjectStore goes out, the Cluster waits for it.
+	first := compose(map[string]Object{})
+	if _, ok := first["objectstore"]; !ok {
+		t.Fatal("no objectstore composed")
+	}
+	if _, ok := first["cluster"]; ok {
+		t.Error("cluster composed before its ObjectStore exists in the location")
+	}
+
+	// Once the location reports the ObjectStore, the Cluster follows.
+	store := obj(t, `
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+status: {atProvider: {manifest: {apiVersion: barmancloud.cnpg.io/v1, kind: ObjectStore}}}`)
+	if _, ok := compose(map[string]Object{"objectstore": store})["cluster"]; !ok {
+		t.Error("no cluster once the ObjectStore exists")
+	}
+
+	// A Cluster composed before stays, also while its location reports
+	// nothing (unreachable): dropping it would delete the database.
+	silent := obj(t, "apiVersion: kubernetes.m.crossplane.io/v1alpha1\nkind: Object")
+	if _, ok := compose(map[string]Object{"cluster": silent, "objectstore": silent})["cluster"]; !ok {
+		t.Error("an existing cluster was dropped")
+	}
+}

@@ -139,6 +139,73 @@ func TestCompose(t *testing.T) {
 		}
 	})
 
+	t.Run("expose: an HTTPS Gateway of its own on a LoadBalancer, the internal one stays", func(t *testing.T) {
+		spec := `{"expose":{"enabled":true,"hostname":"llm.example.com","loadBalancerSourceRanges":["203.0.113.0/24"],
+			"annotations":{"lb.example/internal":"false"}},` + models + `}`
+		out, err := Compose(Input{XR: xr(t, spec, `{}`), Required: required(false)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s := dig(manifest(out.Composed["protected-envoyproxy"]), "spec", "provider", "kubernetes", "envoyService", "type"); s != "ClusterIP" {
+			t.Errorf("internal service type %v", s)
+		}
+		svc, _ := json.Marshal(dig(manifest(out.Composed["protected-external-envoyproxy"]), "spec", "provider", "kubernetes", "envoyService"))
+		if !strings.Contains(string(svc), `"name":"llm-external"`) || !strings.Contains(string(svc), `"type":"LoadBalancer"`) ||
+			!strings.Contains(string(svc), `"loadBalancerSourceRanges":["203.0.113.0/24"]`) || !strings.Contains(string(svc), `"lb.example/internal":"false"`) {
+			t.Errorf("external service %s", svc)
+		}
+		cert, _ := json.Marshal(dig(manifest(out.Composed["protected-certificate"]), "spec"))
+		if !strings.Contains(string(cert), `"dnsNames":["llm.example.com"]`) || !strings.Contains(string(cert), `"kind":"ClusterIssuer","name":"basis"`) {
+			t.Errorf("certificate %s", cert)
+		}
+		listeners, _ := json.Marshal(dig(manifest(out.Composed["protected-external-gateway"]), "spec", "listeners"))
+		if !strings.Contains(string(listeners), `"protocol":"HTTPS"`) || strings.Contains(string(listeners), `"protocol":"HTTP"`) ||
+			!strings.Contains(string(listeners), `"name":"llm-tls"`) {
+			t.Errorf("external listeners %s", listeners)
+		}
+		for _, k := range []string{"route", "securitypolicy", "clienttraffic"} {
+			refs, _ := json.Marshal(manifest(out.Composed["protected-"+k]))
+			if !strings.Contains(string(refs), `"name":"llm-external"`) {
+				t.Errorf("%s does not cover the external Gateway: %s", k, refs)
+			}
+		}
+		if out.Status.ExternalEndpoint != "https://llm.example.com/v1" || out.Status.Endpoint != "http://llm.ai.svc/v1" {
+			t.Errorf("status %+v", out.Status)
+		}
+	})
+
+	t.Run("expose: waits for the certificate and the address, then reports it", func(t *testing.T) {
+		spec := `{"expose":{"enabled":true,"hostname":"llm.example.com","issuer":"acme","loadBalancerSourceRanges":["0.0.0.0/0"]}}`
+		live := func(m Object) Object {
+			return Object{"status": Object{"atProvider": Object{"manifest": m}}}
+		}
+		cond := func(t string) Object { return Object{"conditions": []any{Object{"type": t, "status": "True"}}} }
+		observed := map[string]Object{"keys": {}}
+		for _, k := range []string{"envoyproxy", "clienttraffic", "securitypolicy", "external-envoyproxy"} {
+			observed["protected-"+k] = live(Object{"kind": "x"})
+		}
+		observed["protected-keys"] = Object{"status": cond("Ready")}
+		observed["protected-gateway"] = live(Object{"status": cond("Programmed")})
+		out, err := Compose(Input{XR: xr(t, spec, `{}`), Observed: observed, Required: required(false)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out.Status.Ready || !strings.Contains(out.Status.Message, "ClusterIssuer acme") || !strings.Contains(out.Status.Message, "LoadBalancer address in dc-a") {
+			t.Errorf("status %+v", out.Status)
+		}
+		observed["protected-certificate"] = live(Object{"status": cond("Ready")})
+		gw := cond("Programmed")
+		gw["addresses"] = []any{Object{"type": "IPAddress", "value": "198.51.100.7"}}
+		observed["protected-external-gateway"] = live(Object{"status": gw})
+		out, err = Compose(Input{XR: xr(t, spec, `{}`), Observed: observed, Required: required(false)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !out.Status.Ready || out.Status.Sites[0].Address != "198.51.100.7" {
+			t.Errorf("status %+v", out.Status)
+		}
+	})
+
 	t.Run("recovery in a Project without a recovery location says so", func(t *testing.T) {
 		out, err := Compose(Input{XR: xr(t, `{"recovery":{"enabled":true}}`, `{}`), Required: required(false)})
 		if err != nil {

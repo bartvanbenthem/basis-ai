@@ -15,7 +15,15 @@ import { AuditService, auditServiceRef } from './service/AuditService';
 import { ValkeyService, valkeyServiceRef } from './service/ValkeyService';
 import { StackService, stackServiceRef } from './service/StackService';
 import { GatewayService, gatewayServiceRef } from './service/GatewayService';
-import { GenAIStack, ModelGateway, PostgresCluster, Project, ValkeyCache } from '@internal/backstage-plugin-basis-common';
+import { ProviderKeyService, providerKeyServiceRef } from './service/ProviderKeyService';
+import {
+  GenAIStack,
+  ModelGateway,
+  PostgresCluster,
+  Project,
+  providerKeySecretName,
+  ValkeyCache,
+} from '@internal/backstage-plugin-basis-common';
 
 const ordersDb: PostgresCluster = {
   apiVersion: 'postgres.cndev.nl/v1alpha1',
@@ -247,6 +255,7 @@ async function start(
   valkey = fakeValkey(),
   stacks = fakeStacks(),
   gateways = fakeGateways(),
+  writtenKeys: Array<{ owner: string; keys: Record<string, string> }> = [],
 ) {
   const { server } = await startTestBackend({
     features: [
@@ -290,6 +299,20 @@ async function start(
         service: gatewayServiceRef,
         deps: {},
         factory: () => gateways as unknown as GatewayService,
+      }),
+      createServiceFactory({
+        service: providerKeyServiceRef,
+        deps: {},
+        factory: () => {
+          // The real check, a recording write.
+          const real = new ProviderKeyService({ objects: {} as any, logger: mockServices.logger.mock() });
+          return {
+            check: real.check.bind(real),
+            write: async (owner: any, keys: Record<string, string>) => {
+              writtenKeys.push({ owner: owner.metadata.name, keys });
+            },
+          } as unknown as ProviderKeyService;
+        },
       }),
       mockServices.permissions.factory({
         result: allow ? AuthorizeResult.ALLOW : AuthorizeResult.DENY,
@@ -1237,6 +1260,35 @@ describe('basis backend', () => {
       expect((await request(server).delete('/api/basis/gateways/demo/llm')).status).toBe(409);
       expect(owned.delete).not.toHaveBeenCalled();
       expect(gateways.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('provider keys', () => {
+    const model = (ref?: string) => ({ name: 'gpt-oss-120b', endpoint: 'https://x/v1', ...(ref ? { apiKeySecretRef: { name: ref, key: 'apiKey' } } : {}) });
+
+    it('writes a key entered for a model that references its Secret, not on a dry run', async () => {
+      const written: Array<{ owner: string; keys: Record<string, string> }> = [];
+      const server = await start(fakeK8s(), true, fakeLocations(), fakeBuckets(), fakeVolumes(), fakeAudit(), fakeValkey(), fakeStacks(), fakeGateways(), written);
+      const body = {
+        name: 'llm',
+        namespace: 'demo',
+        spec: { models: [model(providerKeySecretName('llm', 'gpt-oss-120b'))] },
+        providerKeys: { 'gpt-oss-120b': 'tok' },
+      };
+      expect((await request(server).post('/api/basis/gateways').send({ ...body, dryRun: true })).status).toBe(200);
+      expect(written).toEqual([]);
+      expect((await request(server).post('/api/basis/gateways').send(body)).status).toBe(201);
+      expect(written).toEqual([{ owner: 'llm', keys: { 'gpt-oss-120b': 'tok' } }]);
+    });
+
+    it('refuses a key whose model references another Secret', async () => {
+      const written: Array<{ owner: string; keys: Record<string, string> }> = [];
+      const server = await start(fakeK8s(), true, fakeLocations(), fakeBuckets(), fakeVolumes(), fakeAudit(), fakeValkey(), fakeStacks(), fakeGateways(), written);
+      const res = await request(server)
+        .post('/api/basis/stacks')
+        .send({ name: 'bot', namespace: 'demo', spec: { gateway: { models: [model('someone-elses')] } }, providerKeys: { 'gpt-oss-120b': 'tok' } });
+      expect(res.status).toBe(400);
+      expect(written).toEqual([]);
     });
   });
 });

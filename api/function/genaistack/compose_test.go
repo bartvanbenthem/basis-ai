@@ -196,6 +196,34 @@ func TestCompose(t *testing.T) {
 		}
 	})
 
+	t.Run("expose goes to the database and the gateway; the connection stays internal", func(t *testing.T) {
+		spec := `{"retrieval":{"expose":{"enabled":true,"loadBalancerSourceRanges":["10.0.0.0/8"]}},
+			"gateway":{"expose":{"enabled":true,"hostname":"bot.example.com","loadBalancerSourceRanges":["0.0.0.0/0"]}}}`
+		observed := map[string]Object{"gateway": {"status": map[string]any{"externalEndpoint": "https://bot.example.com/v1"}}}
+		out, err := Compose(Input{XR: xr(t, spec, `{}`), Observed: observed, Required: required(false, RequiredCacheSecret)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		db, _ := json.Marshal(dig(out.Composed["database"].Object, "spec", "expose"))
+		gw, _ := json.Marshal(dig(out.Composed["gateway"].Object, "spec", "expose"))
+		if string(db) != `{"enabled":true,"loadBalancerSourceRanges":["10.0.0.0/8"]}` ||
+			string(gw) != `{"enabled":true,"hostname":"bot.example.com","loadBalancerSourceRanges":["0.0.0.0/0"]}` {
+			t.Errorf("database expose %s gateway expose %s", db, gw)
+		}
+		if out.Status.GatewayExternalEndpoint != "https://bot.example.com/v1" {
+			t.Errorf("status %+v", out.Status)
+		}
+		if conn := secretData(t, out.Composed["connection-protected"]); conn["OPENAI_BASE_URL"] != "http://bot-gateway.ai.svc/v1" {
+			t.Errorf("connection %v", conn)
+		}
+
+		// Unset, neither gets one.
+		out, _ = Compose(Input{XR: xr(t, `{}`, `{}`), Required: required(false, RequiredCacheSecret)})
+		if dig(out.Composed["database"].Object, "spec", "expose") != nil || dig(out.Composed["gateway"].Object, "spec", "expose") != nil {
+			t.Error("expose without spec.*.expose")
+		}
+	})
+
 	t.Run("without cache and gateway only the database and wiring", func(t *testing.T) {
 		out, err := Compose(Input{XR: xr(t, `{"cache":{"enabled":false},"gateway":{"enabled":false}}`, `{}`), Required: required(false)})
 		if err != nil {

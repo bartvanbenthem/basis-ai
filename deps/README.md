@@ -11,12 +11,12 @@ databases run in. Each component goes where its column says.
 | Component | Needed for | Control plane | Locations |
 |---|---|---|---|
 | CloudNativePG + Barman Cloud plugin ([`cnpg/`](cnpg/README.md)) | `PostgresCluster` (and the portal's own database) | only for the portal's own database | where databases run |
-| cert-manager | barman-cloud backup plugin | only for the portal's own database | yes, unless `INSTALL_BARMAN=false` |
+| cert-manager | barman-cloud backup plugin; certificates of exposed model gateways | only for the portal's own database | yes, unless `INSTALL_BARMAN=false` and no gateway is exposed |
 | Prometheus Operator | `Prometheus` per Project; `PodMonitor` / `PrometheusRule` per PostgresCluster | yes (the Prometheus the locations write to) | yes |
 | grafana-operator | `Grafana` per Project, `GrafanaDashboard` per PostgresCluster | yes | no |
 | HAProxy Ingress | Grafana from outside, and the remote-write endpoint the locations' Prometheus send to | yes | no |
 | Valkey operator | `ValkeyCache` (exact and semantic caches) | no | where caches run |
-| Envoy Gateway + Agent Router | `ModelGateway` (an internal, OpenAI-compatible endpoint per gateway and site; every GenAIStack has one) | no | where gateways and stacks run |
+| Envoy Gateway + Agent Router | `ModelGateway` (an internal, OpenAI-compatible endpoint per gateway and site, optionally exposed over HTTPS; every GenAIStack has one) | no | where gateways and stacks run |
 
 Install them in the order below, each in the clusters its row says.
 
@@ -167,6 +167,10 @@ helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
 kubectl -n envoy-ai-gateway-system wait deploy/ai-gateway-controller --for=condition=Available --timeout=5m
 
 kubectl apply -f agent-router/gatewayclass.yaml   # GatewayClass basis-ai
+
+# For exposed gateways (spec.expose): the ClusterIssuer basis their
+# certificates come from. This one is a private CA; see the file for ACME.
+kubectl apply -f agent-router/clusterissuer.yaml
 ```
 
 Verify:
@@ -174,7 +178,11 @@ Verify:
 ```sh
 kubectl get gatewayclass basis-ai                 # ACCEPTED True
 kubectl get crd aigatewayroutes.aigateway.envoyproxy.io
+kubectl get clusterissuer basis                   # READY True
 ```
+
+An exposed gateway also needs `LoadBalancer` Services in the location (a cloud's load balancer, or
+MetalLB and the like on-premises) that honour `loadBalancerSourceRanges`.
 
 With an expired `ghcr.io` or
 `docker.io` login in `~/.docker/config.json`, log out first (see step 4). The

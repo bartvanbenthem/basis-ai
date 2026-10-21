@@ -25,6 +25,17 @@ type Spec struct {
 	ActiveSite string    `json:"activeSite"`
 	Clients    *[]Client `json:"clients"`
 	Models     []Model   `json:"models"`
+	Expose     *Expose   `json:"expose"`
+}
+
+// Expose: the gateway outside its location too, over HTTPS at Hostname, on a
+// LoadBalancer of its own; the internal endpoint stays as it is.
+type Expose struct {
+	Enabled                  bool              `json:"enabled"`
+	Hostname                 string            `json:"hostname"`
+	Issuer                   string            `json:"issuer"`
+	Annotations              map[string]string `json:"annotations"`
+	LoadBalancerSourceRanges []string          `json:"loadBalancerSourceRanges"`
 }
 
 type Client struct {
@@ -74,6 +85,11 @@ func (s *Spec) activeSite() string {
 	}
 	return SiteProtected
 }
+
+func (s *Spec) exposed() bool { return s.Expose != nil && s.Expose.Enabled }
+
+// issuer is the cert-manager ClusterIssuer in each location.
+func (e *Expose) issuer() string { return or(e.Issuer, "basis") }
 
 func (s *Spec) clients() []string {
 	if s.Clients == nil {

@@ -115,7 +115,7 @@ export const defaultForm = (namespace = ''): ClusterForm => ({
   exposeSourceRanges: '',
 });
 
-const CIDR = /^[0-9a-fA-F:.]+\/[0-9]{1,3}$/;
+export const CIDR = /^[0-9a-fA-F:.]+\/[0-9]{1,3}$/;
 
 /** "10.0.0.0/8, 203.0.113.10/32" (or one per line) -> the list. */
 export function sourceRanges(value: string): string[] {

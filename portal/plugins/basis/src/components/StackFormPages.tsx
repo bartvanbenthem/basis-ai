@@ -35,6 +35,7 @@ import { stringify } from 'yaml';
 import { basisApiRef } from '../api';
 import { createProjectRouteRef, stackRouteRef } from '../routes';
 import { ErrorAlert, ManifestPanel, Section } from './common';
+import { ExposeFields } from './ExposeFields';
 import { ModelFields } from './ModelFields';
 import {
   defaultStackForm,
@@ -45,6 +46,7 @@ import {
   type StackForm,
   toStackEditPatch,
   toStackManifest,
+  stackProviderKeys,
   toStackSpec,
   validateStack,
 } from './stackForm';
@@ -77,7 +79,7 @@ const StackFormFields = ({
   extensions: ClusterExtension[];
 }) => {
   const set = <K extends keyof StackForm>(key: K) => (value: StackForm[K]) => setForm(f => ({ ...f, [key]: value }));
-  const err = (key: keyof StackForm) => (touched ? (errors[key] as string | undefined) : undefined);
+  const err = (key: Exclude<keyof StackErrors, 'modelRows'>) => (touched ? errors[key] : undefined);
   const project = projects?.find(p => p.name === form.namespace);
   const recoveryLocation = project?.recoveryLocation;
   const shareable = gateways.filter(g => g.namespace === form.namespace && !g.stack);
@@ -201,6 +203,14 @@ const StackFormFields = ({
             </Checkbox>
           ))}
         </CheckboxGroup>
+        <ExposeFields
+          label="Expose the database through a LoadBalancer"
+          hostname={false}
+          value={form.dbExpose}
+          onChange={set('dbExpose')}
+          errors={touched ? { sourceRanges: errors.dbExposeSourceRanges } : {}}
+          hint="For ingestion jobs and tools outside the location: only these reach port 5432 on <name>-db-external (TLS; CA in Secret <name>-db-ca). Apps in the location keep DATABASE_URL."
+        />
       </Section>
 
       <Section title="Cache" description="A Valkey cache per site for the app's exact or semantic lookups (one node, so any client works). Valkey <name>-cache.">
@@ -265,6 +275,15 @@ const StackFormFields = ({
             onChange={set('gatewayReplicas')}
           />
         )}
+        {form.gatewayEnabled && !form.gatewayRef && (
+          <ExposeFields
+            label="Expose the gateway over HTTPS"
+            value={form.gatewayExpose}
+            onChange={set('gatewayExpose')}
+            errors={touched ? { hostname: errors.gatewayExposeHostname, sourceRanges: errors.gatewayExposeSourceRanges } : {}}
+            hint="For agents and tools outside the location, with the stack's key; 0.0.0.0/0 for everyone. Apps in the location keep OPENAI_BASE_URL."
+          />
+        )}
       </Section>
 
       {form.gatewayEnabled && !form.gatewayRef && (
@@ -278,6 +297,7 @@ const StackFormFields = ({
               model={m}
               index={i}
               namespace={form.namespace}
+              owner={form.name}
               error={touched ? errors.modelRows?.[i] : undefined}
               onChange={model => setForm(f => ({ ...f, models: f.models.map((x, j) => (j === i ? model : x)) }))}
               onRemove={() => setForm(f => ({ ...f, models: f.models.filter((_, j) => j !== i) }))}
@@ -333,6 +353,7 @@ export const CreateStackPage = () => {
         namespace: form.namespace,
         owner: form.owner || undefined,
         spec: toStackSpec(form),
+        providerKeys: stackProviderKeys(form),
         dryRun,
       });
       if (dryRun) setResult({ validated: true });
@@ -437,7 +458,12 @@ export const EditStackPage = () => {
     setSubmitting(dryRun ? 'validate' : 'create');
     setResult({});
     try {
-      await api.patchStack(namespace, name, { spec, ...(ownerChanged ? { owner: form?.owner || null } : {}), dryRun });
+      await api.patchStack(namespace, name, {
+        spec,
+        providerKeys: form ? stackProviderKeys(form) : undefined,
+        ...(ownerChanged ? { owner: form?.owner || null } : {}),
+        dryRun,
+      });
       if (dryRun) setResult({ validated: true });
       else navigate(back);
     } catch (e) {

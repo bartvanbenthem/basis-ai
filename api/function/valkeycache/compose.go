@@ -292,9 +292,15 @@ func (c *composition) locationObjects(copyName string) (map[string]Object, error
 	if spec.semantic() {
 		threads := searchThreads(spec.cpu())
 		vcSpec["image"] = BundleImage
-		// Appended to the server's valkey-server command (strategic merge patch by name).
+		// Appended to the server's valkey-server command (strategic merge patch
+		// by name). Every word its own argument: as one, valkey-server takes
+		// "<path> --reader-threads ..." for the module's path and aborts. The
+		// thread counts are the module's configs (search.*), not its arguments,
+		// which must start with "--" and so would be read as server options.
 		vcSpec["containers"] = []any{Object{"name": "server", "args": []any{
-			"--loadmodule", fmt.Sprintf("%s --reader-threads %d --writer-threads %d", SearchModule, threads, threads)}}}
+			"--loadmodule", SearchModule,
+			"--search.reader-threads", strconv.Itoa(threads),
+			"--search.writer-threads", strconv.Itoa(threads)}}}
 		if mon.enabled() {
 			// valkey-search's INFO section (index memory, query counts) for the dashboard.
 			vcSpec["exporter"] = Object{"enabled": true, "args": []any{"--include-modules-metrics"}}

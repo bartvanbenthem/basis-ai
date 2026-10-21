@@ -40,6 +40,13 @@ rules:
   # picker, create new ones, change their settings, and delete them once they
   # have no PostgresClusters left (the backend checks, and patches
   # deletionProtection off for the delete).
+  # Provider API keys entered in the stack and gateway forms: the backend
+  # writes each into a Secret <owner>-key-<model>-<hash> in the project
+  # namespace with a server-side apply (create, patch), which the spec
+  # references. It never reads Secrets here.
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create, patch]
   - apiGroups: [platform.cndev.nl]
     resources: [projects]
     verbs: [get, list, watch, create, patch, delete]

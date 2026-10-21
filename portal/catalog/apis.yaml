@@ -2144,6 +2144,7 @@ spec:
                 Rules:
                 - recovery.activeSite can only be recovery with recovery.enabled; switch back to protected before turning recovery off
                 - gateway.models belong to the stack's own gateway; with gateway.ref, add them to the shared ModelGateway
+                - gateway.expose belongs to the stack's own gateway; with gateway.ref, set expose on the shared ModelGateway
               properties:
                 cache:
                   default: {}
@@ -2260,6 +2261,38 @@ spec:
                     enabled:
                       default: true
                       type: boolean
+                    expose:
+                      description: |-
+                        The stack's own gateway for clients outside the location too, at https://<hostname>/v1 (a LoadBalancer, a cert-manager certificate); its spec.expose. Apps in the location keep OPENAI_BASE_URL.
+
+                        Rules:
+                        - gateway.expose.enabled needs a hostname (the certificate's) and loadBalancerSourceRanges (the clients' CIDRs; 0.0.0.0/0 for everyone)
+                      properties:
+                        annotations:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        enabled:
+                          default: false
+                          type: boolean
+                        hostname:
+                          description: The DNS name clients use, e.g. bot.example.com. Its DNS record is yours.
+                          maxLength: 253
+                          pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)+$
+                          type: string
+                        issuer:
+                          default: basis
+                          description: The cert-manager ClusterIssuer in each location.
+                          pattern: ^[a-z0-9]([-.a-z0-9]{0,251}[a-z0-9])?$
+                          type: string
+                        loadBalancerSourceRanges:
+                          description: CIDRs allowed to connect. Required when enabled.
+                          items:
+                            pattern: ^[0-9a-fA-F:.]+/[0-9]{1,3}$
+                            type: string
+                          maxItems: 50
+                          type: array
+                      type: object
                     models:
                       items:
                         properties:
@@ -2353,6 +2386,28 @@ spec:
                       default: false
                       description: Continuous backups to the Project's bucket (point-in-time restore). Always on with recovery, whose replica is fed from them.
                       type: boolean
+                    expose:
+                      description: |-
+                        External access to the database's primary (read-write) as <name>-db-external, a LoadBalancer Service with TLS, for clients outside the location (ingestion jobs, admin and BI tools). Off: the app in the location uses DATABASE_URL. The database's spec.expose.
+
+                        Rules:
+                        - retrieval.expose.enabled needs loadBalancerSourceRanges (the clients' CIDRs); a database is never open to everyone
+                      properties:
+                        annotations:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        enabled:
+                          default: false
+                          type: boolean
+                        loadBalancerSourceRanges:
+                          description: CIDRs allowed to connect, e.g. [203.0.113.10/32]. Required when enabled.
+                          items:
+                            pattern: ^[0-9a-fA-F:.]+/[0-9]{1,3}$
+                            type: string
+                          maxItems: 50
+                          type: array
+                      type: object
                     extensions:
                       default:
                         - vector
@@ -2425,6 +2480,9 @@ spec:
                   type: array
                 connectionSecret:
                   description: The Secret with every endpoint and credential, in the project namespace of each site's location.
+                  type: string
+                gatewayExternalEndpoint:
+                  description: The gateway's base URL outside the location, when it is exposed.
                   type: string
                 message:
                   type: string
@@ -2818,6 +2876,40 @@ spec:
                         type: object
                       type: array
                   type: object
+                expose:
+                  default: {}
+                  description: |-
+                    The gateway for clients outside its location too, at https://<hostname>/v1: a Gateway <name>-external of its own on a LoadBalancer Service, HTTPS only, with a certificate from cert-manager. The internal endpoint stays as it is. Clients still need a key (spec.clients); the source ranges limit who reaches it at all. With recovery each site gets a LoadBalancer of its own: point the hostname's DNS at the active site's (status.sites[].address).
+
+                    Rules:
+                    - expose.enabled needs a hostname (the certificate's) and loadBalancerSourceRanges (the clients' CIDRs; 0.0.0.0/0 for everyone)
+                  properties:
+                    annotations:
+                      additionalProperties:
+                        type: string
+                      description: On the LoadBalancer Service, e.g. for the cloud's load balancer settings.
+                      type: object
+                    enabled:
+                      default: false
+                      type: boolean
+                    hostname:
+                      description: The DNS name clients use, e.g. llm.example.com; the certificate is for it. Its DNS record is yours.
+                      maxLength: 253
+                      pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)+$
+                      type: string
+                    issuer:
+                      default: basis
+                      description: The cert-manager ClusterIssuer in each location that issues the certificate (the platform team sets it up; deps/README.md). With recovery, one that can issue in a site the hostname doesn't point at (ACME DNS-01, a private CA).
+                      pattern: ^[a-z0-9]([-.a-z0-9]{0,251}[a-z0-9])?$
+                      type: string
+                    loadBalancerSourceRanges:
+                      description: CIDRs allowed to connect, e.g. [203.0.113.0/24]. Required when enabled.
+                      items:
+                        pattern: ^[0-9a-fA-F:.]+/[0-9]{1,3}$
+                        type: string
+                      maxItems: 50
+                      type: array
+                  type: object
                 models:
                   items:
                     properties:
@@ -2921,6 +3013,9 @@ spec:
                 endpoint:
                   description: Base URL for OpenAI clients in each site's location (OPENAI_BASE_URL).
                   type: string
+                externalEndpoint:
+                  description: Base URL for clients outside the location (spec.expose).
+                  type: string
                 keysSecret:
                   description: Secret in this namespace with an API key per client.
                   type: string
@@ -2935,6 +3030,9 @@ spec:
                     properties:
                       active:
                         type: boolean
+                      address:
+                        description: The site's external LoadBalancer address (spec.expose), once it has one.
+                        type: string
                       location:
                         type: string
                       replicas:

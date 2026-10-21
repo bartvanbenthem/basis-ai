@@ -35,9 +35,11 @@ import {
   hasErrors,
   toGatewayEditPatch,
   toGatewayManifest,
+  gatewayProviderKeys,
   toGatewaySpec,
   validateGateway,
 } from './gatewayForm';
+import { ExposeFields } from './ExposeFields';
 import { emptyModel, ModelFields } from './ModelFields';
 
 const FIXED = 'Fixed after creation.';
@@ -59,7 +61,7 @@ const GatewayFormFields = ({
   projects?: ProjectSummary[];
 }) => {
   const set = <K extends keyof GatewayForm>(key: K) => (value: GatewayForm[K]) => setForm(f => ({ ...f, [key]: value }));
-  const err = (key: keyof GatewayForm) => (touched ? (errors[key] as string | undefined) : undefined);
+  const err = (key: Exclude<keyof GatewayErrors, 'modelRows'>) => (touched ? errors[key] : undefined);
   const project = projects?.find(p => p.name === form.namespace);
   const recoveryLocation = project?.recoveryLocation;
 
@@ -150,6 +152,19 @@ const GatewayFormFields = ({
         />
       </Section>
 
+      <Section
+        title="External access"
+        description="Internal by default: clients in the project's locations only. Exposed, the gateway also serves HTTPS on a load balancer of its own (Service <name>-external) for clients elsewhere; they still need a key."
+      >
+        <ExposeFields
+          label="Expose over HTTPS"
+          value={form.expose}
+          onChange={set('expose')}
+          errors={touched ? { hostname: errors.exposeHostname, sourceRanges: errors.exposeSourceRanges } : {}}
+          hint="Only these reach the load balancer; 0.0.0.0/0 for everyone."
+        />
+      </Section>
+
       <Flex direction="column" gap="3">
         <Text variant="title-x-small" as="h3">
           Models
@@ -160,6 +175,7 @@ const GatewayFormFields = ({
             model={m}
             index={i}
             namespace={form.namespace}
+            owner={form.name}
             error={touched ? errors.modelRows?.[i] : undefined}
             onChange={model => setForm(f => ({ ...f, models: f.models.map((x, j) => (j === i ? model : x)) }))}
             onRemove={() => setForm(f => ({ ...f, models: f.models.filter((_, j) => j !== i) }))}
@@ -205,6 +221,7 @@ export const CreateGatewayPage = () => {
         namespace: form.namespace,
         owner: form.owner || undefined,
         spec: toGatewaySpec(form),
+        providerKeys: gatewayProviderKeys(form),
         dryRun,
       });
       if (dryRun) setResult({ validated: true });
@@ -301,7 +318,12 @@ export const EditGatewayPage = () => {
     setSubmitting(dryRun ? 'validate' : 'create');
     setResult({});
     try {
-      await api.patchGateway(namespace, name, { spec, ...(ownerChanged ? { owner: form?.owner || null } : {}), dryRun });
+      await api.patchGateway(namespace, name, {
+        spec,
+        providerKeys: form ? gatewayProviderKeys(form) : undefined,
+        ...(ownerChanged ? { owner: form?.owner || null } : {}),
+        dryRun,
+      });
       if (dryRun) setResult({ validated: true });
       else navigate(back);
     } catch (e) {

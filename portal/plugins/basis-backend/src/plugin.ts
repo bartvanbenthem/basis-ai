@@ -11,6 +11,7 @@ import { bucketServiceRef } from './service/BucketService';
 import { basisKubernetesServiceRef } from './service/BasisKubernetesService';
 import { locationServiceRef } from './service/LocationService';
 import { gatewayServiceRef } from './service/GatewayService';
+import { providerKeyServiceRef } from './service/ProviderKeyService';
 import { stackServiceRef } from './service/StackService';
 import { valkeyServiceRef } from './service/ValkeyService';
 import { volumeServiceRef } from './service/VolumeService';
@@ -40,6 +41,7 @@ export const basisPlugin = createBackendPlugin({
         valkey: valkeyServiceRef,
         stacks: stackServiceRef,
         gateways: gatewayServiceRef,
+        providerKeys: providerKeyServiceRef,
         actionsRegistry: actionsRegistryServiceRef,
       },
       async init({
@@ -56,10 +58,26 @@ export const basisPlugin = createBackendPlugin({
         valkey,
         stacks,
         gateways,
+        providerKeys,
         actionsRegistry,
       }) {
         permissionsRegistry.addPermissions(basisPermissions);
-        httpRouter.use(await createRouter({ httpAuth, permissions, config, k8s, locations, buckets, volumes, audit, valkey, stacks, gateways }));
+        httpRouter.use(
+          await createRouter({
+            httpAuth,
+            permissions,
+            config,
+            k8s,
+            locations,
+            buckets,
+            volumes,
+            audit,
+            valkey,
+            stacks,
+            gateways,
+            providerKeys,
+          }),
+        );
         httpRouter.addAuthPolicy({ path: '/health', allow: 'unauthenticated' });
         // The same, as MCP tools for agents (plugin-mcp-actions-backend).
         registerActions({ actionsRegistry, permissions, k8s, stacks, gateways });

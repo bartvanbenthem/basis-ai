@@ -13,6 +13,10 @@
 #              endpoint and credential (DATABASE_URL, VALKEY_URL, OPENAI_BASE_URL,
 #              OPENAI_API_KEY, ...), the same keys in both sites
 #
+# Everything is internal to the location by default; spec.retrieval.expose
+# and spec.gateway.expose put the database and the gateway behind a
+# LoadBalancer for clients outside it (the cache stays internal: no TLS).
+#
 # Sites: the Project's protected location, plus its recovery location with
 # spec.recovery.enabled (warm standby). The active site is where the
 # database's primary runs (PostgresCluster status.primarySite): it gets the
@@ -75,6 +79,8 @@ spec:
                   message: recovery.activeSite can only be recovery with recovery.enabled; switch back to protected before turning recovery off
                 - rule: "!has(self.gateway) || !has(self.gateway.ref) || !has(self.gateway.models) || size(self.gateway.models) == 0"
                   message: gateway.models belong to the stack's own gateway; with gateway.ref, add them to the shared ModelGateway
+                - rule: "!has(self.gateway) || !has(self.gateway.ref) || !has(self.gateway.expose)"
+                  message: gateway.expose belongs to the stack's own gateway; with gateway.ref, set expose on the shared ModelGateway
               properties:
                 deletionProtection:
                   type: boolean
@@ -151,6 +157,31 @@ spec:
                       default: [vector]
                       items:
                         type: string
+                    expose:
+                      type: object
+                      description: >-
+                        External access to the database's primary (read-write) as <name>-db-external, a
+                        LoadBalancer Service with TLS, for clients outside the location (ingestion jobs,
+                        admin and BI tools). Off: the app in the location uses DATABASE_URL. The
+                        database's spec.expose.
+                      x-kubernetes-validations:
+                        - rule: "!has(self.enabled) || !self.enabled || (has(self.loadBalancerSourceRanges) && size(self.loadBalancerSourceRanges) > 0)"
+                          message: retrieval.expose.enabled needs loadBalancerSourceRanges (the clients' CIDRs); a database is never open to everyone
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                        annotations:
+                          type: object
+                          additionalProperties:
+                            type: string
+                        loadBalancerSourceRanges:
+                          type: array
+                          description: CIDRs allowed to connect, e.g. [203.0.113.10/32]. Required when enabled.
+                          maxItems: 50
+                          items:
+                            type: string
+                            pattern: '^[0-9a-fA-F:.]+/[0-9]{1,3}$'
                 cache:
                   type: object
                   description: A ValkeyCache per site (<name>-cache, <name>-cache-dr), used by the app for exact or semantic lookups.
@@ -249,6 +280,40 @@ spec:
                                 type: string
                                 default: apiKey
                                 pattern: '^[-._a-zA-Z0-9]+$'
+                    expose:
+                      type: object
+                      description: >-
+                        The stack's own gateway for clients outside the location too, at
+                        https://<hostname>/v1 (a LoadBalancer, a cert-manager certificate); its
+                        spec.expose. Apps in the location keep OPENAI_BASE_URL.
+                      x-kubernetes-validations:
+                        - rule: "!has(self.enabled) || !self.enabled || (has(self.hostname) && has(self.loadBalancerSourceRanges) && size(self.loadBalancerSourceRanges) > 0)"
+                          message: gateway.expose.enabled needs a hostname (the certificate's) and loadBalancerSourceRanges (the clients' CIDRs; 0.0.0.0/0 for everyone)
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                        hostname:
+                          type: string
+                          description: The DNS name clients use, e.g. bot.example.com. Its DNS record is yours.
+                          maxLength: 253
+                          pattern: '^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)+$'
+                        issuer:
+                          type: string
+                          description: The cert-manager ClusterIssuer in each location.
+                          default: basis
+                          pattern: '^[a-z0-9]([-.a-z0-9]{0,251}[a-z0-9])?$'
+                        annotations:
+                          type: object
+                          additionalProperties:
+                            type: string
+                        loadBalancerSourceRanges:
+                          type: array
+                          description: CIDRs allowed to connect. Required when enabled.
+                          maxItems: 50
+                          items:
+                            type: string
+                            pattern: '^[0-9a-fA-F:.]+/[0-9]{1,3}$'
             status:
               type: object
               properties:
@@ -261,6 +326,9 @@ spec:
                   description: The site that serves (where the database's primary runs).
                 models:
                   type: integer
+                gatewayExternalEndpoint:
+                  type: string
+                  description: The gateway's base URL outside the location, when it is exposed.
                 connectionSecret:
                   type: string
                   description: The Secret with every endpoint and credential, in the project namespace of each site's location.

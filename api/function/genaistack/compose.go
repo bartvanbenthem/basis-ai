@@ -17,6 +17,10 @@
 //	gateway            ModelGateway <name>-gateway (client "apps"), unless
 //	                   spec.gateway.ref names one to share (client
 //	                   spec.gateway.client, the stack's name by default)
+//
+// spec.retrieval.expose and spec.gateway.expose go to the database's and the
+// gateway's spec.expose: a LoadBalancer for clients outside the location.
+//
 //	connection-<site>  Secret <name>-connection-<site>: the site's wiring
 //
 // In each site's location (a provider-kubernetes Object, prefix "<site>-"):
@@ -107,13 +111,15 @@ type SiteStatus struct {
 }
 
 type Status struct {
-	Ready            bool              `json:"ready"`
-	Message          string            `json:"message"`
-	ActiveSite       string            `json:"activeSite"`
-	Models           int               `json:"models"`
-	ConnectionSecret string            `json:"connectionSecret"`
-	Components       map[string]string `json:"components"`
-	Sites            []SiteStatus      `json:"sites"`
+	Ready      bool   `json:"ready"`
+	Message    string `json:"message"`
+	ActiveSite string `json:"activeSite"`
+	Models     int    `json:"models"`
+	// The gateway's base URL outside the location, when it is exposed.
+	GatewayExternalEndpoint string            `json:"gatewayExternalEndpoint,omitempty"`
+	ConnectionSecret        string            `json:"connectionSecret"`
+	Components              map[string]string `json:"components"`
+	Sites                   []SiteStatus      `json:"sites"`
 }
 
 type Output struct {
@@ -227,6 +233,9 @@ func Compose(in Input) (*Output, error) {
 	if spec.Retrieval.Size != "" {
 		dbSpec["size"] = spec.Retrieval.Size
 	}
+	if len(spec.Retrieval.Expose) > 0 {
+		dbSpec["expose"] = spec.Retrieval.Expose
+	}
 	out.Composed["database"] = Composed{Ready: conditionTrue(c.observed["database"], "Ready"), Object: Object{
 		"apiVersion": "postgres.cndev.nl/v1alpha1", "kind": "PostgresCluster",
 		"metadata": c.meta(c.name + "-db"), "spec": dbSpec,
@@ -269,18 +278,22 @@ func Compose(in Input) (*Output, error) {
 			if models == nil {
 				models = []any{}
 			}
+			gwSpec := Object{
+				"replicas":   spec.gatewayReplicas(),
+				"recovery":   Object{"enabled": spec.Recovery.Enabled, "replicas": spec.standbyGatewayReplicas()},
+				"activeSite": active,
+				"clients":    []any{Object{"name": client}},
+				"models":     models,
+			}
+			if len(spec.Gateway.Expose) > 0 {
+				gwSpec["expose"] = spec.Gateway.Expose
+			}
 			out.Composed["gateway"] = Composed{Ready: conditionTrue(c.observed["gateway"], "Ready"), Object: Object{
 				"apiVersion": "ai.cndev.nl/v1alpha1", "kind": "ModelGateway",
-				"metadata": c.meta(gwName),
-				"spec": Object{
-					"replicas":   spec.gatewayReplicas(),
-					"recovery":   Object{"enabled": spec.Recovery.Enabled, "replicas": spec.standbyGatewayReplicas()},
-					"activeSite": active,
-					"clients":    []any{Object{"name": client}},
-					"models":     models,
-				},
+				"metadata": c.meta(gwName), "spec": gwSpec,
 			}}
 			gatewayReady = out.Composed["gateway"].Ready
+			status.GatewayExternalEndpoint, _ = dig(c.observed["gateway"], "status", "externalEndpoint").(string)
 		} else {
 			var gw Object
 			if items := c.required[RequiredGateway]; len(items) > 0 {
@@ -288,6 +301,7 @@ func Compose(in Input) (*Output, error) {
 			}
 			m, _ := dig(gw, "status", "models").(float64)
 			status.Models = int(m)
+			status.GatewayExternalEndpoint, _ = dig(gw, "status", "externalEndpoint").(string)
 			gatewayReady = gw != nil && conditionTrue(gw, "Ready")
 			switch {
 			case gw == nil:

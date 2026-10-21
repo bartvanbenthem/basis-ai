@@ -4,7 +4,7 @@
  * what the portal reads or sends.
  */
 
-import type { GatewayModel } from './modelgateway';
+import type { GatewayExpose, GatewayModel } from './modelgateway';
 import type { PromotionMode, PromotionRequest } from './promotion';
 import type { CacheMode, EvictionPolicy } from './valkey';
 import type { Condition, Project, Site } from './types';
@@ -30,7 +30,15 @@ export interface GenAIStackSpec {
     cacheMemory?: string;
     gatewayReplicas?: number;
   };
-  retrieval?: { size?: string; instances?: number; storageSize?: string; backup?: boolean; extensions?: string[] };
+  retrieval?: {
+    size?: string;
+    instances?: number;
+    storageSize?: string;
+    backup?: boolean;
+    extensions?: string[];
+    /** The database's spec.expose: <name>-db-external, a LoadBalancer with TLS. */
+    expose?: { enabled?: boolean; annotations?: Record<string, string>; loadBalancerSourceRanges?: string[] };
+  };
   cache?: { enabled?: boolean; mode?: CacheMode; cpu?: string; memory?: string; evictionPolicy?: EvictionPolicy };
   gateway?: {
     enabled?: boolean;
@@ -40,6 +48,8 @@ export interface GenAIStackSpec {
     ref?: string;
     /** The stack's client in the shared gateway; the stack's name by default. */
     client?: string;
+    /** The stack's own gateway's spec.expose. */
+    expose?: GatewayExpose;
   };
 }
 
@@ -68,6 +78,7 @@ export interface GenAIStack {
     message?: string;
     activeSite?: Site;
     models?: number;
+    gatewayExternalEndpoint?: string;
     connectionSecret?: string;
     components?: { database?: string; cache?: string; recoveryCache?: string; gateway?: string };
     sites?: StackSiteStatus[];
@@ -92,6 +103,10 @@ export interface GenAIStackSummary {
   sharedGateway: boolean;
   /** The stack's own gateway's models; a shared gateway's are on its page. */
   models: string[];
+  /** The gateway's https://<hostname>/v1, when exposed. */
+  gatewayExternalEndpoint?: string;
+  /** The database's LoadBalancer Service <name>-db-external, when exposed. */
+  databaseExternalService?: string;
   ready: boolean;
   synced: boolean;
   deleting: boolean;
@@ -143,6 +158,10 @@ export function summarizeStack(stack: GenAIStack, project?: Project): GenAIStack
     gatewayName: gateway ? status?.components?.gateway ?? spec.gateway?.ref ?? `${metadata.name}-gateway` : undefined,
     sharedGateway: Boolean(spec.gateway?.ref),
     models: (spec.gateway?.models ?? []).map(m => m.name),
+    gatewayExternalEndpoint:
+      status?.gatewayExternalEndpoint ??
+      (spec.gateway?.expose?.enabled && spec.gateway.expose.hostname ? `https://${spec.gateway.expose.hostname}/v1` : undefined),
+    databaseExternalService: spec.retrieval?.expose?.enabled ? `${metadata.name}-db-external` : undefined,
     ready: condition('Ready'),
     synced: condition('Synced'),
     deleting: Boolean(metadata.deletionTimestamp),

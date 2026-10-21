@@ -67,6 +67,14 @@ func assertGenAIStack(r *render) {
 		wantModels = 1
 	}
 	check(len(list(gw, "spec", "models")) == wantModels, "gateway: models %s", repr(get(gw, "spec", "models")))
+	if geo {
+		check(equal(get(db, "spec", "expose"), M{"enabled": true, "loadBalancerSourceRanges": L{"203.0.113.10/32"}}),
+			"database: retrieval.expose passed on: %s", repr(get(db, "spec", "expose")))
+		check(str(gw, "spec", "expose", "hostname") == "bot.example.com" && str(gw, "spec", "expose", "issuer") == "basis",
+			"gateway: gateway.expose passed on: %s", repr(get(gw, "spec", "expose")))
+	} else {
+		check(!has(db, "spec", "expose") && !has(gw, "spec", "expose"), "nothing exposed without spec.*.expose")
+	}
 
 	// --- what the stack composes is the stack's (the ownership policy reads this label)
 	for _, key := range []string{"database", "cache", "gateway"} {

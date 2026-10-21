@@ -1,4 +1,12 @@
-import { defaultGatewayForm, fromGateway, toGatewayEditPatch, toGatewaySpec, validateGateway } from './gatewayForm';
+import { providerKeySecretName } from '@internal/backstage-plugin-basis-common';
+import {
+  defaultGatewayForm,
+  fromGateway,
+  gatewayProviderKeys,
+  toGatewayEditPatch,
+  toGatewaySpec,
+  validateGateway,
+} from './gatewayForm';
 
 describe('gatewayForm', () => {
   const form = {
@@ -7,7 +15,16 @@ describe('gatewayForm', () => {
     namespace: 'demo',
     clients: ['apps', 'coding-agent'],
     models: [
-      { name: 'claude', endpoint: 'https://api.anthropic.com/v1', schema: 'Anthropic' as const, upstreamModel: '', secretName: 'anthropic', secretKey: 'apiKey' },
+      {
+        name: 'claude',
+        endpoint: 'https://api.anthropic.com/v1',
+        schema: 'Anthropic' as const,
+        upstreamModel: '',
+        keySource: 'secret' as const,
+        apiKey: '',
+        secretName: 'anthropic',
+        secretKey: 'apiKey',
+      },
     ],
   };
 
@@ -37,5 +54,50 @@ describe('gatewayForm', () => {
     expect(toGatewayEditPatch(original, { ...original, clients: ['apps', 'bot'] })).toEqual({
       clients: [{ name: 'apps' }, { name: 'bot' }],
     });
+  });
+
+  it('a key entered in the form goes to a Secret the spec references, never into the spec', () => {
+    const entered = { ...form, models: [{ ...form.models[0], keySource: 'enter' as const, apiKey: 'sk-secret' }] };
+    const spec = toGatewaySpec(entered) as { models: Array<Record<string, unknown>> };
+    expect(spec.models[0].apiKeySecretRef).toEqual({ name: providerKeySecretName('llm', 'claude'), key: 'apiKey' });
+    expect(JSON.stringify(spec)).not.toContain('sk-secret');
+    expect(gatewayProviderKeys(entered)).toEqual({ claude: 'sk-secret' });
+    expect(validateGateway({ ...entered, models: [{ ...entered.models[0], apiKey: '' }] }).modelRows?.[0]).toContain('API key');
+  });
+
+  it('a stored key shows as stored, a token typed as the key name is caught', () => {
+    const gw = fromGateway({
+      apiVersion: 'ai.cndev.nl/v1alpha1',
+      kind: 'ModelGateway',
+      metadata: { name: 'llm', namespace: 'demo' },
+      spec: { models: [{ name: 'claude', endpoint: 'https://x/v1', apiKeySecretRef: { name: providerKeySecretName('llm', 'claude') } }] },
+    });
+    expect(gw.models[0].keySource).toBe('stored');
+    expect(gatewayProviderKeys(gw)).toBeUndefined();
+    const typo = { ...form, models: [{ ...form.models[0], secretKey: `eyJhbGciOiJSUzUxMiIs.${'x'.repeat(80)}.u6zq` }] };
+    expect(validateGateway(typo).modelRows?.[0]).toContain('not the token');
+  });
+
+  it('exposes over HTTPS only with a hostname and client CIDRs, keeping what the form does not show', () => {
+    expect(toGatewaySpec(form).expose).toBeUndefined();
+    const on = { ...form, expose: { ...form.expose, enabled: true } };
+    expect(validateGateway(on).exposeHostname).toMatch(/DNS name/);
+    expect(validateGateway(on).exposeSourceRanges).toMatch(/CIDRs/);
+    const ok = { ...on, expose: { ...on.expose, hostname: 'llm.example.com', sourceRanges: '0.0.0.0/0' } };
+    expect(validateGateway(ok).exposeHostname).toBeUndefined();
+    expect(validateGateway(ok).exposeSourceRanges).toBeUndefined();
+    expect(toGatewaySpec(ok).expose).toEqual({ enabled: true, hostname: 'llm.example.com', loadBalancerSourceRanges: ['0.0.0.0/0'] });
+
+    const gw = fromGateway({
+      apiVersion: 'ai.cndev.nl/v1alpha1',
+      kind: 'ModelGateway',
+      metadata: { name: 'llm', namespace: 'demo' },
+      spec: { expose: { enabled: true, hostname: 'llm.example.com', issuer: 'acme', loadBalancerSourceRanges: ['10.0.0.0/8'] } },
+    });
+    expect(toGatewayEditPatch(gw, { ...gw, expose: { ...gw.expose, sourceRanges: '10.0.0.0/8, 192.0.2.0/24' } })).toEqual({
+      expose: { loadBalancerSourceRanges: ['10.0.0.0/8', '192.0.2.0/24'] },
+    });
+    // Turning it off removes it: back to the XRD default (internal).
+    expect(toGatewayEditPatch(gw, { ...gw, expose: { ...gw.expose, enabled: false } })).toEqual({ expose: null });
   });
 });

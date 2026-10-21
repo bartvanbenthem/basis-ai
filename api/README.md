@@ -374,6 +374,7 @@ See [`examples/modelgateway.yaml`](examples/modelgateway.yaml) and
 | `SecurityPolicy`, `ClientTrafficPolicy`, `Secret <name>-keys` (copy) | each site's location | Client API key auth on `Authorization: Bearer`, not forwarded; prompts up to 50Mi |
 | `AIGatewayRoute <name>` | each site's location | A rule per model on the request's `model` |
 | `Backend`, `AIServiceBackend`, `BackendTLSPolicy`, `BackendSecurityPolicy`, `Secret` per model | each site's location | The provider's endpoint (TLS for https), its key copied from the Project's Secret under `apiKey` |
+| `Certificate <name>-tls`, `Gateway <name>-external` + `EnvoyProxy <name>-external` | each site's location, with `spec.expose` | HTTPS only at `expose.hostname`, LoadBalancer Service `<name>-external` limited to `expose.loadBalancerSourceRanges`; certificate from the cert-manager ClusterIssuer `expose.issuer` (`basis`); the route and key auth cover both Gateways |
 
 It runs in the Project's protected location and, with `recovery.enabled`, a standby in the recovery
 location ([`apis/modelgateway/policies.yaml`](apis/modelgateway/policies.yaml) refuses either
@@ -446,6 +447,11 @@ protected location, and recovery a recovery location, both open to new workloads
 gateway carry the stack's label `ai.cndev.nl/genaistack`, and the same policies let only Crossplane
 (and the garbage collector) create, change or delete what carries it: change the stack instead.
 That includes the database's switchover, which goes through `recovery.activeSite`.
+
+**Outside the location.** `retrieval.expose` and `gateway.expose` go to the database's and the
+stack's own gateway's `spec.expose` as they are ([Connect from outside the cluster](#connect-from-outside-the-cluster)
+and the ModelGateway's `expose`); `status.gatewayExternalEndpoint` has the gateway's URL. The cache
+stays internal. The connection Secret keeps the in-cluster addresses.
 
 Needs, in each location: the Valkey operator and Envoy Gateway + Agent Router
 ([`deps/`](../deps/README.md#7-envoy-gateway--agent-router-locations-with-model-gateways)).

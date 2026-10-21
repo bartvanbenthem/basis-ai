@@ -82,6 +82,7 @@ import { BasisKubernetesService } from './service/BasisKubernetesService';
 import { MAX_KUBECONFIG_BYTES } from './service/kubeconfig';
 import { LocationService, withTimeout } from './service/LocationService';
 import { GatewayService } from './service/GatewayService';
+import { ProviderKeyService } from './service/ProviderKeyService';
 import { StackService } from './service/StackService';
 import { ValkeyService } from './service/ValkeyService';
 import { VolumeService } from './service/VolumeService';
@@ -103,6 +104,12 @@ const createSchema = z.object({
   owner: labelValue.optional(),
   dryRun: z.boolean().optional(),
 });
+
+/**
+ * Provider API keys entered in a form, by model name: written into Secrets
+ * the spec references, never into the spec (see ProviderKeyService).
+ */
+const providerKeys = z.record(z.string().min(1).max(16384)).optional();
 
 const updateSchema = z.object({
   spec: z.record(z.unknown()),
@@ -277,8 +284,13 @@ export async function createRouter(options: {
   valkey: ValkeyService;
   stacks: StackService;
   gateways: GatewayService;
+  providerKeys: ProviderKeyService;
 }): Promise<express.Router> {
   const { httpAuth, permissions, config, k8s, locations, buckets, volumes, audit, valkey, stacks, gateways } = options;
+  const keys = options.providerKeys;
+  /** A stack's or gateway's models, in its spec. */
+  const stackModels = (spec: Record<string, any> | undefined) => spec?.gateway?.models;
+  const gatewayModels = (spec: Record<string, any> | undefined) => spec?.models;
   const router = Router();
   // Uploaded kubeconfigs can carry a few certificates.
   router.use(express.json({ limit: '1mb' }));
@@ -721,24 +733,32 @@ export async function createRouter(options: {
 
   router.post('/stacks', async (req, res) => {
     await authorize(req, basisStackCreatePermission);
-    const parsed = createSchema.extend({ name: stackName }).safeParse(req.body);
+    const parsed = createSchema.extend({ name: stackName, providerKeys }).safeParse(req.body);
     if (!parsed.success) throw new InputError(parsed.error.toString());
-    const { owner, ...rest } = parsed.data;
+    const { owner, providerKeys: provided, ...rest } = parsed.data;
+    keys.check(rest.name, stackModels(rest.spec), provided);
     const created = await stacks.apply({
       ...rest,
       labels: owner ? { 'backstage.io/owner': owner } : undefined,
       createOnly: true,
     });
+    if (provided && !rest.dryRun) await keys.write(created, provided);
     res.status(parsed.data.dryRun ? 200 : 201).json(created);
   });
 
   router.patch('/stacks/:namespace/:name', async (req, res) => {
     await authorize(req, basisStackUpdatePermission);
     const p = params(req);
-    const parsed = patchSchema.safeParse(req.body);
+    const parsed = patchSchema.extend({ providerKeys }).safeParse(req.body);
     if (!parsed.success) throw new InputError(parsed.error.toString());
-    const { spec, owner, dryRun } = parsed.data;
-    res.json(await stacks.patch({ ...p, spec, labels: ownerLabel(owner), dryRun }));
+    const { spec, owner, dryRun, providerKeys: provided } = parsed.data;
+    if (provided) {
+      // The models after the patch: its own list (lists are replaced), else the stack's.
+      keys.check(p.name, stackModels(spec) ?? stackModels((await stacks.get(p.namespace, p.name)).spec), provided);
+    }
+    const patched = await stacks.patch({ ...p, spec, labels: ownerLabel(owner), dryRun });
+    if (provided && !dryRun) await keys.write(patched, provided);
+    res.json(patched);
   });
 
   router.delete('/stacks/:namespace/:name', async (req, res) => {
@@ -809,25 +829,31 @@ export async function createRouter(options: {
 
   router.post('/gateways', async (req, res) => {
     await authorize(req, basisGatewayCreatePermission);
-    const parsed = createSchema.safeParse(req.body);
+    const parsed = createSchema.extend({ providerKeys }).safeParse(req.body);
     if (!parsed.success) throw new InputError(parsed.error.toString());
-    const { owner, ...rest } = parsed.data;
+    const { owner, providerKeys: provided, ...rest } = parsed.data;
+    keys.check(rest.name, gatewayModels(rest.spec), provided);
     const created = await gateways.apply({
       ...rest,
       labels: owner ? { 'backstage.io/owner': owner } : undefined,
       createOnly: true,
     });
+    if (provided && !rest.dryRun) await keys.write(created, provided);
     res.status(parsed.data.dryRun ? 200 : 201).json(created);
   });
 
   router.patch('/gateways/:namespace/:name', async (req, res) => {
     await authorize(req, basisGatewayUpdatePermission);
     const p = params(req);
-    assertNotStackOwned('ModelGateway', await gateways.get(p.namespace, p.name));
-    const parsed = patchSchema.safeParse(req.body);
+    const existing = await gateways.get(p.namespace, p.name);
+    assertNotStackOwned('ModelGateway', existing);
+    const parsed = patchSchema.extend({ providerKeys }).safeParse(req.body);
     if (!parsed.success) throw new InputError(parsed.error.toString());
-    const { spec, owner, dryRun } = parsed.data;
-    res.json(await gateways.patch({ ...p, spec, labels: ownerLabel(owner), dryRun }));
+    const { spec, owner, dryRun, providerKeys: provided } = parsed.data;
+    keys.check(p.name, gatewayModels(spec) ?? gatewayModels(existing.spec), provided);
+    const patched = await gateways.patch({ ...p, spec, labels: ownerLabel(owner), dryRun });
+    if (provided && !dryRun) await keys.write(patched, provided);
+    res.json(patched);
   });
 
   router.delete('/gateways/:namespace/:name', async (req, res) => {

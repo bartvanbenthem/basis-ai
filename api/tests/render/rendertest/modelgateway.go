@@ -8,7 +8,8 @@ import (
 func assertModelGateway(r *render) {
 	kase, state, status, name, ns, composed := r.kase, r.state, r.status, r.name, r.ns, r.composed
 	check := r.check
-	geo := kase == "geo"
+	exposed := kase == "exposed"
+	geo := kase == "geo" || exposed
 
 	sites := []string{"protected"}
 	locations := map[string]string{"protected": "si-ske-demo", "recovery": "onprem-ams"}
@@ -58,6 +59,21 @@ func assertModelGateway(r *render) {
 		}
 		check(equal(get(ep, "spec", "provider", "kubernetes", "envoyDeployment", "replicas"), replicas), "%s: gateway replicas", s)
 		check(str(r.live(s+"-gateway"), "spec", "gatewayClassName") == "basis-ai", "%s: gatewayClassName", s)
+		if exposed {
+			check(equal(get(r.live(s+"-external-envoyproxy"), "spec", "provider", "kubernetes", "envoyService"),
+				M{"name": name + "-external", "type": "LoadBalancer", "loadBalancerSourceRanges": L{"203.0.113.0/24"}}),
+				"%s: the external Gateway on a LoadBalancer limited to the source ranges", s)
+			cert := r.live(s + "-certificate")
+			check(equal(get(cert, "spec", "dnsNames"), L{"llm.example.com"}) && str(cert, "spec", "issuerRef", "name") == "basis" &&
+				str(cert, "spec", "secretName") == name+"-tls", "%s: certificate %s", s, repr(get(cert, "spec")))
+			listeners := list(r.live(s+"-external-gateway"), "spec", "listeners")
+			check(len(listeners) == 1 && str(listeners[0], "protocol") == "HTTPS" && equal(get(listeners[0], "port"), 443),
+				"%s: the external Gateway is HTTPS only: %s", s, repr(listeners))
+			check(len(list(r.live(s+"-route"), "spec", "parentRefs")) == 2 && len(list(r.live(s+"-securitypolicy"), "spec", "targetRefs")) == 2,
+				"%s: route and key auth cover both Gateways", s)
+		} else {
+			check(r.live(s+"-external-gateway") == nil && r.live(s+"-certificate") == nil, "%s: external Gateway without spec.expose", s)
+		}
 		sp := r.live(s + "-securitypolicy")
 		check(equal(get(sp, "spec", "apiKeyAuth", "credentialRefs"), L{M{"name": name + "-keys"}}) &&
 			equal(get(sp, "spec", "apiKeyAuth", "sanitize"), true), "%s: client API key auth", s)
@@ -81,5 +97,10 @@ func assertModelGateway(r *render) {
 		check(str(policy, "spec", "type") == "AnthropicAPIKey", "Anthropic models use AnthropicAPIKey: %s", repr(policy))
 	}
 	check(len(list(status, "sites")) == len(sites), "status.sites %s", repr(get(status, "sites")))
+	wantExternal := ""
+	if exposed {
+		wantExternal = "https://llm.example.com/v1"
+	}
+	check(str(status, "externalEndpoint") == wantExternal, "status.externalEndpoint %q", str(status, "externalEndpoint"))
 	check(str(r.conds["GatewayReady"], "type") == "GatewayReady", "GatewayReady condition missing")
 }

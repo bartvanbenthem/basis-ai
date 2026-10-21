@@ -16,6 +16,15 @@
 //	securitypolicy,    (model-<hash>-{backend,aiservicebackend,tls,apikey,
 //	route, model-...   backendsecurity})
 //
+// With spec.expose, next to those in each site:
+//
+//	certificate,       a cert-manager Certificate <name>-tls for the hostname
+//	external-envoyproxy, from the ClusterIssuer spec.expose.issuer, and a Gateway
+//	external-gateway   <name>-external of its own: HTTPS only, on a LoadBalancer
+//	                   Service <name>-external limited to the source ranges. The
+//	                   route and the client key auth cover both Gateways; the
+//	                   internal one stays plain HTTP, in-cluster only.
+//
 // The active site (spec.activeSite) gets spec.replicas, the standby
 // spec.recovery.replicas.
 package modelgateway
@@ -76,17 +85,21 @@ type SiteStatus struct {
 	Location string `json:"location"`
 	Active   bool   `json:"active"`
 	Replicas int    `json:"replicas"`
+	// Address is the external LoadBalancer's, once it has one.
+	Address string `json:"address,omitempty"`
 }
 
 type Status struct {
-	Ready      bool         `json:"ready"`
-	Message    string       `json:"message"`
-	ActiveSite string       `json:"activeSite"`
-	Models     int          `json:"models"`
-	Clients    int          `json:"clients"`
-	Endpoint   string       `json:"endpoint"`
-	KeysSecret string       `json:"keysSecret"`
-	Sites      []SiteStatus `json:"sites"`
+	Ready      bool   `json:"ready"`
+	Message    string `json:"message"`
+	ActiveSite string `json:"activeSite"`
+	Models     int    `json:"models"`
+	Clients    int    `json:"clients"`
+	Endpoint   string `json:"endpoint"`
+	// ExternalEndpoint is the base URL from outside the location (spec.expose).
+	ExternalEndpoint string       `json:"externalEndpoint,omitempty"`
+	KeysSecret       string       `json:"keysSecret"`
+	Sites            []SiteStatus `json:"sites"`
 }
 
 type Output struct {
@@ -114,6 +127,9 @@ var NewKey = func() string {
 func Endpoint(name, namespace string) string {
 	return fmt.Sprintf("http://%s.%s.svc/v1", name, namespace)
 }
+
+// ExternalEndpoint is the base URL from outside the location at hostname.
+func ExternalEndpoint(hostname string) string { return "https://" + hostname + "/v1" }
 
 // KeysSecret is the Secret with the clients' API keys.
 func KeysSecret(name string) string { return name + "-keys" }
@@ -176,7 +192,10 @@ func Compose(in Input) (*Output, error) {
 
 	status := Status{ActiveSite: active, Models: len(spec.Models), Clients: len(keys),
 		Endpoint: Endpoint(c.name, c.ns), KeysSecret: KeysSecret(c.name), Sites: []SiteStatus{}}
-	var problems []string
+	if spec.exposed() {
+		status.ExternalEndpoint = ExternalEndpoint(spec.Expose.Hostname)
+	}
+	var problems, external []string
 	allReady := out.Composed["keys"].Ready
 	for _, s := range sites {
 		replicas := spec.standbyReplicas()
@@ -184,8 +203,9 @@ func Compose(in Input) (*Output, error) {
 			replicas = spec.replicas()
 		}
 		loc := location(s)
-		status.Sites = append(status.Sites, SiteStatus{Site: s, Location: loc, Active: s == active, Replicas: replicas})
+		ss := SiteStatus{Site: s, Location: loc, Active: s == active, Replicas: replicas}
 		if loc == "" {
+			status.Sites = append(status.Sites, ss)
 			problems = append(problems, fmt.Sprintf("Project %s has no %s location (spec.locations.%s)", c.ns, s, s))
 			allReady = false
 			continue
@@ -194,13 +214,33 @@ func Compose(in Input) (*Output, error) {
 		if err != nil {
 			return nil, err
 		}
+		internalReady := true
 		for key, o := range objects {
 			k := s + "-" + key
 			w := c.wrap(k, loc, o.manifest, o.copyFrom)
 			w.Ready = o.ready(c.observed[k])
 			out.Composed[k] = w
 			allReady = allReady && w.Ready
+			if !strings.HasPrefix(key, "external-") && key != "certificate" {
+				internalReady = internalReady && w.Ready
+			}
 		}
+		if spec.exposed() {
+			addrs, _ := dig(live(c.observed[s+"-external-gateway"]), "status", "addresses").([]any)
+			if len(addrs) > 0 {
+				ss.Address, _ = dig(addrs[0], "value").(string)
+			}
+			// Only once Agent Router runs: then what's missing is outside it.
+			if internalReady {
+				if !liveReady(c.observed[s+"-certificate"], "Ready") {
+					external = append(external, fmt.Sprintf("certificate %s-tls in %s (cert-manager ClusterIssuer %s)", c.name, loc, spec.Expose.issuer()))
+				}
+				if ss.Address == "" {
+					external = append(external, fmt.Sprintf("a LoadBalancer address in %s", loc))
+				}
+			}
+		}
+		status.Sites = append(status.Sites, ss)
 	}
 
 	status.Ready = allReady
@@ -209,6 +249,9 @@ func Compose(in Input) (*Output, error) {
 	case len(problems) > 0:
 		status.Message = strings.Join(problems, "; ")
 		cond.Reason = "Waiting"
+	case !allReady && len(external) > 0:
+		status.Message = "Waiting for the external endpoint: " + strings.Join(external, ", ")
+		cond.Reason = "Creating"
 	case !allReady:
 		status.Message = "Waiting for Agent Router in the location(s)"
 		cond.Reason = "Creating"
@@ -234,12 +277,18 @@ type copySpec struct {
 	field, toField string // "" copies data and type
 }
 
-func reported(o Object) bool {
-	m, _ := dig(o, "status", "atProvider", "manifest").(Object)
-	return len(m) > 0
-}
+func reported(o Object) bool { return len(live(o)) > 0 }
 
 func objectReady(o Object) bool { return conditionTrue(o, "Ready") }
+
+// live is the manifest as the location reports it.
+func live(o Object) Object {
+	m, _ := dig(o, "status", "atProvider", "manifest").(Object)
+	return m
+}
+
+// liveReady: the condition t of the object in the location is true.
+func liveReady(o Object, t string) bool { return conditionTrue(live(o), t) }
 
 // siteObjects are what runs in a site's location, by composition resource
 // name (without the site prefix).
@@ -254,10 +303,8 @@ func (c *composition) siteObjects(replicas int) (map[string]object, error) {
 			"envoyDeployment": Object{"replicas": replicas},
 		}}},
 	}}
-	out["gateway"] = object{ready: func(o Object) bool {
-		live, _ := dig(o, "status", "atProvider", "manifest").(Object)
-		return conditionTrue(live, "Programmed")
-	}, manifest: Object{
+	programmed := func(o Object) bool { return liveReady(o, "Programmed") }
+	out["gateway"] = object{ready: programmed, manifest: Object{
 		"apiVersion": "gateway.networking.k8s.io/v1", "kind": "Gateway", "metadata": c.meta(c.name),
 		"spec": Object{
 			"gatewayClassName": GatewayClass,
@@ -266,18 +313,53 @@ func (c *composition) siteObjects(replicas int) (map[string]object, error) {
 				"group": "gateway.envoyproxy.io", "kind": "EnvoyProxy", "name": c.name}},
 		},
 	}}
-	gatewayRef := Object{"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": c.name}
+	gatewayRefs := []any{Object{"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": c.name}}
+	if e := spec.Expose; spec.exposed() {
+		// A Gateway of its own: the LoadBalancer carries the HTTPS listener
+		// only, never the internal plain HTTP one.
+		external := c.name + "-external"
+		svc := Object{"name": external, "type": "LoadBalancer", "loadBalancerSourceRanges": e.LoadBalancerSourceRanges}
+		if len(e.Annotations) > 0 {
+			svc["annotations"] = e.Annotations
+		}
+		out["external-envoyproxy"] = object{ready: reported, manifest: Object{
+			"apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "EnvoyProxy", "metadata": c.meta(external),
+			"spec": Object{"provider": Object{"type": "Kubernetes", "kubernetes": Object{
+				"envoyService":    svc,
+				"envoyDeployment": Object{"replicas": replicas},
+			}}},
+		}}
+		out["certificate"] = object{ready: func(o Object) bool { return liveReady(o, "Ready") }, manifest: Object{
+			"apiVersion": "cert-manager.io/v1", "kind": "Certificate", "metadata": c.meta(c.name + "-tls"),
+			"spec": Object{
+				"secretName": c.name + "-tls",
+				"dnsNames":   []any{e.Hostname},
+				"issuerRef":  Object{"group": "cert-manager.io", "kind": "ClusterIssuer", "name": e.issuer()},
+			},
+		}}
+		out["external-gateway"] = object{ready: programmed, manifest: Object{
+			"apiVersion": "gateway.networking.k8s.io/v1", "kind": "Gateway", "metadata": c.meta(external),
+			"spec": Object{
+				"gatewayClassName": GatewayClass,
+				"listeners": []any{Object{"name": "https", "protocol": "HTTPS", "port": 443, "hostname": e.Hostname,
+					"tls": Object{"mode": "Terminate", "certificateRefs": []any{Object{"kind": "Secret", "name": c.name + "-tls"}}}}},
+				"infrastructure": Object{"parametersRef": Object{
+					"group": "gateway.envoyproxy.io", "kind": "EnvoyProxy", "name": external}},
+			},
+		}}
+		gatewayRefs = append(gatewayRefs, Object{"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": external})
+	}
 	out["clienttraffic"] = object{ready: reported, manifest: Object{
 		"apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "ClientTrafficPolicy", "metadata": c.meta(c.name),
 		// Prompts with context can be large.
-		"spec": Object{"targetRefs": []any{gatewayRef}, "connection": Object{"bufferLimit": "50Mi"}},
+		"spec": Object{"targetRefs": gatewayRefs, "connection": Object{"bufferLimit": "50Mi"}},
 	}}
 	out["keys"] = object{ready: objectReady, copyFrom: &copySpec{from: KeysSecret(c.name)},
 		manifest: Object{"apiVersion": "v1", "kind": "Secret", "metadata": c.meta(KeysSecret(c.name))}}
 	out["securitypolicy"] = object{ready: reported, manifest: Object{
 		"apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "SecurityPolicy", "metadata": c.meta(c.name),
 		"spec": Object{
-			"targetRefs": []any{gatewayRef},
+			"targetRefs": gatewayRefs,
 			// OpenAI clients send Authorization: Bearer <key>; it isn't forwarded.
 			"apiKeyAuth": Object{
 				"credentialRefs": []any{Object{"name": KeysSecret(c.name)}},
@@ -354,7 +436,7 @@ func (c *composition) siteObjects(replicas int) (map[string]object, error) {
 	if len(rules) > 0 {
 		out["route"] = object{ready: reported, manifest: Object{
 			"apiVersion": "aigateway.envoyproxy.io/v1beta1", "kind": "AIGatewayRoute", "metadata": c.meta(c.name),
-			"spec": Object{"parentRefs": []any{gatewayRef}, "rules": rules},
+			"spec": Object{"parentRefs": gatewayRefs, "rules": rules},
 		}}
 	}
 	return out, nil

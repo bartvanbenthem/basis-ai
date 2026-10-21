@@ -216,8 +216,18 @@ func (c *composition) member(m *member, members []*member, distributed bool) (ma
 		}
 		cs.Plugins = []ClusterPlugin{p}
 	}
-	out["cluster"] = emitted{ready: m.status.ready(), manifest: Cluster{APIVersion: "postgresql.cnpg.io/v1", Kind: "Cluster",
-		Metadata: meta(name), Spec: cs}}
+	// A new Cluster waits for the ObjectStores its plugin reads: the Barman
+	// Cloud plugin's pre-reconcile hook stops the Cluster's reconcile when it
+	// finds none, and nothing wakes it again, so a Cluster created in the same
+	// apply as its ObjectStore can stay unbootstrapped for good. One that was
+	// composed before is always kept: its Object on the control plane counts,
+	// not what the location reports (which is gone while it's unreachable),
+	// or the Cluster would be deleted.
+	storesReady := (!backup.Enabled || exists("objectstore")) && (m.restore == nil || exists("restore-objectstore"))
+	if _, composed := c.observed[m.prefix+"cluster"]; storesReady || composed {
+		out["cluster"] = emitted{ready: m.status.ready(), manifest: Cluster{APIVersion: "postgresql.cnpg.io/v1", Kind: "Cluster",
+			Metadata: meta(name), Spec: cs}}
+	}
 
 	// ================= Backups: Barman Cloud ObjectStore + ScheduledBackup =================
 	if backup.Enabled {

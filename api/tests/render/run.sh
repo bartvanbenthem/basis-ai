@@ -5,7 +5,9 @@
 #     function-basis (../../function) builds into a local image.
 #  2. `crossplane render` (that image for every API, XRD defaults
 #     applied via --xrd) for every <api>/xr/<case>.yaml, first with nothing
-#     observed, then with <api>/observed/<case>.yaml if present.
+#     observed, then with the ObjectStores it composed reported by their
+#     locations (what a new CNPG Cluster waits for), then with
+#     <api>/observed/<case>.yaml if present.
 #     <api>/required/<case>.yaml (else <api>/required/default.yaml), if
 #     present, mocks the resources the composition requests (the
 #     project-defaults EnvironmentConfig, Locations, the Project), plus
@@ -100,11 +102,17 @@ for api in "${APIS[@]}"; do
       for f in "${mocks[@]}"; do cat "${f}"; echo "---"; done >"${OUT}/required-${api}-${case}.yaml"
       required=(--required-resources="${OUT}/required-${api}-${case}.yaml")
     fi
-    for state in empty observed; do
+    for state in empty stores observed; do
       args=()
       if [[ "${state}" == "observed" ]]; then
         [[ -f "${dir}/observed/${case}.yaml" ]] || continue
         args=(--observed-resources="${dir}/observed/${case}.yaml")
+      elif [[ "${state}" == "stores" ]]; then
+        # The empty render's ObjectStores, as their locations report them: a
+        # new Cluster waits for them (none composed, no pass).
+        "${RT}" stores "${OUT}/${api}-${case}-empty.yaml" "${OUT}/stores-${api}-${case}.yaml"
+        [[ -s "${OUT}/stores-${api}-${case}.yaml" ]] || continue
+        args=(--observed-resources="${OUT}/stores-${api}-${case}.yaml")
       fi
       out="${OUT}/${api}-${case}-${state}.yaml"
       echo "=== ${api}/${case} (${state}): render"

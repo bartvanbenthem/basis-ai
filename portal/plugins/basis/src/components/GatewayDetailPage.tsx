@@ -122,7 +122,14 @@ const KeysPanel = ({ summary }: { summary: ModelGatewaySummary }) => {
     <Panel title="Clients">
       <Flex direction="column" gap="3">
         <Text variant="body-small" color="secondary">
-          In the project's location, any OpenAI SDK: <Mono>OPENAI_BASE_URL={summary.endpoint}</Mono> and as{' '}
+          In the project's location, any OpenAI SDK: <Mono>OPENAI_BASE_URL={summary.endpoint}</Mono>
+          {summary.externalEndpoint && (
+            <>
+              {' '}
+              (elsewhere <Mono>{summary.externalEndpoint}</Mono>)
+            </>
+          )}{' '}
+          and as{' '}
           <Mono>OPENAI_API_KEY</Mono> the client's key from Secret{' '}
           <Mono>
             {summary.namespace}/{summary.keysSecret}
@@ -179,6 +186,10 @@ export const GatewayDetails = ({
             rows={[
               ['Project', summary.project ? <Link href={projectLink?.({ name: summary.project })}>{summary.project}</Link> : ns],
               ['Endpoint (OPENAI_BASE_URL)', <Mono key="ep">{summary.endpoint}</Mono>],
+              [
+                'External endpoint',
+                summary.externalEndpoint ? <Mono key="ext">{summary.externalEndpoint}</Mono> : 'internal only (spec.expose is off)',
+              ],
               ['Sites', summary.recovery ? `protected + recovery (standby); active: ${summary.activeSite}` : 'protected only'],
               ['Owner', summary.owner ?? '-'],
               ['Created', summary.createdAt ? `${new Date(summary.createdAt).toLocaleString()} (${age(summary.createdAt)} ago)` : '-'],
@@ -210,6 +221,20 @@ export const GatewayDetails = ({
             { id: 'site', label: 'Site', isRowHeader: true, cell: s => <CellText title={s.site} description={s.active ? 'active' : 'standby'} /> },
             { id: 'location', label: 'Location', cell: s => <CellText title={s.location || '-'} /> },
             { id: 'replicas', label: 'Replicas', cell: s => <CellText title={s.replicas === undefined ? '-' : String(s.replicas)} /> },
+            ...(summary.externalEndpoint
+              ? [
+                  {
+                    id: 'address',
+                    label: 'Load balancer',
+                    cell: (s: GatewaySiteStatus) => (
+                      <CellText
+                        title={s.address ?? 'waiting for an address'}
+                        description={s.active ? 'point the hostname here' : undefined}
+                      />
+                    ),
+                  },
+                ]
+              : []),
           ]}
         />
       </Panel>

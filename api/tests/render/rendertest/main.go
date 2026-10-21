@@ -41,7 +41,8 @@ var (
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage: rendertest crds <in.yaml> <out.yaml>
        rendertest objects <render.yaml> <out.yaml>
-       rendertest assert <api> <case> <empty|observed> <render.yaml> [dashboard.json]`)
+       rendertest stores <render.yaml> <observed-out.yaml>
+       rendertest assert <api> <case> <empty|observed|stores> <render.yaml> [dashboard.json]`)
 	os.Exit(2)
 }
 
@@ -83,6 +84,20 @@ func main() {
 			}
 			return out
 		}, func() []M { return manifests })
+	case "stores":
+		// The observed state in which every composed ObjectStore is reported
+		// by its location: what a Cluster waits for (see postgrescluster.go).
+		if len(args) != 2 {
+			usage()
+		}
+		err = filterDocs(args[0], args[1], func(d M) []M {
+			m := mp(d, "spec", "forProvider", "manifest")
+			if str(d, "kind") != "Object" || str(m, "kind") != "ObjectStore" {
+				return nil
+			}
+			return []M{{"apiVersion": str(d, "apiVersion"), "kind": "Object", "metadata": d["metadata"],
+				"spec": d["spec"], "status": M{"atProvider": M{"manifest": m}}}}
+		})
 	case "assert":
 		if len(args) < 4 {
 			usage()
@@ -110,6 +125,10 @@ func filterDocs(in, out string, keep func(M) []M, tail ...func() []M) error {
 	}
 	for _, t := range tail {
 		result = append(result, t()...)
+	}
+	if len(result) == 0 {
+		// An encoder that wrote nothing can't be closed: an empty file.
+		return os.WriteFile(out, nil, 0o644)
 	}
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)

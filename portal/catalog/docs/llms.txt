@@ -22,20 +22,25 @@
 - GenAIStack (`ai.cndev.nl/v1alpha1`, short `gstack`): RAG database + cache + model gateway +
   wiring. Apps mount Secret `<name>-connection` (in the location): DATABASE_URL, VALKEY_URL,
   OPENAI_BASE_URL, OPENAI_API_KEY, SITE, ACTIVE.
-  spec: retrieval {size, instances=3, storageSize=20Gi, backup, extensions=[vector]};
+  spec: retrieval {size, instances=3, storageSize=20Gi, backup, extensions=[vector],
+  expose {enabled, loadBalancerSourceRanges (required when enabled)}};
   cache {enabled=true, mode=semantic|exact, memory=1Gi, cpu, evictionPolicy};
-  gateway {enabled=true, models[], replicas=2, ref (shared ModelGateway), client};
+  gateway {enabled=true, models[], replicas=2, ref (shared ModelGateway), client,
+  expose (own gateway only; as ModelGateway's)}; the cache is always internal;
   recovery {enabled=false, activeSite=protected|recovery, promotion=Switchover|Failover,
   cacheMemory=512Mi, gatewayReplicas=1}; deletionProtection=true.
 - ModelGateway (`ai.cndev.nl/v1alpha1`, short `mgw`): OpenAI-compatible endpoint
   `http://<name>.<project>.svc/v1` to hosted and self-hosted models, a key per client in Secret
   `<name>-keys`. spec: models[] {name, endpoint, schema=OpenAI|Anthropic, upstreamModel,
   apiKeySecretRef {name, key=apiKey}}; clients[] {name} = [apps]; replicas=2;
-  recovery {enabled, replicas=1}; activeSite.
+  recovery {enabled, replicas=1}; activeSite; expose {enabled, hostname, loadBalancerSourceRanges
+  (both required when enabled), issuer=basis, annotations}: https://<hostname>/v1 outside the
+  location, on a LoadBalancer with a cert-manager certificate.
 - PostgresCluster (`postgres.cndev.nl/v1alpha1`, short `pgc`): highly available PostgreSQL on
   CloudNativePG. spec: size (catalog), instances, storage {size}, profile (vector = pgvector,
   VectorChord, pg_search; needs postgresVersion 18), postgresVersion, database {extensions},
-  backup {enabled}, geoReplication {enabled, primarySite, promotion}, pooler, roles.
+  backup {enabled}, geoReplication {enabled, primarySite, promotion}, pooler, roles,
+  expose {enabled, loadBalancerSourceRanges}.
 - ValkeyCache (`cache.cndev.nl/v1alpha1`, short `vcache`): exact or semantic cache.
   spec: mode=exact|semantic (fixed), site=protected|recovery (fixed), shards=1, replicas=1,
   resources {cpu, memory}, maxMemoryPercent=75, evictionPolicy=allkeys-lru.

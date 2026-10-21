@@ -31,6 +31,16 @@ export interface GatewayModel {
   apiKeySecretRef?: { name: string; key?: string };
 }
 
+/** spec.expose: HTTPS at hostname on a LoadBalancer of its own, for clients outside the location. */
+export interface GatewayExpose {
+  enabled?: boolean;
+  hostname?: string;
+  /** cert-manager ClusterIssuer in each location; basis by default. */
+  issuer?: string;
+  annotations?: Record<string, string>;
+  loadBalancerSourceRanges?: string[];
+}
+
 export interface ModelGatewaySpec {
   replicas?: number;
   recovery?: { enabled?: boolean; replicas?: number };
@@ -38,6 +48,7 @@ export interface ModelGatewaySpec {
   /** Each client gets an API key of its own in Secret <name>-keys. */
   clients?: Array<{ name: string }>;
   models?: GatewayModel[];
+  expose?: GatewayExpose;
 }
 
 export interface GatewaySiteStatus {
@@ -45,6 +56,8 @@ export interface GatewaySiteStatus {
   location: string;
   active: boolean;
   replicas?: number;
+  /** The site's external LoadBalancer address (spec.expose), once it has one. */
+  address?: string;
 }
 
 export interface ModelGateway {
@@ -65,6 +78,7 @@ export interface ModelGateway {
     models?: number;
     clients?: number;
     endpoint?: string;
+    externalEndpoint?: string;
     keysSecret?: string;
     sites?: GatewaySiteStatus[];
     conditions?: Condition[];
@@ -81,6 +95,8 @@ export interface ModelGatewaySummary {
   clients: string[];
   /** OPENAI_BASE_URL for clients in each site's location. */
   endpoint: string;
+  /** https://<hostname>/v1 for clients outside the location, when exposed. */
+  externalEndpoint?: string;
   keysSecret: string;
   ready: boolean;
   synced: boolean;
@@ -121,6 +137,8 @@ export function summarizeGateway(gw: ModelGateway, project?: Project): ModelGate
     models: (spec.models ?? []).map(m => m.name),
     clients: (spec.clients ?? [{ name: 'apps' }]).map(c => c.name),
     endpoint: status?.endpoint ?? gatewayEndpoint(metadata.name, metadata.namespace),
+    externalEndpoint:
+      status?.externalEndpoint ?? (spec.expose?.enabled && spec.expose.hostname ? `https://${spec.expose.hostname}/v1` : undefined),
     keysSecret: status?.keysSecret ?? `${metadata.name}-keys`,
     ready: condition('Ready'),
     synced: condition('Synced'),
@@ -132,3 +150,28 @@ export function summarizeGateway(gw: ModelGateway, project?: Project): ModelGate
     createdAt: metadata.creationTimestamp,
   };
 }
+
+/**
+ * The Secret the portal writes a provider API key into, when it's entered in
+ * a form: in the project namespace, named after the stack or gateway and the
+ * model, the key under "apiKey". Deterministic, so the form can show the
+ * reference it sends before the Secret exists.
+ */
+export function providerKeySecretName(owner: string, model: string): string {
+  const slug = model
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+    .replace(/-+$/, '');
+  // FNV-1a: tells models apart whose names slug the same (Gpt.4 / gpt-4).
+  let h = 0x811c9dc5;
+  for (const c of model) {
+    h ^= c.charCodeAt(0);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `${owner}-key-${slug ? `${slug}-` : ''}${h.toString(16).padStart(8, '0')}`;
+}
+
+/** The key in a provider key Secret the portal writes. */
+export const PROVIDER_KEY_FIELD = 'apiKey';

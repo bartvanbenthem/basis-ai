@@ -1,0 +1,40 @@
+# The ClusterIssuer exposed ModelGateways get their certificates from
+# (spec.expose.issuer, default basis). One per location, needs cert-manager.
+#
+# This one is a private CA, for a demo or an internal network: clients need
+# its certificate (Secret basis-ca in cert-manager, ca.crt) in their trust
+# store. For clients on the internet replace it with an ACME ClusterIssuer
+# named basis; with recovery, use the DNS-01 solver, so the standby site can
+# get its certificate while the hostname points at the active one.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: basis-selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: basis-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: basis-ca
+  secretName: basis-ca
+  duration: 87600h # 10 years
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: basis-selfsigned
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: basis
+spec:
+  ca:
+    secretName: basis-ca

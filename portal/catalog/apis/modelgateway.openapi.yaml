@@ -110,6 +110,40 @@ components:
                     type: object
                   type: array
               type: object
+            expose:
+              default: {}
+              description: |-
+                The gateway for clients outside its location too, at https://<hostname>/v1: a Gateway <name>-external of its own on a LoadBalancer Service, HTTPS only, with a certificate from cert-manager. The internal endpoint stays as it is. Clients still need a key (spec.clients); the source ranges limit who reaches it at all. With recovery each site gets a LoadBalancer of its own: point the hostname's DNS at the active site's (status.sites[].address).
+
+                Rules:
+                - expose.enabled needs a hostname (the certificate's) and loadBalancerSourceRanges (the clients' CIDRs; 0.0.0.0/0 for everyone)
+              properties:
+                annotations:
+                  additionalProperties:
+                    type: string
+                  description: On the LoadBalancer Service, e.g. for the cloud's load balancer settings.
+                  type: object
+                enabled:
+                  default: false
+                  type: boolean
+                hostname:
+                  description: The DNS name clients use, e.g. llm.example.com; the certificate is for it. Its DNS record is yours.
+                  maxLength: 253
+                  pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)+$
+                  type: string
+                issuer:
+                  default: basis
+                  description: The cert-manager ClusterIssuer in each location that issues the certificate (the platform team sets it up; deps/README.md). With recovery, one that can issue in a site the hostname doesn't point at (ACME DNS-01, a private CA).
+                  pattern: ^[a-z0-9]([-.a-z0-9]{0,251}[a-z0-9])?$
+                  type: string
+                loadBalancerSourceRanges:
+                  description: CIDRs allowed to connect, e.g. [203.0.113.0/24]. Required when enabled.
+                  items:
+                    pattern: ^[0-9a-fA-F:.]+/[0-9]{1,3}$
+                    type: string
+                  maxItems: 50
+                  type: array
+              type: object
             models:
               items:
                 properties:
@@ -213,6 +247,9 @@ components:
             endpoint:
               description: Base URL for OpenAI clients in each site's location (OPENAI_BASE_URL).
               type: string
+            externalEndpoint:
+              description: Base URL for clients outside the location (spec.expose).
+              type: string
             keysSecret:
               description: Secret in this namespace with an API key per client.
               type: string
@@ -227,6 +264,9 @@ components:
                 properties:
                   active:
                     type: boolean
+                  address:
+                    description: The site's external LoadBalancer address (spec.expose), once it has one.
+                    type: string
                   location:
                     type: string
                   replicas:

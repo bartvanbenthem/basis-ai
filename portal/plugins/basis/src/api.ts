@@ -46,6 +46,8 @@ export interface CreateClusterRequest {
   namespace: string;
   owner?: string;
   spec: Record<string, unknown>;
+  /** Stacks and gateways: provider API keys by model name, written into the Secrets the spec references. */
+  providerKeys?: Record<string, string>;
   /** Validate against the XRD (server-side dry run) without creating anything. */
   dryRun?: boolean;
 }
@@ -102,6 +104,8 @@ export interface LocationUpdate {
 export interface PatchRequest {
   /** JSON merge patch of the spec: only these fields change, null removes one. */
   spec: Record<string, unknown>;
+  /** Stacks and gateways: provider API keys by model name, written into the Secrets the spec references. */
+  providerKeys?: Record<string, string>;
   /** Validate the change (server-side dry run) without applying it. */
   dryRun?: boolean;
 }

@@ -11,8 +11,9 @@ import {
   STACK_KIND,
   STACK_VERSION,
 } from '@internal/backstage-plugin-basis-common';
+import { defaultExpose, type ExposeFields, fromExpose, toExpose, validateExpose } from './expose';
 import { mergePatch } from './form';
-import { emptyModel, fromModel, type ModelRow, toModels, validateModels } from './ModelFields';
+import { emptyModel, fromModel, type ModelRow, providerKeys, toModels, validateModels } from './ModelFields';
 
 export { emptyModel, type ModelRow };
 
@@ -29,6 +30,8 @@ export interface StackForm {
   storageSize: string;
   backup: boolean;
   extensions: string[];
+  /** retrieval.expose: the database on a LoadBalancer (no hostname). */
+  dbExpose: ExposeFields;
   cacheEnabled: boolean;
   cacheMode: CacheMode;
   cacheMemory: string;
@@ -39,6 +42,8 @@ export interface StackForm {
   gatewayClient: string;
   gatewayReplicas: number;
   models: ModelRow[];
+  /** gateway.expose: the stack's own gateway over HTTPS. */
+  gatewayExpose: ExposeFields;
 }
 
 export const defaultStackForm = (): StackForm => ({
@@ -53,6 +58,7 @@ export const defaultStackForm = (): StackForm => ({
   storageSize: '20Gi',
   backup: false,
   extensions: ['vector'],
+  dbExpose: defaultExpose(),
   cacheEnabled: true,
   cacheMode: 'semantic',
   cacheMemory: '1Gi',
@@ -61,6 +67,7 @@ export const defaultStackForm = (): StackForm => ({
   gatewayClient: '',
   gatewayReplicas: 2,
   models: [emptyModel()],
+  gatewayExpose: defaultExpose(),
 });
 
 export function fromStack(stack: GenAIStack): StackForm {
@@ -78,6 +85,7 @@ export function fromStack(stack: GenAIStack): StackForm {
     storageSize: spec.retrieval?.storageSize ?? d.storageSize,
     backup: Boolean(spec.retrieval?.backup),
     extensions: spec.retrieval?.extensions ?? d.extensions,
+    dbExpose: fromExpose(spec.retrieval?.expose),
     cacheEnabled: spec.cache?.enabled ?? true,
     cacheMode: spec.cache?.mode ?? d.cacheMode,
     cacheMemory: spec.cache?.memory ?? d.cacheMemory,
@@ -85,7 +93,8 @@ export function fromStack(stack: GenAIStack): StackForm {
     gatewayRef: spec.gateway?.ref ?? '',
     gatewayClient: spec.gateway?.client ?? '',
     gatewayReplicas: spec.gateway?.replicas ?? d.gatewayReplicas,
-    models: (spec.gateway?.models ?? []).map(fromModel),
+    models: (spec.gateway?.models ?? []).map(m => fromModel(m, metadata.name)),
+    gatewayExpose: fromExpose(spec.gateway?.expose),
   };
 }
 
@@ -93,7 +102,12 @@ const NAME = /^[a-z]([-a-z0-9]{0,26}[a-z0-9])?$/;
 const QUANTITY = /^[0-9]+(Mi|Gi)$/;
 const CLIENT = /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/;
 
-export type StackErrors = Partial<Record<keyof StackForm, string>> & { modelRows?: Record<number, string> };
+export type StackErrors = Partial<Record<Exclude<keyof StackForm, 'dbExpose' | 'gatewayExpose'>, string>> & {
+  modelRows?: Record<number, string>;
+  dbExposeSourceRanges?: string;
+  gatewayExposeHostname?: string;
+  gatewayExposeSourceRanges?: string;
+};
 
 /** Field-level errors shown inline; mirrors the XRD's rules. */
 export function validateStack(f: StackForm): StackErrors {
@@ -109,7 +123,12 @@ export function validateStack(f: StackForm): StackErrors {
   } else if (f.gatewayEnabled) {
     const rows = validateModels(f.models);
     if (Object.keys(rows).length) e.modelRows = rows;
+    const gw = validateExpose(f.gatewayExpose);
+    if (gw.hostname) e.gatewayExposeHostname = gw.hostname;
+    if (gw.sourceRanges) e.gatewayExposeSourceRanges = gw.sourceRanges;
   }
+  const db = validateExpose(f.dbExpose, { hostname: false });
+  if (db.sourceRanges) e.dbExposeSourceRanges = db.sourceRanges;
   return e;
 }
 
@@ -128,6 +147,7 @@ export function toStackSpec(f: StackForm): Record<string, unknown> {
       storageSize: f.storageSize,
       backup: f.backup,
       extensions: f.extensions,
+      ...(f.dbExpose.enabled ? { expose: toExpose(f.dbExpose, { hostname: false }) } : {}),
     },
     cache: { enabled: f.cacheEnabled, mode: f.cacheMode, memory: f.cacheMemory },
     gateway: f.gatewayRef
@@ -137,7 +157,12 @@ export function toStackSpec(f: StackForm): Record<string, unknown> {
           ...(f.gatewayClient ? { client: f.gatewayClient } : {}),
           models: [],
         }
-      : { enabled: f.gatewayEnabled, replicas: f.gatewayReplicas, models: toModels(f.models) },
+      : {
+          enabled: f.gatewayEnabled,
+          replicas: f.gatewayReplicas,
+          models: toModels(f.models, f.name),
+          ...(f.gatewayExpose.enabled ? { expose: toExpose(f.gatewayExpose) } : {}),
+        },
   };
 }
 
@@ -158,3 +183,6 @@ export function toStackManifest(f: StackForm) {
 export function toStackEditPatch(original: StackForm, f: StackForm): Record<string, unknown> {
   return (mergePatch(toStackSpec(original), toStackSpec(f)) ?? {}) as Record<string, unknown>;
 }
+
+/** The provider keys entered for the stack's own gateway, by model name (never in the spec). */
+export const stackProviderKeys = (f: StackForm) => (f.gatewayEnabled && !f.gatewayRef ? providerKeys(f.models) : undefined);

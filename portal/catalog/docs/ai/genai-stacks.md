@@ -31,6 +31,8 @@ Router in the Project's locations (the platform team installs them).
 | `recovery.enabled` | off | A warm standby in the Project's recovery location |
 | `recovery.activeSite`, `.promotion` | `protected`, `Switchover` | Where the stack serves from; see [Switching sites](#switching-sites) |
 | `recovery.cacheMemory`, `.gatewayReplicas` | `512Mi`, `1` | The standby's smaller cache and gateway |
+| `retrieval.expose.enabled`, `.loadBalancerSourceRanges` | off | The database on a LoadBalancer with TLS, for clients outside the location; see [Outside the location](#outside-the-location) |
+| `gateway.expose.enabled`, `.hostname`, `.loadBalancerSourceRanges` | off | The stack's own gateway over HTTPS ([Expose it](model-gateways.md#expose-it)) |
 | `deletionProtection` | on | Deleting the stack deletes its database: turn it off first |
 
 ## The connection Secret
@@ -65,6 +67,34 @@ the gateway's name and add a client for the stack (named after it, or `gateway.c
 gateway's `clients`. The stack then composes no gateway of its own; its connection Secret holds the
 shared gateway's endpoint and the stack's client key. With recovery, the shared gateway needs a
 standby too.
+
+## Outside the location
+
+Everything is internal by default: the app runs in the stack's location and uses the connection
+Secret. For ingestion jobs, agents and tools elsewhere, expose the database or the gateway:
+
+```yaml
+spec:
+  retrieval:
+    expose:
+      enabled: true
+      loadBalancerSourceRanges: [203.0.113.10/32]   # never open to everyone
+  gateway:
+    expose:
+      enabled: true
+      hostname: bot.example.com                     # its DNS record is yours
+      loadBalancerSourceRanges: [0.0.0.0/0]
+```
+
+- **Database**: Service `<name>-db-external` in each site's location, TLS with the CA in Secret
+  `<name>-db-ca`; connect as the stack's role (`DATABASE_USER`, `DATABASE_PASSWORD`) with
+  `sslmode=verify-full` (see the database's page for the address).
+- **Gateway**: `https://<hostname>/v1` (`status.gatewayExternalEndpoint`), with the stack's key
+  (`OPENAI_API_KEY`). A shared gateway is exposed on the gateway itself.
+- **Cache**: always internal; it has no TLS, and it only pays off next to the app.
+
+The connection Secret keeps the internal addresses. With recovery, each site has its own load
+balancer: after a switchover, clients outside follow the new active site.
 
 ## Switching sites
 

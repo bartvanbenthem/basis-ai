@@ -121,7 +121,7 @@ func assertValkeyCache(r *render) {
 		"minimal":  {image: "valkey/valkey:9.1.2", maxmemory: "768mb", policy: "allkeys-lru", shards: 1, replicas: 1, exporter: true},
 		"recovery": {image: "valkey/valkey:9.1.2", maxmemory: "768mb", policy: "allkeys-lru", shards: 1, replicas: 1, exporter: true},
 		"semantic": {image: "valkey/valkey-bundle:9.1.2", maxmemory: "1228mb", policy: "allkeys-lfu", shards: 3, replicas: 2,
-			args: L{"--loadmodule", "/usr/lib/valkey/libsearch.so --reader-threads 2 --writer-threads 2"}},
+			args: L{"--loadmodule", "/usr/lib/valkey/libsearch.so", "--search.reader-threads", "2", "--search.writer-threads", "2"}},
 		// semantic with monitoring on would add the exporter's --include-modules-metrics (unit tests).
 	}[kase]
 	check(str(spec, "image") == e.image, "image %s, want %s", str(spec, "image"), e.image)

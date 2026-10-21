@@ -1,5 +1,6 @@
 # The same with a warm standby in the recovery location, switched over to it;
-# the observed state has the database moved there.
+# the observed state has the database moved there. The database and the
+# gateway are exposed outside the location.
 apiVersion: ai.cndev.nl/v1alpha1
 kind: GenAIStack
 metadata:
@@ -12,7 +13,14 @@ spec:
   retrieval:
     size: m
     extensions: [vector, vchord, pg_search]
+    expose:
+      enabled: true
+      loadBalancerSourceRanges: [203.0.113.10/32]
   gateway:
+    expose:
+      enabled: true
+      hostname: bot.example.com
+      loadBalancerSourceRanges: [0.0.0.0/0]
     models:
       - name: claude
         endpoint: https://api.anthropic.com/v1
