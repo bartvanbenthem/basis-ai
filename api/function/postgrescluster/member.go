@@ -273,7 +273,10 @@ func (c *composition) member(m *member, members []*member, distributed bool) (ma
 		for _, e := range c.extensions.ordered(extensions) {
 			d.Spec.Extensions = append(d.Spec.Extensions, DatabaseExtension{Name: e, Ensure: "present"})
 		}
-		out[key] = emitted{manifest: d, ready: databaseApplied(m.observed[key])}
+		// CNPG applies a Database only on the primary; a replica cluster
+		// gets it through replication and waits until it is promoted.
+		replica := distributed && m.placement.Role != RolePrimary
+		out[key] = emitted{manifest: d, ready: replica || databaseApplied(m.observed[key])}
 	}
 	listed := false
 	for _, d := range spec.Databases {
