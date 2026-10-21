@@ -1,6 +1,6 @@
--- pg_bench.sql
+-- pg_bench_rawio.sql
 -- Quick-and-dirty PostgreSQL benchmark via psql.
--- Run with:  psql -d yourdb -f pg_bench.sql
+-- Run with:  psql -d yourdb -f pg_bench_rawio.sql
 --
 -- Uses a scratch table (dropped at the end) so it's safe to run
 -- against any DB you have CREATE privileges on.

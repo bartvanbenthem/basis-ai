@@ -27,7 +27,7 @@ Production choices in `values/cloudnative-pg.yaml`:
   evicted pod would otherwise block every Cluster change.
 - Requests and limits are set, and cluster-wide watch is on.
 - An operator PodMonitor is created. Per-database metrics come from the PodMonitor that
-  [`api/`](../api/) creates.
+  [`api/`](../../api/) creates.
 
 ## Bumping versions
 

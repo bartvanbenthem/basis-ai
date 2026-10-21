@@ -1,7 +1,7 @@
 -- pg_bench_oltp.sql
 -- "Normal app" PostgreSQL benchmark via psql: a small webshop schema and a
 -- mixed workload of short, indexed transactions (mostly reads, some writes),
--- each committed individually. Complements pg_bench.sql, which measures
+-- each committed individually. Complements pg_bench_rawio.sql, which measures
 -- bulk/maintenance throughput.
 -- Run with:  psql -d yourdb -f pg_bench_oltp.sql
 --

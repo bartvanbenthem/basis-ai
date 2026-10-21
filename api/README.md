@@ -980,8 +980,8 @@ make test       # make unit, then crossplane render for every API, PostgresClust
                 # extensions, their preloads and requires, the size's vector settings), geo-replicated,
                 # switchover/failover/promoted, draining, pinned sites, no Project, the Project's
                 # backup bucket and one still provisioning, restores from the bucket, from a store
-                # of its own and from a bucket not ready yet; Project: 6 cases incl. both sites, a
-                # COSI bucket and an unregistered location; Location: connected, ready,
+                # of its own and from a bucket not ready yet; Project: 8 cases incl. both sites, a
+                # COSI bucket (also with a long name, and while a grant is pending) and an unregistered location; Location: connected, ready,
                 # unreachable; each empty and observed where it matters; required/ mocks the
                 # Projects, Locations and EnvironmentConfig, plus the shipped size and extension catalogs),
                 # crossplane resource validate against
