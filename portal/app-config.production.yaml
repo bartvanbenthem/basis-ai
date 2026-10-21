@@ -64,6 +64,18 @@ catalog:
       rules:
         - allow: [Template]
 
+    # Software Template: provision a GenAIStack (retrieval, cache, gateway, wiring)
+    - type: file
+      target: ./templates/genai-stack/template.yaml
+      rules:
+        - allow: [Template]
+
+    # Software Template: provision a ModelGateway (shared gateway to a project's models)
+    - type: file
+      target: ./templates/model-gateway/template.yaml
+      rules:
+        - allow: [Template]
+
     # Local example organizational data
     - type: file
       target: ./catalog/catalog-info.yaml
@@ -80,8 +92,8 @@ catalog:
 
 # In the cluster the backend authenticates with its ServiceAccount (see
 # ../deploy/), so no kubeconfig/context is configured here.
-cnpg:
-  grafanaUrl: ${CNPG_GRAFANA_URL}
+basis:
+  grafanaUrl: ${BASIS_GRAFANA_URL}
   catalog:
     defaultOwner: group:default/guests
 

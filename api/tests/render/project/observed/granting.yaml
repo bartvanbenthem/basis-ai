@@ -108,7 +108,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-orders
         name: backup-check
         namespace: team-orders
@@ -123,7 +123,7 @@ status:
               metadata:
                 labels:
                   app.kubernetes.io/managed-by: crossplane
-                  app.kubernetes.io/part-of: cnpg-platform
+                  app.kubernetes.io/part-of: basis
                   platform.cndev.nl/check: backup
                   platform.cndev.nl/project: team-orders
               spec:
@@ -225,7 +225,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-orders
         name: backup-check-s3
         namespace: team-orders
@@ -252,7 +252,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           backstage.io/owner: team-orders
           dashboards.paas.cndev.nl/scope: team-orders
           platform.cndev.nl/project: team-orders
@@ -284,7 +284,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-orders
         name: prometheus
         namespace: team-orders
@@ -376,13 +376,13 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-orders
         name: platform:project:team-orders:prometheus
       roleRef:
         apiGroup: rbac.authorization.k8s.io
         kind: ClusterRole
-        name: cnpg-platform:project-prometheus
+        name: basis:project-prometheus
       subjects:
       - kind: ServiceAccount
         name: prometheus
@@ -410,7 +410,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-orders
         name: prometheus-prometheus-db-prometheus-prometheus-0
         namespace: team-orders
@@ -443,7 +443,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-orders
         name: prometheus
         namespace: team-orders
@@ -470,7 +470,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-orders
         name: backup-check
         namespace: team-orders
@@ -485,7 +485,7 @@ status:
               metadata:
                 labels:
                   app.kubernetes.io/managed-by: crossplane
-                  app.kubernetes.io/part-of: cnpg-platform
+                  app.kubernetes.io/part-of: basis
                   platform.cndev.nl/check: backup
                   platform.cndev.nl/project: team-orders
               spec:
@@ -587,7 +587,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-orders
         name: backup-check-s3
         namespace: team-orders
@@ -614,7 +614,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           backstage.io/owner: team-orders
           dashboards.paas.cndev.nl/scope: team-orders
           platform.cndev.nl/project: team-orders
@@ -646,7 +646,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-orders
         name: prometheus
         namespace: team-orders
@@ -738,13 +738,13 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-orders
         name: platform:project:team-orders:prometheus
       roleRef:
         apiGroup: rbac.authorization.k8s.io
         kind: ClusterRole
-        name: cnpg-platform:project-prometheus
+        name: basis:project-prometheus
       subjects:
       - kind: ServiceAccount
         name: prometheus
@@ -772,7 +772,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-orders
         name: prometheus-prometheus-db-prometheus-prometheus-0
         namespace: team-orders
@@ -805,7 +805,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-orders
         name: prometheus
         namespace: team-orders

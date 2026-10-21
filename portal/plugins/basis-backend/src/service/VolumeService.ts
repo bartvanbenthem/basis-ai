@@ -21,8 +21,8 @@ import {
   VolumeState,
   VolumeSummary,
   volumeRole,
-} from '@internal/backstage-plugin-cnpg-common';
-import { cnpgKubernetesServiceRef, kubeCall } from './CnpgKubernetesService';
+} from '@internal/backstage-plugin-basis-common';
+import { basisKubernetesServiceRef, kubeCall } from './BasisKubernetesService';
 import { locationServiceRef, withTimeout } from './LocationService';
 
 /** How long a node's volume usage (kubelet stats) is reused. */
@@ -341,13 +341,13 @@ export class VolumeService {
 }
 
 export const volumeServiceRef = createServiceRef<VolumeService>({
-  id: 'cnpg.volumes',
+  id: 'basis.volumes',
   defaultFactory: async service =>
     createServiceFactory({
       service,
       deps: {
         logger: coreServices.logger,
-        k8s: cnpgKubernetesServiceRef,
+        k8s: basisKubernetesServiceRef,
         locations: locationServiceRef,
       },
       factory: ({ logger, k8s, locations }) =>

@@ -11,7 +11,7 @@ apiVersion: kubernetes.m.crossplane.io/v1alpha1
 kind: Object
 metadata:
   name: si-ske-demo-prometheus-role
-  namespace: cnpg-locations
+  namespace: basis-locations
   annotations:
     crossplane.io/composition-resource-name: prometheus-role
 status:

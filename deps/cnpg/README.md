@@ -1,4 +1,4 @@
-# operator: CloudNativePG operator
+# deps/cnpg: CloudNativePG operator
 
 Installs the operator layer **from this repository only**. Charts are vendored into `charts/`,
 so an install is reproducible and reviewable, and does not depend on a remote Helm repo.

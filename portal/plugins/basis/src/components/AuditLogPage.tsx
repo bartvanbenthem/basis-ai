@@ -20,13 +20,13 @@ import {
   type AuditEntry,
   type AuditSource,
   CONTROL_PLANE,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import useAsync from 'react-use/esm/useAsync';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { clusterRouteRef, projectRouteRef } from '../routes';
 import { age, ErrorAlert, Mono, StatusDot } from './common';
 
@@ -73,7 +73,7 @@ const matches = (e: AuditEntry, query: string) =>
  * page can link to it.
  */
 export const AuditLogPage = () => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const projectLink = useRouteRef(projectRouteRef);
   const clusterLink = useRouteRef(clusterRouteRef);
   const [params, setParams] = useSearchParams();

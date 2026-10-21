@@ -142,7 +142,7 @@ func Compose(in Input) (*Output, error) {
 	c.name, c.ns = c.xr.Metadata.Name, c.xr.Metadata.Namespace
 	c.labels = map[string]string{
 		"app.kubernetes.io/managed-by": "crossplane",
-		"app.kubernetes.io/part-of":    "cnpg-platform",
+		"app.kubernetes.io/part-of":    "basis",
 		"cache.cndev.nl/valkeycache":   c.name,
 	}
 

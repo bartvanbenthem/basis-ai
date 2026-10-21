@@ -24,10 +24,10 @@ import {
   summarizeCache,
   ValkeyCache,
   ValkeyCacheDetails,
-} from '@internal/backstage-plugin-cnpg-common';
-import { cnpgKubernetesServiceRef, kubeCall, LocationKubeConfig } from './CnpgKubernetesService';
+} from '@internal/backstage-plugin-basis-common';
+import { basisKubernetesServiceRef, kubeCall, LocationKubeConfig } from './BasisKubernetesService';
 
-const FIELD_MANAGER = 'backstage-cnpg';
+const FIELD_MANAGER = 'backstage-basis';
 const API = { group: CACHE_GROUP, version: CACHE_VERSION, plural: CACHE_PLURAL };
 
 /**
@@ -222,11 +222,11 @@ function toIso(value: unknown): string | undefined {
 }
 
 export const valkeyServiceRef = createServiceRef<ValkeyService>({
-  id: 'cnpg.valkey',
+  id: 'basis.valkey',
   defaultFactory: async service =>
     createServiceFactory({
       service,
-      deps: { logger: coreServices.logger, k8s: cnpgKubernetesServiceRef },
+      deps: { logger: coreServices.logger, k8s: basisKubernetesServiceRef },
       factory: ({ logger, k8s }) =>
         new ValkeyService({
           custom: k8s.kubeConfig.makeApiClient(CustomObjectsApi),

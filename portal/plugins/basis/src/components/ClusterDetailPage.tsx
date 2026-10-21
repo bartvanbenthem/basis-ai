@@ -14,15 +14,15 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
-  cnpgClusterDeletePermission,
-  cnpgClusterUpdatePermission,
-} from '@internal/backstage-plugin-cnpg-common';
+  basisClusterDeletePermission,
+  basisClusterUpdatePermission,
+} from '@internal/backstage-plugin-basis-common';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import useAsync from 'react-use/esm/useAsync';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import {
   clusterBackupsRouteRef,
   clusterDisasterRecoveryRouteRef,
@@ -31,6 +31,7 @@ import {
   clusterRouteRef,
   editClusterRouteRef,
   rootRouteRef,
+  stackRouteRef,
 } from '../routes';
 import { ClusterBackups } from './Backups';
 import { ClusterDetails, ClusterDetailsSkeleton } from './ClusterDetails';
@@ -41,7 +42,7 @@ import { GrafanaDashboard } from './GrafanaDashboard';
 
 /** Loads (and keeps polling) one cluster; used by the page and the entity tab. */
 export function useClusterDetails(namespace: string, name: string) {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const state = useAsyncRetry(() => api.getCluster(namespace, name), [api, namespace, name]);
   useInterval(state.retry, 10_000);
   return state;
@@ -58,7 +59,7 @@ const DeleteDialog = ({
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
 }) => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const navigate = useNavigate();
   const listLink = useRouteRef(rootRouteRef);
   const [confirm, setConfirm] = useState('');
@@ -70,7 +71,7 @@ const DeleteDialog = ({
     try {
       await api.deleteCluster(namespace, name);
       onOpenChange(false);
-      navigate(listLink?.() ?? '/cnpg');
+      navigate(listLink?.() ?? '/basis');
     } catch (e) {
       setError(e as Error);
     } finally {
@@ -119,15 +120,16 @@ export const ClusterDetailPage = ({
   tab: 'overview' | 'monitoring' | 'logs' | 'dr' | 'backups';
 }) => {
   const { namespace = '', name = '' } = useParams();
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const overviewLink = useRouteRef(clusterRouteRef);
   const monitoringLink = useRouteRef(clusterMonitoringRouteRef);
   const logsLink = useRouteRef(clusterLogsRouteRef);
   const drLink = useRouteRef(clusterDisasterRecoveryRouteRef);
   const backupsLink = useRouteRef(clusterBackupsRouteRef);
   const editLink = useRouteRef(editClusterRouteRef);
-  const { allowed: canDelete } = usePermission({ permission: cnpgClusterDeletePermission });
-  const { allowed: canUpdate } = usePermission({ permission: cnpgClusterUpdatePermission });
+  const stackLink = useRouteRef(stackRouteRef);
+  const { allowed: canDelete } = usePermission({ permission: basisClusterDeletePermission });
+  const { allowed: canUpdate } = usePermission({ permission: basisClusterUpdatePermission });
   const [deleting, setDeleting] = useState(false);
   const { value: config } = useAsync(() => api.getConfig(), [api]);
   const { value, error, retry } = useClusterDetails(namespace, name);
@@ -158,12 +160,17 @@ export const ClusterDetailPage = ({
         customActions={
           <Flex gap="3" align="center">
             {value && <HealthBadge cluster={value.summary} />}
-            {canUpdate && editLink && value && !value.summary.deleting && (
+            {value?.summary.stack && stackLink && (
+              <ButtonLink href={stackLink({ namespace, name: value.summary.stack })} variant="secondary">
+                Part of stack {value.summary.stack}
+              </ButtonLink>
+            )}
+            {canUpdate && editLink && value && !value.summary.deleting && !value.summary.stack && (
               <ButtonLink href={editLink(params)} variant="secondary">
                 Edit
               </ButtonLink>
             )}
-            {canDelete && (
+            {canDelete && !value?.summary.stack && (
               <Button variant="secondary" destructive onPress={() => setDeleting(true)}>
                 Delete
               </Button>

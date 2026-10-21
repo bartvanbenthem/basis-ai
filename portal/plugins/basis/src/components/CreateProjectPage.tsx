@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAsync from 'react-use/esm/useAsync';
 import { stringify } from 'yaml';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { projectRouteRef } from '../routes';
 import { ManifestPanel } from './common';
 import { ProjectFormFields } from './ProjectFormFields';
@@ -17,7 +17,7 @@ import {
 } from './projectForm';
 
 export const CreateProjectPage = () => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const navigate = useNavigate();
   const projectLink = useRouteRef(projectRouteRef);
 
@@ -53,7 +53,7 @@ export const CreateProjectPage = () => {
       if (dryRun) {
         setResult({ validated: true });
       } else {
-        navigate(projectLink?.({ name: form.name }) ?? '/cnpg/projects');
+        navigate(projectLink?.({ name: form.name }) ?? '/basis/projects');
       }
     } catch (e) {
       setResult({ error: e as Error });

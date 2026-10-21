@@ -1,5 +1,5 @@
 /**
- * Shapes of the cnpg.cndev.nl/v1alpha1 PostgresCluster API served by
+ * Shapes of the postgres.cndev.nl/v1alpha1 PostgresCluster API served by
  * api/. The XRD is the source of truth (and the API server
  * validates every write against it); these types only cover what the portal
  * reads or sends.
@@ -9,13 +9,13 @@ import { specExtensions } from './extensions';
 import { ClusterProfile, clusterProfile } from './profiles';
 import type { ClusterResources } from './sizes';
 
-export const XR_GROUP = 'cnpg.cndev.nl';
+export const XR_GROUP = 'postgres.cndev.nl';
 export const XR_VERSION = 'v1alpha1';
 export const XR_PLURAL = 'postgresclusters';
 export const XR_KIND = 'PostgresCluster';
 
 /** Annotation on catalog Resource entities: "<namespace>/<name>" of their PostgresCluster. */
-export const CNPG_ANNOTATION = 'cnpg.cndev.nl/postgrescluster';
+export const CLUSTER_ANNOTATION = 'postgres.cndev.nl/postgrescluster';
 
 /** platform.cndev.nl/v1alpha1 Project (cluster-scoped): one namespace with its own Prometheus + Grafana. */
 export const PROJECT_GROUP = 'platform.cndev.nl';
@@ -134,8 +134,10 @@ export interface PostgresClusterSummary {
   createdAt?: string;
   /** The Project whose namespace the cluster lives in, if any (filled in by the backend). */
   project?: string;
-  /** That project's Grafana (status.grafana.url); takes precedence over cnpg.grafanaUrl. */
+  /** That project's Grafana (status.grafana.url); takes precedence over basis.grafanaUrl. */
   grafanaUrl?: string;
+  /** The GenAIStack that composes this cluster, if any: it's changed through the stack. */
+  stack?: string;
 }
 
 export interface InstancePod {
@@ -227,6 +229,7 @@ export function summarize(cluster: PostgresCluster, project?: Project): Postgres
     dashboardUid: status?.monitoring?.dashboardUid || undefined,
     ...clusterSites(cluster, project),
     createdAt: metadata.creationTimestamp,
+    stack: metadata.labels?.['ai.cndev.nl/genaistack'] || undefined,
   };
 }
 

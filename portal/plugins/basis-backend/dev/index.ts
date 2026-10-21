@@ -4,9 +4,9 @@ import { mockServices } from '@backstage/backend-test-utils';
 // Standalone backend for developing the plugin against your current
 // kubeconfig context (`yarn start` in this package), without auth:
 //
-//   curl localhost:7007/api/cnpg/clusters
-//   curl localhost:7007/api/cnpg/clusters/demo/orders-db
-//   curl -XPOST localhost:7007/api/cnpg/clusters -H 'Content-Type: application/json' \
+//   curl localhost:7007/api/basis/clusters
+//   curl localhost:7007/api/basis/clusters/demo/orders-db
+//   curl -XPOST localhost:7007/api/basis/clusters -H 'Content-Type: application/json' \
 //     -d '{"name":"orders-db","namespace":"demo","spec":{"instances":1,"storage":{"size":"1Gi"}}}'
 const backend = createBackend();
 

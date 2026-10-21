@@ -16,15 +16,17 @@
 
 import { test, expect } from '@playwright/test';
 
-test('App signs in and lands on the PostgreSQL clusters', async ({ page }) => {
+test('App signs in and lands on the GenAI stacks', async ({ page }) => {
   await page.goto('/');
 
   const enterButton = page.getByRole('button', { name: 'Enter' });
   await expect(enterButton).toBeVisible();
   await enterButton.click();
 
-  await expect(page).toHaveURL(/\/cnpg$/);
+  await expect(page).toHaveURL(/\/basis\/stacks$/);
   const nav = page.getByRole('navigation', { name: 'sidebar nav' });
+  await expect(nav.getByRole('link', { name: 'GenAI stacks', exact: true })).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'Model gateways', exact: true })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'PostgreSQL', exact: true })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'Audit logs', exact: true })).toBeVisible();
 });

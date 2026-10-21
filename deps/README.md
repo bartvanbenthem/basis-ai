@@ -1,8 +1,7 @@
 # Dependencies
 
-Everything the platform needs before
-[`operator/`](../operator/) and
-[`api/`](../api/) are installed, the platform-wide
+Every operator the platform builds on, installed before
+[`api/`](../api/), the platform-wide
 Project settings (`control-plane/project-defaults.yaml`), plus the
 `demo` Project (a namespace with its own Prometheus and Grafana). The
 platform has a **control plane** (Crossplane, the APIs, the portal, each
@@ -11,11 +10,13 @@ databases run in. Each component goes where its column says.
 
 | Component | Needed for | Control plane | Locations |
 |---|---|---|---|
+| CloudNativePG + Barman Cloud plugin ([`cnpg/`](cnpg/README.md)) | `PostgresCluster` (and the portal's own database) | only for the portal's own database | where databases run |
 | cert-manager | barman-cloud backup plugin | only for the portal's own database | yes, unless `INSTALL_BARMAN=false` |
 | Prometheus Operator | `Prometheus` per Project; `PodMonitor` / `PrometheusRule` per PostgresCluster | yes (the Prometheus the locations write to) | yes |
 | grafana-operator | `Grafana` per Project, `GrafanaDashboard` per PostgresCluster | yes | no |
 | HAProxy Ingress | Grafana from outside, and the remote-write endpoint the locations' Prometheus send to | yes | no |
 | Valkey operator | `ValkeyCache` (exact and semantic caches) | no | where caches run |
+| Envoy Gateway + Agent Router | `ModelGateway` (an internal, OpenAI-compatible endpoint per gateway and site; every GenAIStack has one) | no | where gateways and stacks run |
 
 Install them in the order below, each in the clusters its row says.
 
@@ -51,7 +52,22 @@ kubectl get pods -n prometheus-operator-system
 kubectl get crd prometheuses.monitoring.coreos.com
 ```
 
-## 3. grafana-operator
+## 3. CloudNativePG (locations with databases)
+
+The CloudNativePG operator, the Barman Cloud backup plugin (WAL archiving and base backups) and the
+PostgreSQL image catalog, installed from the charts vendored in [`cnpg/`](cnpg/README.md), never from
+a remote Helm repository. It needs cert-manager (for the plugin) and the Prometheus Operator CRDs (for
+the operator's PodMonitor), so it comes after steps 1 and 2:
+
+```sh
+KUBECONFIG=dc-a.kubeconfig deps/cnpg/install.sh   # CNPG 1.30, Barman Cloud plugin, image catalog
+deps/cnpg/verify.sh                               # offline: the vendored charts lint and render
+```
+
+Install it in every location databases run in, and on the control plane for the portal's own
+database. See [`cnpg/README.md`](cnpg/README.md) for upgrades and the production values.
+
+## 4. grafana-operator
 
 ```sh
 helm upgrade -i grafana-operator grafana-operator \
@@ -73,7 +89,7 @@ kubectl get crd grafanas.grafana.integreatly.org
 > anyway, run `docker logout ghcr.io` (or `helm registry logout ghcr.io`)
 > first.
 
-## 4. HAProxy Ingress (optional)
+## 5. HAProxy Ingress (optional)
 
 On the control plane: the projects' Grafana and the remote-write endpoint
 (`prometheus.remoteWrite` in `control-plane/project-defaults.yaml`) the locations'
@@ -96,7 +112,7 @@ MetalLB isn't needed.
 kubectl get svc -n haproxy-ingress   # EXTERNAL-IP is where ingress hosts must resolve to
 ```
 
-## 5. Valkey operator (locations with caches)
+## 6. Valkey operator (locations with caches)
 
 The official [valkey-io operator](https://github.com/valkey-io/valkey-operator)
 runs the `ValkeyCluster`s that `ValkeyCache` places in one of a Project's
@@ -126,7 +142,47 @@ new function-basis version); bump them together with this chart. Read the
 [upgrade notes](https://github.com/valkey-io/valkey-helm/tree/main/valkey-operator)
 before a chart upgrade: an operator upgrade can roll every cache's pods.
 
-## 6. Platform settings: `project-defaults` (after `api/`)
+## 7. Envoy Gateway + Agent Router (locations with model gateways)
+
+A `ModelGateway` (a GenAIStack's own, or a shared one) is [Agent Router](https://github.com/theagentrouter/agent-router)
+(formerly Envoy AI Gateway; Apache-2.0, an Agentic AI Foundation project) on
+[Envoy Gateway](https://gateway.envoyproxy.io) (Envoy, CNCF graduated). Install
+both in every location gateways and stacks run in, at the versions Agent Router tests
+together (Agent Router v1.2.x needs Envoy Gateway v1.9.2+), then the
+GatewayClass the gateways use:
+
+```sh
+# Envoy Gateway (Gateway API + its CRDs), with Agent Router's settings and
+# GatewayNamespace mode: each gateway's Envoy runs in its Project's namespace.
+helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
+  --version v1.9.2 -n envoy-gateway-system --create-namespace \
+  -f agent-router/envoy-gateway-values.yaml
+kubectl -n envoy-gateway-system wait deploy/envoy-gateway --for=condition=Available --timeout=5m
+
+# Agent Router: its CRDs, then the controller
+helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
+  --version v1.2.0 -n envoy-ai-gateway-system --create-namespace
+helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
+  --version v1.2.0 -n envoy-ai-gateway-system
+kubectl -n envoy-ai-gateway-system wait deploy/ai-gateway-controller --for=condition=Available --timeout=5m
+
+kubectl apply -f agent-router/gatewayclass.yaml   # GatewayClass basis-ai
+```
+
+Verify:
+
+```sh
+kubectl get gatewayclass basis-ai                 # ACCEPTED True
+kubectl get crd aigatewayroutes.aigateway.envoyproxy.io
+```
+
+With an expired `ghcr.io` or
+`docker.io` login in `~/.docker/config.json`, log out first (see step 4). The
+charts and images keep their `envoyproxy` names after the project's rename.
+Agent Router has no response cache: a stack's cache is used by the app, through
+the connection Secret ([`api`](../api/README.md#the-genaistack-api)).
+
+## 8. Platform settings: `project-defaults` (after `api/`)
 
 [`control-plane/project-defaults.yaml`](control-plane/project-defaults.yaml)
 is the `EnvironmentConfig` every Project's composition reads: one per control
@@ -137,7 +193,7 @@ environment's values:
 - the Grafana ingress host (`grafana-<project>.paas.cndev.nl`) and the
   remote-write endpoint the locations' Prometheus send to
   (`prometheus-<project>.paas.cndev.nl`), both through the HAProxy Ingress of
-  step 4. A wildcard DNS record `*.paas.cndev.nl` points at its LoadBalancer
+  step 5. A wildcard DNS record `*.paas.cndev.nl` points at its LoadBalancer
   IP; use your own domain (or `<x>-{project}.<ip>.nip.io` without DNS)
   elsewhere
 - where kube-prometheus-stack's ServiceMonitors live in the locations (step 2)
@@ -152,18 +208,18 @@ documents every key. Projects pick up a change on their next reconcile.
 kubectl apply -f control-plane/project-defaults.yaml
 ```
 
-## 7. The `demo` Project (after `api/`)
+## 9. The `demo` Project (after `api/`)
 
 A namespace with its own Prometheus and Grafana is a **Project**
 (`platform.cndev.nl/v1alpha1`, see
 [`api`](../api/README.md#the-project-api)), so
 this step runs on the control plane *after* `api/install/install.sh`
 and after registering the location the demo databases run in
-(`api/install/add-location.sh`, with `operator/install.sh`
+(`api/install/add-location.sh`, with `deps/cnpg/install.sh`
 run against that location first). `demo/project.yaml` names it
 `si-ske-demo`: change that to your location's name.
 
-It needs the platform settings of step 6.
+It needs the platform settings of step 8.
 [`demo/project.yaml`](demo/project.yaml) is the `demo` Project. Crossplane
 creates the namespace on the control plane and in the location, a Prometheus
 in the location that scrapes every `PodMonitor` and `PrometheusRule` in it
@@ -189,7 +245,7 @@ kubectl -n demo get secret grafana-admin-credentials -o jsonpath='{.data.GF_SECU
 
 More projects are one object each (`kubectl apply` a Project, or use
 **New project** in the portal). The portal takes each cluster's Grafana from
-its Project's `status.grafana.url`, so `CNPG_GRAFANA_URL` is only a fallback
+its Project's `status.grafana.url`, so `BASIS_GRAFANA_URL` is only a fallback
 for clusters outside a Project.
 
 ### Migrating a `demo` namespace set up with the old manifests
@@ -201,7 +257,7 @@ the same objects by hand. The Project composes objects with the same names
 check that Crossplane took them over
 (`kubectl -n demo get prometheus prometheus -o jsonpath='{.metadata.ownerReferences}'`
 should name `Project demo`). Then remove the old cluster-wide RBAC, which the
-Project replaces with `ClusterRoleBinding platform:project:demo:prometheus`:
+Project replaces with `ClusterRoleBinding basis:project:demo:prometheus`:
 
 ```sh
 kubectl delete clusterrolebinding demo-prometheus

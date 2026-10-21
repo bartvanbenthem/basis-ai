@@ -1,5 +1,5 @@
 // Package postgrescluster composes a PostgresCluster
-// (cnpg.cndev.nl/v1alpha1).
+// (postgres.cndev.nl/v1alpha1).
 //
 // The namespaced XR lives in its Project's namespace on the control plane,
 // which runs no databases. The CNPG and Prometheus Operator objects go to the
@@ -150,9 +150,9 @@ func Compose(in Input) (*Output, error) {
 	c.spec = &c.xr.Spec
 	c.name, c.ns = c.xr.Metadata.Name, c.xr.Metadata.Namespace
 	c.labels = map[string]string{
-		"app.kubernetes.io/managed-by":  "crossplane",
-		"app.kubernetes.io/part-of":     "cnpg-platform",
-		"cnpg.cndev.nl/postgrescluster": c.name,
+		"app.kubernetes.io/managed-by":      "crossplane",
+		"app.kubernetes.io/part-of":         "basis",
+		"postgres.cndev.nl/postgrescluster": c.name,
 	}
 	if projects := in.Required[RequiredProject]; len(projects) > 0 {
 		c.project = projects[0]

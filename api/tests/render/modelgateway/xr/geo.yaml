@@ -1,0 +1,17 @@
+# The same with a standby in the recovery location, which serves.
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelGateway
+metadata:
+  name: llm
+  namespace: ai-team
+spec:
+  recovery:
+    enabled: true
+  activeSite: recovery
+  models:
+    - name: claude
+      endpoint: https://api.anthropic.com/v1
+      schema: Anthropic
+      apiKeySecretRef:
+        name: anthropic
+        key: token

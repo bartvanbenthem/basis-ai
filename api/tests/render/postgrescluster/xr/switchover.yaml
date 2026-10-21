@@ -2,7 +2,7 @@
 # reconcile) to recovery. Empty: no demotion token yet, so onprem-ams keeps
 # following si-ske-demo while si-ske-demo is demoted. Observed: si-ske-demo
 # published its token, so onprem-ams is promoted with it.
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

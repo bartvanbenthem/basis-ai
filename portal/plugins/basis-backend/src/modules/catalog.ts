@@ -16,24 +16,32 @@ import {
   EntityProviderConnection,
 } from '@backstage/plugin-catalog-node';
 import {
-  CnpgKubernetesService,
-  cnpgKubernetesServiceRef,
-} from '../service/CnpgKubernetesService';
+  BasisKubernetesService,
+  basisKubernetesServiceRef,
+} from '../service/BasisKubernetesService';
+import { GatewayService, gatewayServiceRef } from '../service/GatewayService';
+import { StackService, stackServiceRef } from '../service/StackService';
 import { ValkeyService, valkeyServiceRef } from '../service/ValkeyService';
 import {
   CACHE_ANNOTATION,
   CACHE_MODES,
   cachePods,
-  CNPG_ANNOTATION,
+  CLUSTER_ANNOTATION,
+  GATEWAY_ANNOTATION,
+  GenAIStack,
+  ModelGateway,
   PostgresCluster,
+  STACK_ANNOTATION,
+  summarizeStack,
   Project,
   PROJECT_ANNOTATION,
   ProjectSummary,
   summarize,
   summarizeCache,
+  summarizeGateway,
   summarizeProject,
   ValkeyCache,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 
 /**
  * Mirrors every Project and PostgresCluster into the catalog:
@@ -46,23 +54,30 @@ import {
  *   backstage.io/system labels on the XR, and dependsOn its project.
  * - a ValkeyCache becomes a Resource of type "valkey-cache" named
  *   "<namespace>--<name>.valkey", owned and linked the same way.
+ * - a ModelGateway becomes a Resource of type "model-gateway" named
+ *   "<namespace>--<name>.gateway", owned and linked the same way.
+ * - a GenAIStack becomes a Resource of type "genai-stack" named
+ *   "<namespace>--<name>.stack", dependsOn its project, database, caches and
+ *   gateway.
  *
- * Project names can't contain "--" (enforced by the XRD), and cluster and
- * cache names no ".", so none of them collide.
+ * Project names can't contain "--" (enforced by the XRD), and cluster,
+ * cache and gateway names no ".", so none of them collide.
  */
 export class PostgresClusterEntityProvider implements EntityProvider {
   #connection?: EntityProviderConnection;
 
   constructor(
-    private readonly k8s: CnpgKubernetesService,
+    private readonly k8s: BasisKubernetesService,
     private readonly taskRunner: SchedulerServiceTaskRunner,
     private readonly logger: LoggerService,
     private readonly options: { defaultOwner: string; appBaseUrl: string; grafanaUrl?: string },
     private readonly valkey?: Pick<ValkeyService, 'list'>,
+    private readonly stacks?: Pick<StackService, 'list'>,
+    private readonly gateways?: Pick<GatewayService, 'list'>,
   ) {}
 
   getProviderName() {
-    return 'cnpg-postgresclusters';
+    return 'basis-catalog';
   }
 
   async connect(connection: EntityProviderConnection) {
@@ -75,33 +90,37 @@ export class PostgresClusterEntityProvider implements EntityProvider {
 
   async refresh() {
     if (!this.#connection) return;
-    const [clusters, projects, caches] = await Promise.all([
+    const [clusters, projects, caches, stacks, gateways] = await Promise.all([
       this.k8s.list(),
       this.k8s.listProjects(),
       this.valkey?.list() ?? Promise.resolve([]),
+      this.stacks?.list() ?? Promise.resolve([]),
+      this.gateways?.list() ?? Promise.resolve([]),
     ]);
     const byName = new Map(projects.map(p => [p.metadata.name, summarizeProject(p)]));
     const entities = [
       ...projects.map(p => this.toProjectEntity(p)),
       ...clusters.map(c => this.toEntity(c, byName.get(c.metadata.namespace))),
       ...caches.map(c => this.toCacheEntity(c, byName.get(c.metadata.namespace))),
+      ...stacks.map(s => this.toStackEntity(s, byName.get(s.metadata.namespace))),
+      ...gateways.map(g => this.toGatewayEntity(g, byName.get(g.metadata.namespace))),
     ];
     await this.#connection.applyMutation({
       type: 'full',
       entities: entities.map(entity => ({ entity, locationKey: this.getProviderName() })),
     });
     this.logger.debug(
-      `Synced ${projects.length} Projects, ${clusters.length} PostgresClusters and ${caches.length} ValkeyCaches into the catalog`,
+      `Synced ${projects.length} Projects, ${clusters.length} PostgresClusters, ${caches.length} ValkeyCaches, ${gateways.length} ModelGateways and ${stacks.length} GenAIStacks into the catalog`,
     );
   }
 
   toProjectEntity(project: Project): Entity {
     const s = summarizeProject(project);
-    const location = `cnpg:project/${s.name}`;
+    const location = `basis:project/${s.name}`;
     const links = [
       {
-        url: `${this.options.appBaseUrl.replace(/\/$/, '')}/cnpg/projects/${s.name}`,
-        title: 'CNPG portal',
+        url: `${this.options.appBaseUrl.replace(/\/$/, '')}/basis/projects/${s.name}`,
+        title: 'BASIS portal',
       },
     ];
     if (s.grafanaUrl) {
@@ -134,13 +153,13 @@ export class PostgresClusterEntityProvider implements EntityProvider {
   toEntity(cluster: PostgresCluster, project?: ProjectSummary): Entity {
     const { name, namespace, labels = {} } = cluster.metadata;
     const s = summarize(cluster);
-    const location = `cnpg:${namespace}/${name}`;
+    const location = `basis:${namespace}/${name}`;
     const dashboardUid = cluster.status?.monitoring?.dashboardUid;
     // Entity links must be absolute URLs.
     const links = [
       {
-        url: `${this.options.appBaseUrl.replace(/\/$/, '')}/cnpg/${namespace}/${name}`,
-        title: 'CNPG portal',
+        url: `${this.options.appBaseUrl.replace(/\/$/, '')}/basis/${namespace}/${name}`,
+        title: 'BASIS portal',
       },
     ];
     // The project's own Grafana, else the configured one ("{namespace}" for
@@ -165,7 +184,7 @@ export class PostgresClusterEntityProvider implements EntityProvider {
         annotations: {
           [ANNOTATION_LOCATION]: location,
           [ANNOTATION_ORIGIN_LOCATION]: location,
-          [CNPG_ANNOTATION]: `${namespace}/${name}`,
+          [CLUSTER_ANNOTATION]: `${namespace}/${name}`,
           'backstage.io/kubernetes-id': name,
           'backstage.io/kubernetes-namespace': namespace,
         },
@@ -185,15 +204,97 @@ export class PostgresClusterEntityProvider implements EntityProvider {
       },
     };
   }
+  /** `project`: the Project whose namespace the stack is in, if any. */
+  toStackEntity(stack: GenAIStack, project?: ProjectSummary): Entity {
+    const { name, namespace, labels = {} } = stack.metadata;
+    const s = summarizeStack(stack);
+    const location = `basis:stack/${namespace}/${name}`;
+    let gateway = '';
+    if (s.gateway) gateway = s.sharedGateway ? `, shared gateway ${s.gatewayName}` : `, gateway with ${s.models.length} model(s)`;
+    // Its database, caches and gateway are entities of their own, named as
+    // toEntity / toCacheEntity / toGatewayEntity name them.
+    const dependsOn = [
+      ...(project ? [`resource:default/${project.name}`] : []),
+      `resource:default/${`${namespace}--${s.database}`.slice(0, 63)}`,
+      ...[s.cacheName, s.recoveryCacheName]
+        .filter((c): c is string => Boolean(c))
+        .map(c => `resource:default/${`${namespace}--${c}.valkey`.slice(0, 63)}`),
+      ...(s.gatewayName ? [`resource:default/${`${namespace}--${s.gatewayName}.gateway`.slice(0, 63)}`] : []),
+    ];
+    return {
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Resource',
+      metadata: {
+        name: `${namespace}--${name}.stack`.slice(0, 63),
+        title: `${name} (${namespace})`,
+        description: `GenAI stack: retrieval (pgvector)${s.cache ? `, ${s.cacheMode} cache` : ''}${gateway}${s.recovery ? ', warm standby in the recovery site' : ''}`,
+        annotations: {
+          [ANNOTATION_LOCATION]: location,
+          [ANNOTATION_ORIGIN_LOCATION]: location,
+          [STACK_ANNOTATION]: `${namespace}/${name}`,
+          'backstage.io/kubernetes-namespace': namespace,
+        },
+        tags: ['genai', 'rag', ...(s.recovery ? ['geo-redundant'] : [])],
+        links: [
+          {
+            url: `${this.options.appBaseUrl.replace(/\/$/, '')}/basis/stacks/${namespace}/${name}`,
+            title: 'BASIS portal',
+          },
+        ],
+      },
+      spec: {
+        type: 'genai-stack',
+        owner: labels['backstage.io/owner'] ?? this.options.defaultOwner,
+        ...(labels['backstage.io/system'] ? { system: labels['backstage.io/system'] } : {}),
+        dependsOn,
+      },
+    };
+  }
+
+  /** `project`: the Project whose namespace the gateway is in, if any. */
+  toGatewayEntity(gateway: ModelGateway, project?: ProjectSummary): Entity {
+    const { name, namespace, labels = {} } = gateway.metadata;
+    const s = summarizeGateway(gateway);
+    const location = `basis:gateway/${namespace}/${name}`;
+    return {
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Resource',
+      metadata: {
+        name: `${namespace}--${name}.gateway`.slice(0, 63),
+        title: `${name} (${namespace})`,
+        description: `Model gateway (Agent Router): ${s.models.length} model(s), ${s.clients.length} client(s)${s.recovery ? ', standby in the recovery site' : ''}`,
+        annotations: {
+          [ANNOTATION_LOCATION]: location,
+          [ANNOTATION_ORIGIN_LOCATION]: location,
+          [GATEWAY_ANNOTATION]: `${namespace}/${name}`,
+          'backstage.io/kubernetes-namespace': namespace,
+        },
+        tags: ['genai', 'llm', 'gateway'],
+        links: [
+          {
+            url: `${this.options.appBaseUrl.replace(/\/$/, '')}/basis/gateways/${namespace}/${name}`,
+            title: 'BASIS portal',
+          },
+        ],
+      },
+      spec: {
+        type: 'model-gateway',
+        owner: labels['backstage.io/owner'] ?? this.options.defaultOwner,
+        ...(labels['backstage.io/system'] ? { system: labels['backstage.io/system'] } : {}),
+        ...(project ? { dependsOn: [`resource:default/${project.name}`] } : {}),
+      },
+    };
+  }
+
   /** `project`: the Project whose namespace the cache is in, if any. */
   toCacheEntity(cache: ValkeyCache, project?: ProjectSummary): Entity {
     const { name, namespace, labels = {} } = cache.metadata;
     const s = summarizeCache(cache);
-    const location = `cnpg:cache/${namespace}/${name}`;
+    const location = `basis:cache/${namespace}/${name}`;
     const links = [
       {
-        url: `${this.options.appBaseUrl.replace(/\/$/, '')}/cnpg/caches/${namespace}/${name}`,
-        title: 'CNPG portal',
+        url: `${this.options.appBaseUrl.replace(/\/$/, '')}/basis/caches/${namespace}/${name}`,
+        title: 'BASIS portal',
       },
     ];
     const grafanaUrl =
@@ -233,9 +334,9 @@ export class PostgresClusterEntityProvider implements EntityProvider {
 
 export function readCatalogOptions(config: RootConfigService) {
   return {
-    defaultOwner: config.getOptionalString('cnpg.catalog.defaultOwner') ?? 'group:default/guests',
+    defaultOwner: config.getOptionalString('basis.catalog.defaultOwner') ?? 'group:default/guests',
     appBaseUrl: config.getString('app.baseUrl'),
-    grafanaUrl: config.getOptionalString('cnpg.grafanaUrl'),
+    grafanaUrl: config.getOptionalString('basis.grafanaUrl'),
   };
 }
 
@@ -244,9 +345,9 @@ export function readCatalogOptions(config: RootConfigService) {
  *
  * @public
  */
-export const catalogModuleCnpg = createBackendModule({
+export const catalogModuleBasis = createBackendModule({
   pluginId: 'catalog',
-  moduleId: 'cnpg-postgresclusters',
+  moduleId: 'basis-catalog',
   register(env) {
     env.registerInit({
       deps: {
@@ -254,11 +355,13 @@ export const catalogModuleCnpg = createBackendModule({
         config: coreServices.rootConfig,
         logger: coreServices.logger,
         scheduler: coreServices.scheduler,
-        k8s: cnpgKubernetesServiceRef,
+        k8s: basisKubernetesServiceRef,
         valkey: valkeyServiceRef,
+        stacks: stackServiceRef,
+        gateways: gatewayServiceRef,
       },
-      async init({ catalog, config, logger, scheduler, k8s, valkey }) {
-        const seconds = config.getOptionalNumber('cnpg.catalog.refreshSeconds') ?? 30;
+      async init({ catalog, config, logger, scheduler, k8s, valkey, stacks, gateways }) {
+        const seconds = config.getOptionalNumber('basis.catalog.refreshSeconds') ?? 30;
         catalog.addEntityProvider(
           new PostgresClusterEntityProvider(
             k8s,
@@ -269,6 +372,8 @@ export const catalogModuleCnpg = createBackendModule({
             logger,
             readCatalogOptions(config),
             valkey,
+            stacks,
+            gateways,
           ),
         );
       },

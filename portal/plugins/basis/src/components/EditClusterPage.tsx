@@ -1,12 +1,12 @@
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { usePermission } from '@backstage/plugin-permission-react';
 import { Alert, Container, Flex, Grid, Header, Skeleton } from '@backstage/ui';
-import { cnpgClusterUpdatePermission } from '@internal/backstage-plugin-cnpg-common';
+import { basisClusterUpdatePermission } from '@internal/backstage-plugin-basis-common';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import useAsync from 'react-use/esm/useAsync';
 import { stringify } from 'yaml';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { clusterRouteRef } from '../routes';
 import { ClusterFormFields } from './ClusterFormFields';
 import { ErrorAlert, ManifestPanel } from './common';
@@ -19,11 +19,11 @@ import { ClusterForm, fromCluster, toEditPatch, validateEdit } from './form';
  */
 export const EditClusterPage = () => {
   const { namespace = '', name = '' } = useParams();
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const navigate = useNavigate();
   const clusterLink = useRouteRef(clusterRouteRef);
   const { allowed: canUpdate, loading: permissionLoading } = usePermission({
-    permission: cnpgClusterUpdatePermission,
+    permission: basisClusterUpdatePermission,
   });
 
   const { value: config } = useAsync(() => api.getConfig(), [api]);
@@ -75,7 +75,7 @@ export const EditClusterPage = () => {
     [spec, ownerChanged, form?.owner],
   );
 
-  const back = clusterLink?.({ namespace, name }) ?? '/cnpg';
+  const back = clusterLink?.({ namespace, name }) ?? '/basis';
 
   const submit = async (dryRun: boolean) => {
     setTouched(true);

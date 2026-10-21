@@ -23,8 +23,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/function-basis.sh
 source "${ROOT}/hack/lib/function-basis.sh"
-CP="${CONTROL_PLANE_CLUSTER:-cnpg-e2e-cp}"
-LOC="${LOCATION_CLUSTER:-cnpg-e2e-loc}"
+CP="${CONTROL_PLANE_CLUSTER:-basis-e2e-cp}"
+LOC="${LOCATION_CLUSTER:-basis-e2e-loc}"
 LOCATION=e2e-loc
 WORK="${ROOT}/.e2e"
 mkdir -p "${WORK}"
@@ -107,7 +107,7 @@ echo "==> location (deps + operator): cert-manager, Prometheus Operator, CloudNa
 "${L[@]}" apply --server-side -f "https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.yaml" >/dev/null
 kube_prometheus_stack "${LOC_KUBECONFIG}"
 "${L[@]}" -n cert-manager wait deploy --all --for=condition=Available --timeout=300s
-KUBECONFIG="${LOC_KUBECONFIG}" "${ROOT}/operator/install.sh"
+KUBECONFIG="${LOC_KUBECONFIG}" "${ROOT}/deps/cnpg/install.sh"
 # As deps/README.md: the default chart values.
 helm upgrade -i valkey-operator valkey-operator --kubeconfig "${LOC_KUBECONFIG}" \
   --repo https://valkey.io/valkey-helm \
@@ -198,7 +198,7 @@ fi
 
 echo "==> PostgresCluster demo/orders-db (1 instance to fit kind)"
 "${C[@]}" apply -f - <<'PGC'
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

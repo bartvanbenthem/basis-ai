@@ -1,9 +1,10 @@
-# function-basis: the composition function behind PostgresCluster and
-# ValkeyCache (../function). Publish a new version with `make function-push
+# function-basis: the composition function behind every API (../function):
+# Project, Location, PostgresCluster, ValkeyCache, ModelGateway and
+# GenAIStack. Publish a new version with `make function-push
 # FUNCTION_VERSION=...` and bump the tag here; re-run `make test` first.
 apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
   name: function-basis
 spec:
-  package: ghcr.io/bartvanbenthem/function-basis:v0.3.0
+  package: ghcr.io/bartvanbenthem/function-basis:v0.4.0

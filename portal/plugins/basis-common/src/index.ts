@@ -1,5 +1,5 @@
 /**
- * Types and permissions shared by the cnpg frontend and backend plugins.
+ * Types and permissions shared by the basis frontend and backend plugins.
  *
  * @packageDocumentation
  */
@@ -15,3 +15,5 @@ export * from './extensions';
 export * from './profiles';
 export * from './audit';
 export * from './valkey';
+export * from './genaistack';
+export * from './modelgateway';

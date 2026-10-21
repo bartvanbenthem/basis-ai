@@ -32,6 +32,8 @@ spec:
     kind: Project
     plural: projects
     shortNames: [proj]
+    # spec.names is immutable on an existing XRD: this keeps the category it
+    # was installed with (`kubectl get cnpg`), from before the basis rename.
     categories: [crossplane, cnpg]
   defaultCompositionRef:
     name: project
@@ -66,7 +68,7 @@ spec:
             # (grafana-<name>.<domain>) and part of a ClusterRoleBinding name.
             - rule: "self.metadata.name.matches('^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$')"
               message: Project names are lowercase letters, digits and "-", start with a letter, max 40 characters
-            - rule: "!self.metadata.name.startsWith('kube-') && !(self.metadata.name in ['default', 'projects', 'locations', 'buckets', 'volumes', 'caches', 'crossplane-system', 'cnpg-system', 'cnpg-locations', 'cert-manager'])"
+            - rule: "!self.metadata.name.startsWith('kube-') && !(self.metadata.name in ['default', 'projects', 'locations', 'buckets', 'volumes', 'caches', 'stacks', 'gateways', 'crossplane-system', 'cnpg-system', 'basis-locations', 'cnpg-locations', 'cert-manager'])"
               message: this name is reserved for a system namespace
             # The portal names catalog entities <namespace>--<cluster> for
             # databases and <project> for projects; this keeps them apart.

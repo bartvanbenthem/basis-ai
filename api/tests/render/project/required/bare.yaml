@@ -5,5 +5,5 @@ metadata:
 spec:
   credentials:
     secretRef:
-      namespace: cnpg-locations
+      namespace: basis-locations
       name: si-ske-demo

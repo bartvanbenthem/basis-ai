@@ -9,6 +9,12 @@ import type {
   BucketDetails,
   BucketList,
   CacheConnection,
+  GatewayKey,
+  GenAIStack,
+  GenAIStackSummary,
+  ModelGateway,
+  ModelGatewaySummary,
+  StackConnection,
   ClusterConnection,
   ClusterExtension,
   ClusterSize,
@@ -27,9 +33,9 @@ import type {
   ValkeyCacheSummary,
   VolumeList,
   VolumeSummary,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 
-export interface CnpgPortalConfig {
+export interface BasisPortalConfig {
   grafanaUrl?: string;
   defaultNamespace?: string;
   storageClasses: string[];
@@ -100,9 +106,9 @@ export interface PatchRequest {
   dryRun?: boolean;
 }
 
-/** Client for the cnpg backend plugin (/api/cnpg). */
-export interface CnpgApi {
-  getConfig(): Promise<CnpgPortalConfig>;
+/** Client for the basis backend plugin (/api/basis). */
+export interface BasisApi {
+  getConfig(): Promise<BasisPortalConfig>;
   /** The sizes (SKUs) spec.size can name, in catalog order; empty without a catalog. */
   listSizes(): Promise<ClusterSize[]>;
   /** The extensions a cluster may add to its databases, in catalog order; empty without a catalog. */
@@ -164,22 +170,44 @@ export interface CnpgApi {
   deleteCache(namespace: string, name: string): Promise<void>;
   /** valkey://default:<password>@host:6379 from the Secret in the cache's location. */
   getCacheConnection(namespace: string, name: string): Promise<CacheConnection>;
+  listStacks(namespace?: string): Promise<GenAIStackSummary[]>;
+  getStack(namespace: string, name: string): Promise<{ summary: GenAIStackSummary; resource: GenAIStack }>;
+  createStack(request: CreateClusterRequest): Promise<GenAIStack>;
+  patchStack(namespace: string, name: string, request: PatchRequest & { owner?: string | null }): Promise<GenAIStack>;
+  /** Deletes the stack with its database, caches and gateway (deletion protection is turned off first). */
+  deleteStack(namespace: string, name: string): Promise<void>;
+  /** The active site's connection Secret, values included. */
+  getStackConnection(namespace: string, name: string): Promise<StackConnection>;
+  /** Switches the stack over (or fails it over) to the other site: its database moves, the rest follows. */
+  promoteStack(namespace: string, name: string, request: PromotionRequest & { dryRun?: boolean }): Promise<GenAIStack>;
+  listGateways(namespace?: string): Promise<ModelGatewaySummary[]>;
+  /** The gateway, and the stacks that use it. */
+  getGateway(
+    namespace: string,
+    name: string,
+  ): Promise<{ summary: ModelGatewaySummary; resource: ModelGateway; stacks: string[] }>;
+  createGateway(request: CreateClusterRequest): Promise<ModelGateway>;
+  patchGateway(namespace: string, name: string, request: PatchRequest & { owner?: string | null }): Promise<ModelGateway>;
+  /** Deletes the gateway: every client's key stops working. */
+  deleteGateway(namespace: string, name: string): Promise<void>;
+  /** The clients' API keys. */
+  getGatewayKeys(namespace: string, name: string): Promise<GatewayKey[]>;
 }
 
-export const cnpgApiRef = createApiRef<CnpgApi>().with({
-  id: 'plugin.cnpg.client',
-  pluginId: 'cnpg',
+export const basisApiRef = createApiRef<BasisApi>().with({
+  id: 'plugin.basis.client',
+  pluginId: 'basis',
 });
 
 const enc = encodeURIComponent;
 
-export class CnpgClient implements CnpgApi {
+export class BasisClient implements BasisApi {
   constructor(
     private readonly options: { discoveryApi: DiscoveryApi; fetchApi: FetchApi },
   ) {}
 
   getConfig() {
-    return this.#request<CnpgPortalConfig>('/config');
+    return this.#request<BasisPortalConfig>('/config');
   }
 
   async listSizes() {
@@ -379,8 +407,73 @@ export class CnpgClient implements CnpgApi {
     return this.#request<CacheConnection>(`/caches/${enc(namespace)}/${enc(name)}/connection`);
   }
 
+  async listStacks(namespace?: string) {
+    const query = namespace ? `?namespace=${enc(namespace)}` : '';
+    return (await this.#request<{ items: GenAIStackSummary[] }>(`/stacks${query}`)).items;
+  }
+
+  getStack(namespace: string, name: string) {
+    return this.#request<{ summary: GenAIStackSummary; resource: GenAIStack }>(`/stacks/${enc(namespace)}/${enc(name)}`);
+  }
+
+  createStack(request: CreateClusterRequest) {
+    return this.#request<GenAIStack>('/stacks', { method: 'POST', body: JSON.stringify(request) });
+  }
+
+  patchStack(namespace: string, name: string, request: PatchRequest & { owner?: string | null }) {
+    return this.#request<GenAIStack>(`/stacks/${enc(namespace)}/${enc(name)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async deleteStack(namespace: string, name: string) {
+    await this.#request(`/stacks/${enc(namespace)}/${enc(name)}`, { method: 'DELETE' });
+  }
+
+  getStackConnection(namespace: string, name: string) {
+    return this.#request<StackConnection>(`/stacks/${enc(namespace)}/${enc(name)}/connection`);
+  }
+
+  promoteStack(namespace: string, name: string, request: PromotionRequest & { dryRun?: boolean }) {
+    return this.#request<GenAIStack>(`/stacks/${enc(namespace)}/${enc(name)}/promote`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async listGateways(namespace?: string) {
+    const query = namespace ? `?namespace=${enc(namespace)}` : '';
+    return (await this.#request<{ items: ModelGatewaySummary[] }>(`/gateways${query}`)).items;
+  }
+
+  getGateway(namespace: string, name: string) {
+    return this.#request<{ summary: ModelGatewaySummary; resource: ModelGateway; stacks: string[] }>(
+      `/gateways/${enc(namespace)}/${enc(name)}`,
+    );
+  }
+
+  createGateway(request: CreateClusterRequest) {
+    return this.#request<ModelGateway>('/gateways', { method: 'POST', body: JSON.stringify(request) });
+  }
+
+  patchGateway(namespace: string, name: string, request: PatchRequest & { owner?: string | null }) {
+    return this.#request<ModelGateway>(`/gateways/${enc(namespace)}/${enc(name)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async deleteGateway(namespace: string, name: string) {
+    await this.#request(`/gateways/${enc(namespace)}/${enc(name)}`, { method: 'DELETE' });
+  }
+
+  async getGatewayKeys(namespace: string, name: string) {
+    return (await this.#request<{ items: GatewayKey[] }>(`/gateways/${enc(namespace)}/${enc(name)}/keys`)).items;
+  }
+
   async #request<T>(path: string, init?: RequestInit): Promise<T> {
-    const baseUrl = await this.options.discoveryApi.getBaseUrl('cnpg');
+    const baseUrl = await this.options.discoveryApi.getBaseUrl('basis');
     const response = await this.options.fetchApi.fetch(`${baseUrl}${path}`, {
       ...init,
       headers: { 'Content-Type': 'application/json', ...init?.headers },

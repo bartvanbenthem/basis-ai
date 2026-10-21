@@ -1,5 +1,5 @@
 # Backups in the Project's bucket, which isn't ready: nothing is placed yet.
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: secrets-db

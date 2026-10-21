@@ -1,0 +1,60 @@
+# Guardrails for ModelGateways (ValidatingAdmissionPolicy, Kubernetes >= 1.30),
+# the same as GenAIStacks': gateways run in their Project's locations, never
+# on the control plane. A new one needs a Project with a protected location,
+# and turning recovery on needs a recovery location (namespace annotations
+# set by the Project composition), both open to new workloads.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: ai.cndev.nl-modelgateway-locations
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [ai.cndev.nl]
+        apiVersions: ["*"]
+        resources: [modelgateways]
+        operations: [CREATE, UPDATE]
+  variables:
+    - name: annotations
+      expression: "has(namespaceObject.metadata.annotations) ? namespaceObject.metadata.annotations : {}"
+    - name: protected
+      expression: "'platform.cndev.nl/protected-location' in variables.annotations ? variables.annotations['platform.cndev.nl/protected-location'] : ''"
+    - name: recovery
+      expression: "'platform.cndev.nl/recovery-location' in variables.annotations ? variables.annotations['platform.cndev.nl/recovery-location'] : ''"
+    - name: closed
+      expression: >-
+        'platform.cndev.nl/unschedulable-locations' in variables.annotations
+        ? variables.annotations['platform.cndev.nl/unschedulable-locations'].split(',')
+        : []
+    - name: wantsRecovery
+      expression: "has(object.spec.recovery) && has(object.spec.recovery.enabled) && object.spec.recovery.enabled"
+    - name: recoveryAdded
+      expression: >-
+        variables.wantsRecovery && (oldObject == null || !has(oldObject.spec.recovery)
+        || !has(oldObject.spec.recovery.enabled) || !oldObject.spec.recovery.enabled)
+  validations:
+    - expression: "oldObject != null || variables.protected != ''"
+      messageExpression: >-
+        'namespace ' + namespaceObject.metadata.name + ' is not a Project with a protected location; '
+        + 'ModelGateways run in a Project\'s locations, never on the control plane'
+      reason: Forbidden
+    - expression: "oldObject != null || !(variables.protected in variables.closed)"
+      messageExpression: "'location ' + variables.protected + ' (protected) is closed to new workloads'"
+      reason: Forbidden
+    - expression: "!variables.recoveryAdded || variables.recovery != ''"
+      messageExpression: >-
+        'recovery needs a recovery location; set spec.locations.recovery on Project '
+        + namespaceObject.metadata.name + ' first'
+      reason: Forbidden
+    - expression: "!variables.recoveryAdded || !(variables.recovery in variables.closed)"
+      messageExpression: "'location ' + variables.recovery + ' (recovery) is closed to new workloads'"
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: ai.cndev.nl-modelgateway-locations
+spec:
+  policyName: ai.cndev.nl-modelgateway-locations
+  validationActions: [Deny]

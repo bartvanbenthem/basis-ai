@@ -1,0 +1,34 @@
+# The Project (both sites), the caches' password Secrets and the stack's
+# gateway's keys the GenAIStack composition reads.
+apiVersion: platform.cndev.nl/v1alpha1
+kind: Project
+metadata:
+  name: ai-team
+spec:
+  locations:
+    protected: si-ske-demo
+    recovery: onprem-ams
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: support-bot-cache-valkey
+  namespace: ai-team
+data:
+  password: Y2FjaGUtcGFzc3dvcmQ= # cache-password
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: support-bot-cache-dr-valkey
+  namespace: ai-team
+data:
+  password: ZHItcGFzc3dvcmQ= # dr-password
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: support-bot-gateway-keys
+  namespace: ai-team
+data:
+  apps: Z2F0ZXdheS1rZXk= # gateway-key

@@ -2,7 +2,7 @@ import { Button, Flex, Select, Switch, Text, TextAreaField, TextField } from '@b
 import {
   LOCATION_ENVIRONMENTS,
   LOCATION_PROVIDERS,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { useMemo, useRef } from 'react';
 import { Mono, Section } from './common';
 import {

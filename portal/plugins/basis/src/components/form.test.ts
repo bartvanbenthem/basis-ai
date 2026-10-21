@@ -1,4 +1,4 @@
-import { parseExtensions, parseSizes, PostgresCluster } from '@internal/backstage-plugin-cnpg-common';
+import { parseExtensions, parseSizes, PostgresCluster } from '@internal/backstage-plugin-basis-common';
 import {
   defaultForm,
   fromCluster,
@@ -39,7 +39,7 @@ describe('create form', () => {
 
   it('round-trips expose, and an edit can turn it off', () => {
     const cluster: PostgresCluster = {
-      apiVersion: 'cnpg.cndev.nl/v1alpha1',
+      apiVersion: 'postgres.cndev.nl/v1alpha1',
       kind: 'PostgresCluster',
       metadata: { name: 'orders-db', namespace: 'demo' },
       spec: { expose: { enabled: true, loadBalancerSourceRanges: ['10.0.0.0/8'] } },
@@ -89,7 +89,7 @@ describe('create form', () => {
 
 /** As the API server returns it: XRD defaults filled in, plus a field the form doesn't know. */
 const live: PostgresCluster = {
-  apiVersion: 'cnpg.cndev.nl/v1alpha1',
+  apiVersion: 'postgres.cndev.nl/v1alpha1',
   kind: 'PostgresCluster',
   metadata: { name: 'orders-db', namespace: 'demo', labels: { 'backstage.io/owner': 'team-orders' } },
   spec: {
@@ -266,7 +266,7 @@ describe('locations', () => {
     // Without it, the destination and credentials are needed.
     expect(validate({ ...f, backupProjectBucket: false }).backupDestinationPath).toBeDefined();
     const onBucket: PostgresCluster = {
-      apiVersion: 'cnpg.cndev.nl/v1alpha1',
+      apiVersion: 'postgres.cndev.nl/v1alpha1',
       kind: 'PostgresCluster',
       metadata: { name: 'orders-db', namespace: 'demo' },
       spec: { instances: 3, backup: { enabled: true, retentionPolicy: '30d', schedule: '0 0 2 * * *' } },
@@ -278,7 +278,7 @@ describe('locations', () => {
 
   it('switches the primary over with a patch of just primarySite', () => {
     const replicated: PostgresCluster = {
-      apiVersion: 'cnpg.cndev.nl/v1alpha1',
+      apiVersion: 'postgres.cndev.nl/v1alpha1',
       kind: 'PostgresCluster',
       metadata: { name: 'orders-db', namespace: 'demo' },
       spec: {
@@ -305,7 +305,7 @@ describe('locations', () => {
 describe('audit logging', () => {
   const cluster = (parameters?: Record<string, string>) =>
     ({
-      apiVersion: 'cnpg.cndev.nl/v1alpha1',
+      apiVersion: 'postgres.cndev.nl/v1alpha1',
       kind: 'PostgresCluster',
       metadata: { name: 'orders-db', namespace: 'demo' },
       spec: { postgresVersion: 17, instances: 3, ...(parameters ? { postgresql: { parameters } } : {}) },
@@ -350,7 +350,7 @@ describe('audit logging', () => {
 describe('extensions', () => {
   const cluster = (extensions?: string[]) =>
     ({
-      apiVersion: 'cnpg.cndev.nl/v1alpha1',
+      apiVersion: 'postgres.cndev.nl/v1alpha1',
       kind: 'PostgresCluster',
       metadata: { name: 'docs-db', namespace: 'demo' },
       spec: { postgresVersion: 17, instances: 3, database: { name: 'docs', owner: 'docs', ...(extensions ? { extensions } : {}) } },
@@ -413,7 +413,7 @@ describe('workload profile', () => {
 
   it('reads the profile back', () => {
     const cluster: PostgresCluster = {
-      apiVersion: 'cnpg.cndev.nl/v1alpha1',
+      apiVersion: 'postgres.cndev.nl/v1alpha1',
       kind: 'PostgresCluster',
       metadata: { name: 'rag', namespace: 'demo' },
       spec: { profile: 'vector', postgresVersion: 18 },

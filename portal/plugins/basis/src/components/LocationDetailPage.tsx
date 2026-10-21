@@ -17,15 +17,15 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
-  cnpgLocationDeletePermission,
-  cnpgLocationUpdatePermission,
+  basisLocationDeletePermission,
+  basisLocationUpdatePermission,
   type LocationSummary,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { editLocationRouteRef, locationsRouteRef } from '../routes';
 import { age, ErrorAlert, Fields, Mono, Panel } from './common';
 import { ENVIRONMENT_LABELS, PROVIDER_LABELS } from './locationForm';
@@ -40,7 +40,7 @@ const DeleteDialog = ({
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
 }) => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const navigate = useNavigate();
   const listLink = useRouteRef(locationsRouteRef);
   const [confirm, setConfirm] = useState('');
@@ -52,7 +52,7 @@ const DeleteDialog = ({
     try {
       await api.deleteLocation(name);
       onOpenChange(false);
-      navigate(listLink?.() ?? '/cnpg/locations');
+      navigate(listLink?.() ?? '/basis/locations');
     } catch (e) {
       setError(e as Error);
     } finally {
@@ -112,10 +112,10 @@ const HealthAlert = ({ location }: { location: LocationSummary }) => {
 /** One location: its settings, how the portal connects, and the latest health checks. */
 export const LocationDetailPage = () => {
   const { name = '' } = useParams();
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const editLink = useRouteRef(editLocationRouteRef);
-  const { allowed: canUpdate } = usePermission({ permission: cnpgLocationUpdatePermission });
-  const { allowed: canDelete } = usePermission({ permission: cnpgLocationDeletePermission });
+  const { allowed: canUpdate } = usePermission({ permission: basisLocationUpdatePermission });
+  const { allowed: canDelete } = usePermission({ permission: basisLocationDeletePermission });
   const [deleting, setDeleting] = useState(false);
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<Error>();
@@ -203,6 +203,7 @@ export const LocationDetailPage = () => {
                             `CloudNativePG ${value.status.operators.cloudnativepg ? 'installed' : 'missing'}`,
                             `Prometheus Operator ${value.status.operators.prometheusOperator ? 'installed' : 'missing'}`,
                             `Valkey operator ${value.status.operators.valkey ? 'installed' : 'not installed (only caches need it)'}`,
+                            `Agent Router ${value.status.operators.agentRouter ? 'installed' : 'not installed (only GenAI stacks need it)'}`,
                           ].join(', ')
                         : 'unknown until Crossplane connects',
                     ],

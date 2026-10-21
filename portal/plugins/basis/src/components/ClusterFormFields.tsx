@@ -10,7 +10,7 @@ import {
   PROFILES,
   sizeLabel,
   VECTOR_EXTENSION,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { Section } from './common';
 import { ClusterForm, selectPostgresVersion, selectProfile, selectSize } from './form';
 

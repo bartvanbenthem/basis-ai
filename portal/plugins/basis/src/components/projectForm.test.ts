@@ -1,4 +1,4 @@
-import type { Project } from '@internal/backstage-plugin-cnpg-common';
+import type { Project } from '@internal/backstage-plugin-basis-common';
 import {
   accessEditable,
   defaultProjectForm,

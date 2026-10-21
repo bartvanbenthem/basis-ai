@@ -3,7 +3,7 @@
 # gets its own backups, in a folder of its own (status.backup.serverName).
 # The source folder is orders-db's status.backup.serverName, or one of the
 # Project's status.backup.servers (also of clusters deleted since).
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db-copy

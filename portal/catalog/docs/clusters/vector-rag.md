@@ -20,7 +20,7 @@ require `vector`, which the platform creates first. Licenses: VectorChord AGPLv3
 pg_search AGPLv3.
 
 ```yaml
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: rag-db

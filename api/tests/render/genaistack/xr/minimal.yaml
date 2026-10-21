@@ -1,0 +1,17 @@
+# A single-site stack: RAG database, semantic cache and gateway with two
+# models (a hosted provider with a key, a self-hosted OpenAI-compatible one).
+apiVersion: ai.cndev.nl/v1alpha1
+kind: GenAIStack
+metadata:
+  name: support-bot
+  namespace: ai-team
+spec:
+  gateway:
+    models:
+      - name: gpt-4o-mini
+        endpoint: https://api.openai.com/v1
+        apiKeySecretRef:
+          name: openai
+      - name: llama
+        endpoint: http://vllm.models.svc:8000/v1
+        upstreamModel: meta-llama/Llama-3.1-8B-Instruct

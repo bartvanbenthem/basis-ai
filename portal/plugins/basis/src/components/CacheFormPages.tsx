@@ -18,18 +18,18 @@ import {
   CACHE_MODES,
   cacheMaxMemory,
   type CacheMode,
-  cnpgCacheUpdatePermission,
-  cnpgProjectCreatePermission,
+  basisCacheUpdatePermission,
+  basisProjectCreatePermission,
   EVICTION_POLICIES,
   type EvictionPolicy,
   type ProjectSummary,
   type Site,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import useAsync from 'react-use/esm/useAsync';
 import { stringify } from 'yaml';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { cacheRouteRef, createProjectRouteRef } from '../routes';
 import {
   type CacheForm,
@@ -245,11 +245,11 @@ const CacheFormFields = ({
 };
 
 export const CreateCachePage = () => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const navigate = useNavigate();
   const cacheLink = useRouteRef(cacheRouteRef);
   const createProjectLink = useRouteRef(createProjectRouteRef);
-  const { allowed: canCreateProject } = usePermission({ permission: cnpgProjectCreatePermission });
+  const { allowed: canCreateProject } = usePermission({ permission: basisProjectCreatePermission });
   const [params] = useSearchParams();
   const presetMode: CacheMode = params.get('mode') === 'semantic' ? 'semantic' : 'exact';
 
@@ -297,7 +297,7 @@ export const CreateCachePage = () => {
       if (dryRun) {
         setResult({ validated: true });
       } else {
-        navigate(cacheLink?.({ namespace: form.namespace, name: form.name }) ?? '/cnpg/caches');
+        navigate(cacheLink?.({ namespace: form.namespace, name: form.name }) ?? '/basis/caches');
       }
     } catch (e) {
       setResult({ error: e as Error });
@@ -353,11 +353,11 @@ export const CreateCachePage = () => {
 /** Changes a cache's topology, memory and eviction; name, project and mode are fixed. */
 export const EditCachePage = () => {
   const { namespace = '', name = '' } = useParams();
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const navigate = useNavigate();
   const cacheLink = useRouteRef(cacheRouteRef);
   const { allowed: canUpdate, loading: permissionLoading } = usePermission({
-    permission: cnpgCacheUpdatePermission,
+    permission: basisCacheUpdatePermission,
   });
 
   const { value: details, error: loadError } = useAsync(() => api.getCache(namespace, name), [api, namespace, name]);
@@ -386,7 +386,7 @@ export const EditCachePage = () => {
     () => stringify({ ...(ownerChanged ? { owner: form?.owner || null } : {}), spec }),
     [spec, ownerChanged, form],
   );
-  const back = cacheLink?.({ namespace, name }) ?? '/cnpg/caches';
+  const back = cacheLink?.({ namespace, name }) ?? '/basis/caches';
 
   const submit = async (dryRun: boolean) => {
     setTouched(true);

@@ -5,8 +5,8 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { ReactElement } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { SWRConfig } from 'swr';
-import type { BucketDetails, BucketSummary } from '@internal/backstage-plugin-cnpg-common';
-import { CnpgApi, cnpgApiRef } from '../api';
+import type { BucketDetails, BucketSummary } from '@internal/backstage-plugin-basis-common';
+import { BasisApi, basisApiRef } from '../api';
 import { rootRouteRef } from '../routes';
 import { BucketDetailPage } from './BucketDetailPage';
 import { BucketListPage } from './BucketListPage';
@@ -26,26 +26,26 @@ const details = (summary: BucketSummary): BucketDetails => ({
   folders: [{ path: 'barman/orders-db', objects: 2, bytes: 2048, cluster: 'orders-db', active: false }],
 });
 
-const apis = (api: Partial<CnpgApi>, allow = true) => ({
+const apis = (api: Partial<BasisApi>, allow = true) => ({
   apis: [
-    [cnpgApiRef, api],
+    [basisApiRef, api],
     [permissionApiRef, mockApis.permission({ authorize: allow ? AuthorizeResult.ALLOW : AuthorizeResult.DENY })],
   ] as const,
-  mountedRoutes: { '/cnpg': rootRouteRef },
+  mountedRoutes: { '/basis': rootRouteRef },
 });
 
 /** usePermission caches decisions in SWR's global cache; a fresh one per render keeps tests apart. */
 const fresh = (ui: ReactElement) => <SWRConfig value={{ provider: () => new Map() }}>{ui}</SWRConfig>;
 
-const renderDetail = (name: string, api: Partial<CnpgApi>, allow = true) =>
+const renderDetail = (name: string, api: Partial<BasisApi>, allow = true) =>
   renderInTestApp(
     fresh(
       <Routes>
-        <Route path="/cnpg/buckets/:name" element={<BucketDetailPage />} />
-        <Route path="/cnpg/buckets" element={<div>bucket list</div>} />
+        <Route path="/basis/buckets/:name" element={<BucketDetailPage />} />
+        <Route path="/basis/buckets" element={<div>bucket list</div>} />
       </Routes>,
     ),
-    { ...apis(api, allow), initialRouteEntries: [`/cnpg/buckets/${name}`] } as any,
+    { ...apis(api, allow), initialRouteEntries: [`/basis/buckets/${name}`] } as any,
   );
 
 describe('bytes', () => {
@@ -59,21 +59,21 @@ describe('bytes', () => {
 
 describe('BucketListPage', () => {
   it('lists every bucket with its state, project and size', async () => {
-    const api: Partial<CnpgApi> = { listBuckets: jest.fn(async () => ({ configured: true, items: buckets })) };
+    const api: Partial<BasisApi> = { listBuckets: jest.fn(async () => ({ configured: true, items: buckets })) };
     await renderInTestApp(<BucketListPage />, apis(api) as any);
 
     expect(await screen.findByText(LIVE)).toBeInTheDocument();
     const table = within(screen.getByRole('grid'));
     expect(table.getByText('In use')).toBeInTheDocument();
     expect(table.getByText('Orphaned')).toBeInTheDocument();
-    expect(table.getByText('demo')).toHaveAttribute('href', '/cnpg/projects/demo');
+    expect(table.getByText('demo')).toHaveAttribute('href', '/basis/projects/demo');
     expect(table.getByText('old (deleted)')).toBeInTheDocument();
     expect(table.getByText('6.5 MiB')).toBeInTheDocument();
-    expect(table.getByText(ORPHAN).closest('a')).toHaveAttribute('href', `/cnpg/buckets/${ORPHAN}`);
+    expect(table.getByText(ORPHAN).closest('a')).toHaveAttribute('href', `/basis/buckets/${ORPHAN}`);
   });
 
   it('lists the cluster\'s buckets when the object store is unreachable', async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       listBuckets: jest.fn(async () => ({
         configured: true,
         items: [{ name: LIVE, state: 'project' as const, project: 'demo' }],
@@ -87,7 +87,7 @@ describe('BucketListPage', () => {
   });
 
   it('shows what the cluster knows of a bucket when the object store is unreachable', async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       getBucket: jest.fn(async () => ({ ...details(buckets[0]), folders: [], storeError: 'ECONNREFUSED' })),
     };
     await renderDetail(LIVE, api);
@@ -96,7 +96,7 @@ describe('BucketListPage', () => {
   });
 
   it('says when the backend has no object store', async () => {
-    const api: Partial<CnpgApi> = { listBuckets: jest.fn(async () => ({ configured: false, items: [] })) };
+    const api: Partial<BasisApi> = { listBuckets: jest.fn(async () => ({ configured: false, items: [] })) };
     await renderInTestApp(<BucketListPage />, apis(api) as any);
     expect(await screen.findByText('No object store configured')).toBeInTheDocument();
   });
@@ -104,14 +104,14 @@ describe('BucketListPage', () => {
 
 describe('BucketDetailPage', () => {
   it('offers no delete without the permission', async () => {
-    const api: Partial<CnpgApi> = { getBucket: jest.fn(async () => details(buckets[1])) };
+    const api: Partial<BasisApi> = { getBucket: jest.fn(async () => details(buckets[1])) };
     await renderDetail(ORPHAN, api, false);
     expect(await screen.findByText(/Created for project old/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
   it('deletes an orphaned bucket after typing its name', async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       getBucket: jest.fn(async () => details(buckets[1])),
       deleteBucket: jest.fn(async () => undefined),
     };
@@ -131,7 +131,7 @@ describe('BucketDetailPage', () => {
   });
 
   it('offers no delete for a bucket in use', async () => {
-    const api: Partial<CnpgApi> = { getBucket: jest.fn(async () => details(buckets[0])) };
+    const api: Partial<BasisApi> = { getBucket: jest.fn(async () => details(buckets[0])) };
     await renderDetail(LIVE, api);
     expect(await screen.findByText(/its backup bucket/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();

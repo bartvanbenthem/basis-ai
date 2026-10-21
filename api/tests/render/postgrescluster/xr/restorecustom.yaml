@@ -1,6 +1,6 @@
 # Restored from an object store of its own (the latest state), without
 # backups of its own: no WAL archiving, only the read-only restore store.
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: ledger-copy

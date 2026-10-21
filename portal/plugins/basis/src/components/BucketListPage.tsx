@@ -16,11 +16,11 @@ import {
 import type {
   BucketState,
   BucketSummary,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { useMemo, useState } from 'react';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { bucketRouteRef, projectRouteRef } from '../routes';
 import { age, BucketStateBadge, bytes, ErrorAlert, usageText } from './common';
 
@@ -39,7 +39,7 @@ const FILTERS: Array<{ id: Filter; label: string }> = [
  * orphaned ones; only those the cluster knows when the store can't be read.
  */
 export const BucketListPage = () => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const bucketLink = useRouteRef(bucketRouteRef);
   const projectLink = useRouteRef(projectRouteRef);
   const [filter, setFilter] = useState<Filter>('all');
@@ -162,7 +162,7 @@ export const BucketListPage = () => {
             <Alert
               status="info"
               title="No object store configured"
-              description="Showing the buckets the cluster refers to. Set cnpg.buckets in the portal's app-config (the S3 endpoint and the COSI driver's credentials Secret) for their usage and orphaned buckets."
+              description="Showing the buckets the cluster refers to. Set basis.buckets in the portal's app-config (the S3 endpoint and the COSI driver's credentials Secret) for their usage and orphaned buckets."
             />
           )}
           {value?.configured && value.storeError && (

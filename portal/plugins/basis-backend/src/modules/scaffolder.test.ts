@@ -1,7 +1,40 @@
 import { createMockActionContext } from '@backstage/plugin-scaffolder-node-test-utils';
-import { createPostgresClusterAction, createProjectAction, createValkeyCacheAction, prune } from './scaffolder';
+import {
+  createGenAIStackAction,
+  createPostgresClusterAction,
+  createProjectAction,
+  createValkeyCacheAction,
+  prune,
+} from './scaffolder';
 
-describe('cnpg:valkeycache:create', () => {
+describe('basis:genaistack:create', () => {
+  it('applies the stack in the project, pruning empty model fields', async () => {
+    const stacks = { apply: jest.fn(async () => ({})) };
+    const ctx = createMockActionContext({
+      input: {
+        name: 'support-bot',
+        namespace: 'resource:default/demo',
+        spec: { gateway: { models: [{ name: 'gpt-4o-mini', endpoint: 'https://api.openai.com/v1', upstreamModel: '', secretName: 'openai' }] } },
+      },
+    });
+    await createGenAIStackAction(stacks as any).handler(ctx);
+    expect(stacks.apply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'support-bot',
+        namespace: 'demo',
+        spec: {
+          gateway: {
+            models: [{ name: 'gpt-4o-mini', endpoint: 'https://api.openai.com/v1', apiKeySecretRef: { name: 'openai' } }],
+          },
+        },
+      }),
+    );
+    expect(ctx.output).toHaveBeenCalledWith('portalPath', '/basis/stacks/demo/support-bot');
+    expect(ctx.output).toHaveBeenCalledWith('entityRef', 'resource:default/demo--support-bot.stack');
+  });
+});
+
+describe('basis:valkeycache:create', () => {
   it('applies the cache in the project and outputs links', async () => {
     const valkey = { apply: jest.fn(async () => ({})) };
     const action = createValkeyCacheAction(valkey as any);
@@ -22,12 +55,12 @@ describe('cnpg:valkeycache:create', () => {
       createOnly: true,
       dryRun: undefined,
     });
-    expect(ctx.output).toHaveBeenCalledWith('portalPath', '/cnpg/caches/demo/llm-cache');
+    expect(ctx.output).toHaveBeenCalledWith('portalPath', '/basis/caches/demo/llm-cache');
     expect(ctx.output).toHaveBeenCalledWith('entityRef', 'resource:default/demo--llm-cache.valkey');
   });
 });
 
-describe('cnpg:postgrescluster:create', () => {
+describe('basis:postgrescluster:create', () => {
   it('prunes empty optional values', () => {
     expect(
       prune({
@@ -60,7 +93,7 @@ describe('cnpg:postgrescluster:create', () => {
       createOnly: true,
       dryRun: undefined,
     });
-    expect(ctx.output).toHaveBeenCalledWith('portalPath', '/cnpg/demo/orders-db');
+    expect(ctx.output).toHaveBeenCalledWith('portalPath', '/basis/demo/orders-db');
     expect(ctx.output).toHaveBeenCalledWith('entityRef', 'resource:default/demo--orders-db');
   });
 
@@ -77,7 +110,7 @@ describe('cnpg:postgrescluster:create', () => {
   });
 });
 
-describe('cnpg:project:create', () => {
+describe('basis:project:create', () => {
   it('applies the project and drops empty access entries and quota', async () => {
     const k8s = { applyProject: jest.fn(async () => ({})) };
     const action = createProjectAction(k8s as any);
@@ -110,6 +143,6 @@ describe('cnpg:project:create', () => {
       dryRun: undefined,
     });
     expect(ctx.output).toHaveBeenCalledWith('entityRef', 'resource:default/team-orders');
-    expect(ctx.output).toHaveBeenCalledWith('portalPath', '/cnpg/projects/team-orders');
+    expect(ctx.output).toHaveBeenCalledWith('portalPath', '/basis/projects/team-orders');
   });
 });

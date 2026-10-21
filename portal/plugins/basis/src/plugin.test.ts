@@ -1,7 +1,7 @@
-import { cnpgPlugin } from './plugin';
+import { basisPlugin } from './plugin';
 
-describe('cnpg', () => {
+describe('basis', () => {
   it('should export plugin', () => {
-    expect(cnpgPlugin).toBeDefined();
+    expect(basisPlugin).toBeDefined();
   });
 });

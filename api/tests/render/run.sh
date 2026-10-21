@@ -3,8 +3,7 @@
 #
 #  1. The function's embedded assets are up to date with src/, and
 #     function-basis (../../function) builds into a local image.
-#  2. `crossplane render` (that image for PostgresCluster, the real
-#     for ValkeyCache, the real function-go-templating image for the others, XRD defaults
+#  2. `crossplane render` (that image for every API, XRD defaults
 #     applied via --xrd) for every <api>/xr/<case>.yaml, first with nothing
 #     observed, then with <api>/observed/<case>.yaml if present.
 #     <api>/required/<case>.yaml (else <api>/required/default.yaml), if
@@ -13,7 +12,7 @@
 #     <api>'s apis/<api>/sizes.yaml (the postgres-sizes catalog) and
 #     extensions.yaml (the postgres-extensions catalog) if it has them.
 #  3. `crossplane resource validate` of every rendered object against the
-#     real CRD schemas: CNPG + Barman Cloud from ../../../operator/charts,
+#     real CRD schemas: CNPG + Barman Cloud from ../../../deps/cnpg/charts,
 #     Prometheus Operator, grafana-operator, provider-kubernetes, the Valkey
 #     operator's ValkeyCluster and
 #     Crossplane's ClusterUsage from ../crds. The manifest inside each provider-kubernetes Object (what goes
@@ -23,14 +22,17 @@
 #
 # Requires the crossplane CLI (v2), helm, Go, and a Docker API and CLI (to build the function)
 # (rootless podman works: export DOCKER_HOST=unix:///run/user/$UID/podman/podman.sock).
+#
+#   RENDER_APIS="project location"   only these APIs
+#   RENDER_OUT=<dir>                 keep the rendered output there (<api>-<case>-<state>.yaml)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 API_ROOT="$(cd "${HERE}/../.." && pwd)"
-OPERATOR_CHARTS="$(cd "${API_ROOT}/../operator/charts" && pwd)"
+OPERATOR_CHARTS="$(cd "${API_ROOT}/../deps/cnpg/charts" && pwd)"
 # Built from ../../function by this script; never pulled.
 FUNCTION_IMAGE="${FUNCTION_IMAGE:-localhost/function-basis:render}"
-APIS=(postgrescluster project location valkeycache)
+read -r -a APIS <<<"${RENDER_APIS:-postgrescluster project location valkeycache modelgateway genaistack}"
 
 if [[ -z "${DOCKER_HOST:-}" && -S "/run/user/${UID}/podman/podman.sock" ]]; then
   export DOCKER_HOST="unix:///run/user/${UID}/podman/podman.sock"
@@ -38,6 +40,10 @@ fi
 
 OUT="$(mktemp -d)"
 trap 'rm -rf "${OUT}"' EXIT
+if [[ -n "${RENDER_OUT:-}" ]]; then
+  mkdir -p "${RENDER_OUT}"
+  OUT_KEEP="$(cd "${RENDER_OUT}" && pwd)"
+fi
 
 echo "=== build rendertest"
 RT="${OUT}/rendertest"
@@ -49,8 +55,7 @@ echo "=== generate --check"
 echo "=== build function-basis (${FUNCTION_IMAGE})"
 docker build -q -f "${API_ROOT}/function/Dockerfile" -t "${FUNCTION_IMAGE}" "${API_ROOT}" >/dev/null
 FUNCTIONS="${OUT}/functions.yaml"
-cat "${API_ROOT}/install/functions.yaml" - >"${FUNCTIONS}" <<EOF
----
+cat >"${FUNCTIONS}" <<EOF
 apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
@@ -65,8 +70,9 @@ echo "=== collecting CRD schemas"
 SCHEMAS="${OUT}/schemas"
 mkdir -p "${SCHEMAS}"
 cp "${HERE}/../crds/"*.yaml "${SCHEMAS}/"
-for api in "${APIS[@]}"; do
-  cp "${API_ROOT}/apis/${api}/definition.yaml" "${SCHEMAS}/xrd-${api}.yaml"
+# Every API's, also with RENDER_APIS: a GenAIStack composes the others.
+for xrd in "${API_ROOT}"/apis/*/definition.yaml; do
+  cp "${xrd}" "${SCHEMAS}/xrd-$(basename "$(dirname "${xrd}")").yaml"
 done
 helm template cnpg "${OPERATOR_CHARTS}/cloudnative-pg" --show-only templates/crds/crds.yaml > "${SCHEMAS}/cnpg-crds.yaml"
 helm template barman "${OPERATOR_CHARTS}/plugin-barman-cloud" > "${OUT}/barman-all.yaml"
@@ -117,6 +123,7 @@ for api in "${APIS[@]}"; do
 
       echo "=== ${api}/${case} (${state}): assertions"
       "${RT}" assert "${api}" "${case}" "${state}" "${out}" "${API_ROOT}/src/dashboards/cnpg-cluster.json" || fail=1
+      [[ -n "${OUT_KEEP:-}" ]] && cp "${out}" "${OUT_KEEP}/"
     done
   done
 done

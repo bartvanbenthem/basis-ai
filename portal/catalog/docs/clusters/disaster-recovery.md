@@ -17,7 +17,8 @@ loss of the primary's location would lose.
 
 ## Move the primary
 
-In the portal: the cluster's **Disaster recovery** tab. With kubectl:
+In the portal: the cluster's **Disaster recovery** tab. A GenAI stack's database moves with its
+stack instead ([Switching sites](../ai/genai-stacks.md#switching-sites)). With kubectl:
 
 ```sh
 kubectl -n team-payments patch postgrescluster orders-db --type merge \

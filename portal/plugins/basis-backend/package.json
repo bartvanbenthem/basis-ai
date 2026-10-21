@@ -1,5 +1,5 @@
 {
-  "name": "@internal/backstage-plugin-cnpg-backend",
+  "name": "@internal/backstage-plugin-basis-backend",
   "version": "0.1.0",
   "license": "UNLICENSED",
   "private": true,
@@ -12,7 +12,7 @@
   },
   "backstage": {
     "role": "backend-plugin",
-    "pluginId": "cnpg"
+    "pluginId": "basis"
   },
   "scripts": {
     "start": "backstage-cli package start",
@@ -32,7 +32,7 @@
     "@backstage/plugin-catalog-node": "^2.2.5",
     "@backstage/plugin-permission-common": "^0.9.11",
     "@backstage/plugin-scaffolder-node": "^0.13.7",
-    "@internal/backstage-plugin-cnpg-common": "workspace:^",
+    "@internal/backstage-plugin-basis-common": "workspace:^",
     "@kubernetes/client-node": "^1.4.0",
     "express": "^4.14.0",
     "express-promise-router": "^4.1.0",
@@ -50,6 +50,6 @@
     "dist",
     "config.d.ts"
   ],
-  "description": "Backend for the CNPG portal: REST API, catalog provider and scaffolder action for cnpg.cndev.nl PostgresClusters",
+  "description": "Backend for the BASIS portal: REST API, catalog provider, scaffolder actions and MCP actions for the BASIS APIs",
   "configSchema": "config.d.ts"
 }

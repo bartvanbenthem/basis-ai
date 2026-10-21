@@ -1,0 +1,41 @@
+# Observed state for xr/geo.yaml: credentials exist, the database is Ready
+# with its primary in the recovery site (after a switchover), and so is the
+# stack's gateway.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: support-bot-db-credentials
+  namespace: ai-team
+  annotations:
+    crossplane.io/composition-resource-name: db-credentials
+data:
+  password: ZGItcGFzc3dvcmQ= # db-password
+---
+apiVersion: postgres.cndev.nl/v1alpha1
+kind: PostgresCluster
+metadata:
+  name: support-bot-db
+  namespace: ai-team
+  annotations:
+    crossplane.io/composition-resource-name: database
+spec: {}
+status:
+  primarySite: recovery
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+---
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelGateway
+metadata:
+  name: support-bot-gateway
+  namespace: ai-team
+  annotations:
+    crossplane.io/composition-resource-name: gateway
+spec: {}
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available

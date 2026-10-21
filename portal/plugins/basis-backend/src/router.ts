@@ -12,32 +12,48 @@ import express from 'express';
 import Router from 'express-promise-router';
 import { z } from 'zod/v3';
 import {
-  cnpgBucketDeletePermission,
-  cnpgCacheCreatePermission,
-  cnpgCacheCredentialsReadPermission,
-  cnpgCacheDeletePermission,
-  cnpgCacheReadPermission,
-  cnpgCacheUpdatePermission,
-  cnpgBucketReadPermission,
-  cnpgClusterCreatePermission,
-  cnpgClusterCredentialsReadPermission,
-  cnpgClusterDeletePermission,
-  cnpgClusterFailoverPermission,
-  cnpgClusterReadPermission,
-  cnpgClusterRestorePermission,
-  cnpgClusterSwitchoverPermission,
-  cnpgClusterUpdatePermission,
-  cnpgLocationCreatePermission,
-  cnpgLocationDeletePermission,
-  cnpgLocationReadPermission,
-  cnpgLocationUpdatePermission,
-  cnpgProjectCreatePermission,
-  cnpgProjectAuditReadPermission,
-  cnpgProjectDeletePermission,
-  cnpgProjectReadPermission,
-  cnpgProjectUpdatePermission,
-  cnpgVolumeDeletePermission,
-  cnpgVolumeReadPermission,
+  basisBucketDeletePermission,
+  basisCacheCreatePermission,
+  basisCacheCredentialsReadPermission,
+  basisCacheDeletePermission,
+  basisCacheReadPermission,
+  basisCacheUpdatePermission,
+  basisGatewayCreatePermission,
+  basisGatewayCredentialsReadPermission,
+  basisGatewayDeletePermission,
+  basisGatewayReadPermission,
+  basisGatewayUpdatePermission,
+  basisStackCreatePermission,
+  basisStackCredentialsReadPermission,
+  basisStackDeletePermission,
+  basisStackReadPermission,
+  basisStackUpdatePermission,
+  GenAIStackSummary,
+  ModelGatewaySummary,
+  STACK_OWNER_LABEL,
+  stackPromotionPatch,
+  summarizeGateway,
+  summarizeStack,
+  basisBucketReadPermission,
+  basisClusterCreatePermission,
+  basisClusterCredentialsReadPermission,
+  basisClusterDeletePermission,
+  basisClusterFailoverPermission,
+  basisClusterReadPermission,
+  basisClusterRestorePermission,
+  basisClusterSwitchoverPermission,
+  basisClusterUpdatePermission,
+  basisLocationCreatePermission,
+  basisLocationDeletePermission,
+  basisLocationReadPermission,
+  basisLocationUpdatePermission,
+  basisProjectCreatePermission,
+  basisProjectAuditReadPermission,
+  basisProjectDeletePermission,
+  basisProjectReadPermission,
+  basisProjectUpdatePermission,
+  basisVolumeDeletePermission,
+  basisVolumeReadPermission,
   clusterRestoreSource,
   LOCAL_LOCATION,
   LOCATION_ENVIRONMENTS,
@@ -59,12 +75,14 @@ import {
   summarizeProject,
   targetTimeError,
   ValkeyCacheSummary,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { AuditService } from './service/AuditService';
 import { BucketService } from './service/BucketService';
-import { CnpgKubernetesService } from './service/CnpgKubernetesService';
+import { BasisKubernetesService } from './service/BasisKubernetesService';
 import { MAX_KUBECONFIG_BYTES } from './service/kubeconfig';
 import { LocationService, withTimeout } from './service/LocationService';
+import { GatewayService } from './service/GatewayService';
+import { StackService } from './service/StackService';
 import { ValkeyService } from './service/ValkeyService';
 import { VolumeService } from './service/VolumeService';
 
@@ -72,6 +90,8 @@ import { VolumeService } from './service/VolumeService';
 // <name>-1, ...) stay within Kubernetes' limits.
 const NAME = /^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$/;
 const name = z.string().regex(NAME, 'lowercase letters, digits and "-", max 40 characters');
+// Its children (<name>-cache-dr) must fit 40 characters.
+const stackName = z.string().regex(/^[a-z]([-a-z0-9]{0,26}[a-z0-9])?$/, 'lowercase letters, digits and "-", max 28 characters');
 const namespace = z.string().regex(/^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/, 'invalid project');
 const labelValue = z.string().regex(/^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$/).max(63);
 
@@ -218,6 +238,27 @@ function withProject(
   };
 }
 
+/**
+ * A database, cache or gateway a stack composes is changed through the stack,
+ * not on its own (the API server's admission policy refuses it too).
+ */
+function assertNotStackOwned(kind: string, resource: { metadata: { name: string; labels?: Record<string, string> } }) {
+  const stack = resource.metadata.labels?.[STACK_OWNER_LABEL];
+  if (stack) {
+    throw new ConflictError(
+      `${kind} ${resource.metadata.name} belongs to GenAIStack ${stack}; change or delete the stack instead`,
+    );
+  }
+}
+
+function withStackProject(summary: GenAIStackSummary, project: Project | undefined): GenAIStackSummary {
+  return project ? { ...summary, project: project.metadata.name } : summary;
+}
+
+function withGatewayProject(summary: ModelGatewaySummary, project: Project | undefined): ModelGatewaySummary {
+  return project ? { ...summary, project: project.metadata.name } : summary;
+}
+
 /** Adds the cache's Project (same name as its namespace) and that project's Grafana. */
 function withCacheProject(summary: ValkeyCacheSummary, project: Project | undefined): ValkeyCacheSummary {
   if (!project) return summary;
@@ -228,14 +269,16 @@ export async function createRouter(options: {
   httpAuth: HttpAuthService;
   permissions: PermissionsService;
   config: RootConfigService;
-  k8s: CnpgKubernetesService;
+  k8s: BasisKubernetesService;
   locations: LocationService;
   buckets: BucketService;
   volumes: VolumeService;
   audit: AuditService;
   valkey: ValkeyService;
+  stacks: StackService;
+  gateways: GatewayService;
 }): Promise<express.Router> {
-  const { httpAuth, permissions, config, k8s, locations, buckets, volumes, audit, valkey } = options;
+  const { httpAuth, permissions, config, k8s, locations, buckets, volumes, audit, valkey, stacks, gateways } = options;
   const router = Router();
   // Uploaded kubeconfigs can carry a few certificates.
   router.use(express.json({ limit: '1mb' }));
@@ -260,33 +303,33 @@ export async function createRouter(options: {
 
   // Static settings the UI needs (Grafana link target, form defaults).
   router.get('/config', async (req, res) => {
-    await authorize(req, cnpgClusterReadPermission);
+    await authorize(req, basisClusterReadPermission);
     res.json({
-      grafanaUrl: config.getOptionalString('cnpg.grafanaUrl'),
-      defaultNamespace: config.getOptionalString('cnpg.defaultNamespace'),
-      storageClasses: config.getOptionalStringArray('cnpg.storageClasses') ?? [],
+      grafanaUrl: config.getOptionalString('basis.grafanaUrl'),
+      defaultNamespace: config.getOptionalString('basis.defaultNamespace'),
+      storageClasses: config.getOptionalStringArray('basis.storageClasses') ?? [],
     });
   });
 
   // The sizes (SKUs) spec.size can name; empty without a catalog.
   router.get('/sizes', async (req, res) => {
-    await authorize(req, cnpgClusterReadPermission);
+    await authorize(req, basisClusterReadPermission);
     res.json({ items: parseSizes(await k8s.sizesCatalog()) });
   });
 
   // The extensions a cluster may add to its databases; empty without a catalog.
   router.get('/extensions', async (req, res) => {
-    await authorize(req, cnpgClusterReadPermission);
+    await authorize(req, basisClusterReadPermission);
     res.json({ items: parseExtensions(await k8s.extensionsCatalog()) });
   });
 
   router.get('/namespaces', async (req, res) => {
-    await authorize(req, cnpgClusterReadPermission);
+    await authorize(req, basisClusterReadPermission);
     res.json({ items: await k8s.namespaces() });
   });
 
   router.get('/clusters', async (req, res) => {
-    await authorize(req, cnpgClusterReadPermission);
+    await authorize(req, basisClusterReadPermission);
     const ns = typeof req.query.namespace === 'string' ? req.query.namespace : undefined;
     const [items, projects] = await Promise.all([k8s.list(ns), k8s.listProjects()]);
     const byName = new Map(projects.map(p => [p.metadata.name, p]));
@@ -299,7 +342,7 @@ export async function createRouter(options: {
   });
 
   router.get('/clusters/:namespace/:name', async (req, res) => {
-    await authorize(req, cnpgClusterReadPermission);
+    await authorize(req, basisClusterReadPermission);
     const p = params(req);
     const [details, project] = await Promise.all([
       k8s.details(p.namespace, p.name, location => locations.kubeConfig(location)),
@@ -310,7 +353,7 @@ export async function createRouter(options: {
   });
 
   router.get('/clusters/:namespace/:name/logs', async (req, res) => {
-    await authorize(req, cnpgClusterReadPermission);
+    await authorize(req, basisClusterReadPermission);
     const p = params(req);
     const q = logsQuery.safeParse(req.query);
     if (!q.success) throw new InputError(q.error.toString());
@@ -318,8 +361,8 @@ export async function createRouter(options: {
   });
 
   router.get('/clusters/:namespace/:name/connection', async (req, res) => {
-    await authorize(req, cnpgClusterReadPermission);
-    await authorize(req, cnpgClusterCredentialsReadPermission);
+    await authorize(req, basisClusterReadPermission);
+    await authorize(req, basisClusterCredentialsReadPermission);
     const p = params(req);
     // Carries the password: keep it out of every cache.
     res.set('Cache-Control', 'no-store');
@@ -329,13 +372,13 @@ export async function createRouter(options: {
   // Locations: Kubernetes clusters the platform can use. The kubeconfig goes
   // in, never out; responses carry only server, context and auth type.
   router.get('/locations', async (req, res) => {
-    await authorize(req, cnpgLocationReadPermission);
+    await authorize(req, basisLocationReadPermission);
     const [items, projects] = await Promise.all([locations.list(), k8s.listProjects()]);
     res.json({ items: items.map(l => withProjects(l, projects)) });
   });
 
   router.get('/locations/:name', async (req, res) => {
-    await authorize(req, cnpgLocationReadPermission);
+    await authorize(req, basisLocationReadPermission);
     const p = z.object({ name }).safeParse(req.params);
     if (!p.success) throw new InputError(p.error.toString());
     const [location, projects] = await Promise.all([
@@ -347,7 +390,7 @@ export async function createRouter(options: {
 
   // Probe again now instead of using the cached result.
   router.post('/locations/:name/check', async (req, res) => {
-    await authorize(req, cnpgLocationReadPermission);
+    await authorize(req, basisLocationReadPermission);
     const p = z.object({ name }).safeParse(req.params);
     if (!p.success) throw new InputError(p.error.toString());
     const [location, projects] = await Promise.all([
@@ -358,7 +401,7 @@ export async function createRouter(options: {
   });
 
   router.post('/locations', async (req, res) => {
-    await authorize(req, cnpgLocationCreatePermission);
+    await authorize(req, basisLocationCreatePermission);
     const parsed = createLocationSchema.safeParse(req.body);
     if (!parsed.success) throw new InputError(parsed.error.toString());
     const { dryRun, ...location } = parsed.data;
@@ -370,7 +413,7 @@ export async function createRouter(options: {
   });
 
   router.put('/locations/:name', async (req, res) => {
-    await authorize(req, cnpgLocationUpdatePermission);
+    await authorize(req, basisLocationUpdatePermission);
     const p = z.object({ name }).safeParse(req.params);
     if (!p.success) throw new InputError(p.error.toString());
     const parsed = updateLocationSchema.safeParse(req.body);
@@ -389,7 +432,7 @@ export async function createRouter(options: {
   });
 
   router.delete('/locations/:name', async (req, res) => {
-    await authorize(req, cnpgLocationDeletePermission);
+    await authorize(req, basisLocationDeletePermission);
     const p = z.object({ name }).safeParse(req.params);
     if (!p.success) throw new InputError(p.error.toString());
     // Without its credentials Crossplane can neither update nor clean up
@@ -405,7 +448,7 @@ export async function createRouter(options: {
   });
 
   router.get('/projects', async (req, res) => {
-    await authorize(req, cnpgProjectReadPermission);
+    await authorize(req, basisProjectReadPermission);
     const items = await k8s.listProjects();
     res.json({
       items: items.map(summarizeProject).sort((a, b) => a.name.localeCompare(b.name)),
@@ -413,7 +456,7 @@ export async function createRouter(options: {
   });
 
   router.get('/projects/:name', async (req, res) => {
-    await authorize(req, cnpgProjectReadPermission);
+    await authorize(req, basisProjectReadPermission);
     const parsed = z.object({ name }).safeParse(req.params);
     if (!parsed.success) throw new InputError(parsed.error.toString());
     const resource = await k8s.getProject(parsed.data.name);
@@ -434,8 +477,8 @@ export async function createRouter(options: {
   // Audit logs: the Kubernetes events of the project's namespace (control
   // plane and locations) and the pgaudit records of its PostgreSQL instances.
   router.get('/projects/:name/audit', async (req, res) => {
-    await authorize(req, cnpgProjectReadPermission);
-    await authorize(req, cnpgProjectAuditReadPermission);
+    await authorize(req, basisProjectReadPermission);
+    await authorize(req, basisProjectAuditReadPermission);
     const p = z.object({ name }).safeParse(req.params);
     if (!p.success) throw new InputError(p.error.toString());
     const q = z
@@ -448,7 +491,7 @@ export async function createRouter(options: {
   });
 
   router.post('/projects', async (req, res) => {
-    await authorize(req, cnpgProjectCreatePermission);
+    await authorize(req, basisProjectCreatePermission);
     const parsed = createProjectSchema.safeParse(req.body);
     if (!parsed.success) throw new InputError(parsed.error.toString());
     const { name: projectName, owner, description, spec, dryRun } = parsed.data;
@@ -467,7 +510,7 @@ export async function createRouter(options: {
   });
 
   router.patch('/projects/:name', async (req, res) => {
-    await authorize(req, cnpgProjectUpdatePermission);
+    await authorize(req, basisProjectUpdatePermission);
     const p = z.object({ name }).safeParse(req.params);
     if (!p.success) throw new InputError(p.error.toString());
     const parsed = patchSchema.omit({ owner: true }).safeParse(req.body);
@@ -487,12 +530,18 @@ export async function createRouter(options: {
   });
 
   router.delete('/projects/:name', async (req, res) => {
-    await authorize(req, cnpgProjectDeletePermission);
+    await authorize(req, basisProjectDeletePermission);
     const p = z.object({ name }).safeParse(req.params);
     if (!p.success) throw new InputError(p.error.toString());
     await k8s.getProject(p.data.name);
     // Deleting the project deletes its namespace, and with it every
-    // PostgresCluster and ValkeyCache: only an empty project goes.
+    // GenAIStack, ModelGateway, PostgresCluster and ValkeyCache: only an empty project goes.
+    const stackNames = (await stacks.list(p.data.name)).map(s => s.metadata.name);
+    if (stackNames.length) {
+      throw new ConflictError(
+        `Project ${p.data.name} still has GenAI stacks: ${stackNames.sort().join(', ')}; delete them first`,
+      );
+    }
     const clusters = (await k8s.list(p.data.name)).map(c => c.metadata.name);
     if (clusters.length) {
       throw new ConflictError(
@@ -505,6 +554,12 @@ export async function createRouter(options: {
         `Project ${p.data.name} still has Valkey caches: ${caches.sort().join(', ')}; delete them first`,
       );
     }
+    const gws = (await gateways.list(p.data.name)).map(g => g.metadata.name);
+    if (gws.length) {
+      throw new ConflictError(
+        `Project ${p.data.name} still has model gateways: ${gws.sort().join(', ')}; delete them first`,
+      );
+    }
     await k8s.deleteProject(p.data.name);
     res.json({ status: 'deleting' });
   });
@@ -514,19 +569,19 @@ export async function createRouter(options: {
   const bucketName = z.object({ name: z.string().regex(/^[a-z0-9][-a-z0-9.]{1,61}[a-z0-9]$/, 'invalid bucket name') });
 
   router.get('/buckets', async (req, res) => {
-    await authorize(req, cnpgBucketReadPermission);
+    await authorize(req, basisBucketReadPermission);
     res.json(await buckets.list());
   });
 
   router.get('/buckets/:name', async (req, res) => {
-    await authorize(req, cnpgBucketReadPermission);
+    await authorize(req, basisBucketReadPermission);
     const p = bucketName.safeParse(req.params);
     if (!p.success) throw new InputError(p.error.toString());
     res.json(await buckets.get(p.data.name));
   });
 
   router.delete('/buckets/:name', async (req, res) => {
-    await authorize(req, cnpgBucketDeletePermission);
+    await authorize(req, basisBucketDeletePermission);
     const p = bucketName.safeParse(req.params);
     if (!p.success) throw new InputError(p.error.toString());
     await buckets.delete(p.data.name);
@@ -538,14 +593,14 @@ export async function createRouter(options: {
   const k8sName = z.string().regex(/^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?$/, 'invalid name');
 
   router.get('/volumes', async (req, res) => {
-    await authorize(req, cnpgVolumeReadPermission);
+    await authorize(req, basisVolumeReadPermission);
     const q = z.object({ project: namespace.optional() }).safeParse(req.query);
     if (!q.success) throw new InputError(q.error.toString());
     res.json(await volumes.list(q.data));
   });
 
   router.delete('/volumes/:location/claims/:namespace/:name', async (req, res) => {
-    await authorize(req, cnpgVolumeDeletePermission);
+    await authorize(req, basisVolumeDeletePermission);
     const p = z.object({ location: name, namespace, name: k8sName }).safeParse(req.params);
     if (!p.success) throw new InputError(p.error.toString());
     await volumes.deleteClaim(p.data.location, p.data.namespace, p.data.name);
@@ -553,7 +608,7 @@ export async function createRouter(options: {
   });
 
   router.delete('/volumes/:location/persistentvolumes/:name', async (req, res) => {
-    await authorize(req, cnpgVolumeDeletePermission);
+    await authorize(req, basisVolumeDeletePermission);
     const p = z.object({ location: name, name: k8sName }).safeParse(req.params);
     if (!p.success) throw new InputError(p.error.toString());
     await volumes.deleteVolume(p.data.location, p.data.name);
@@ -563,7 +618,7 @@ export async function createRouter(options: {
   // Valkey caches (cache.cndev.nl ValkeyCache), in a project's protected
   // location. The spec goes to the XR as-is: the XRD validates it.
   router.get('/caches', async (req, res) => {
-    await authorize(req, cnpgCacheReadPermission);
+    await authorize(req, basisCacheReadPermission);
     const q = z.object({ namespace: namespace.optional() }).safeParse(req.query);
     if (!q.success) throw new InputError(q.error.toString());
     const [items, projects] = await Promise.all([valkey.list(q.data.namespace), k8s.listProjects()]);
@@ -577,7 +632,7 @@ export async function createRouter(options: {
   });
 
   router.get('/caches/:namespace/:name', async (req, res) => {
-    await authorize(req, cnpgCacheReadPermission);
+    await authorize(req, basisCacheReadPermission);
     const p = params(req);
     const [details, project] = await Promise.all([
       valkey.details(p.namespace, p.name, location => locations.kubeConfig(location)),
@@ -590,8 +645,8 @@ export async function createRouter(options: {
   });
 
   router.get('/caches/:namespace/:name/connection', async (req, res) => {
-    await authorize(req, cnpgCacheReadPermission);
-    await authorize(req, cnpgCacheCredentialsReadPermission);
+    await authorize(req, basisCacheReadPermission);
+    await authorize(req, basisCacheCredentialsReadPermission);
     const p = params(req);
     // Carries the password: keep it out of every cache.
     res.set('Cache-Control', 'no-store');
@@ -599,7 +654,7 @@ export async function createRouter(options: {
   });
 
   router.post('/caches', async (req, res) => {
-    await authorize(req, cnpgCacheCreatePermission);
+    await authorize(req, basisCacheCreatePermission);
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) throw new InputError(parsed.error.toString());
     const { owner, ...rest } = parsed.data;
@@ -612,8 +667,9 @@ export async function createRouter(options: {
   });
 
   router.patch('/caches/:namespace/:name', async (req, res) => {
-    await authorize(req, cnpgCacheUpdatePermission);
+    await authorize(req, basisCacheUpdatePermission);
     const p = params(req);
+    assertNotStackOwned('ValkeyCache', await valkey.get(p.namespace, p.name));
     const parsed = patchSchema.safeParse(req.body);
     if (!parsed.success) throw new InputError(parsed.error.toString());
     const { spec, owner, dryRun } = parsed.data;
@@ -621,18 +677,177 @@ export async function createRouter(options: {
   });
 
   router.delete('/caches/:namespace/:name', async (req, res) => {
-    await authorize(req, cnpgCacheDeletePermission);
+    await authorize(req, basisCacheDeletePermission);
     const p = params(req);
+    assertNotStackOwned('ValkeyCache', await valkey.get(p.namespace, p.name));
     await valkey.delete(p.namespace, p.name);
     res.status(202).json({ status: 'deleting' });
   });
 
+  // GenAI stacks (ai.cndev.nl GenAIStack): database, caches, gateway and
+  // wiring per site. The spec goes to the XR as-is: the XRD validates it.
+  router.get('/stacks', async (req, res) => {
+    await authorize(req, basisStackReadPermission);
+    const q = z.object({ namespace: namespace.optional() }).safeParse(req.query);
+    if (!q.success) throw new InputError(q.error.toString());
+    const [items, projects] = await Promise.all([stacks.list(q.data.namespace), k8s.listProjects()]);
+    const byName = new Map(projects.map(p => [p.metadata.name, p]));
+    res.json({
+      items: items.map(s => {
+        const project = byName.get(s.metadata.namespace);
+        return withStackProject(summarizeStack(s, project), project);
+      }),
+    });
+  });
+
+  router.get('/stacks/:namespace/:name', async (req, res) => {
+    await authorize(req, basisStackReadPermission);
+    const p = params(req);
+    const [resource, project] = await Promise.all([
+      stacks.get(p.namespace, p.name),
+      k8s.getProject(p.namespace).catch(() => undefined),
+    ]);
+    res.json({ summary: withStackProject(summarizeStack(resource, project), project), resource });
+  });
+
+  router.get('/stacks/:namespace/:name/connection', async (req, res) => {
+    await authorize(req, basisStackReadPermission);
+    await authorize(req, basisStackCredentialsReadPermission);
+    const p = params(req);
+    // Carries passwords and the gateway key: keep it out of every cache.
+    res.set('Cache-Control', 'no-store');
+    res.json(await stacks.connection(p.namespace, p.name, location => locations.kubeConfig(location)));
+  });
+
+  router.post('/stacks', async (req, res) => {
+    await authorize(req, basisStackCreatePermission);
+    const parsed = createSchema.extend({ name: stackName }).safeParse(req.body);
+    if (!parsed.success) throw new InputError(parsed.error.toString());
+    const { owner, ...rest } = parsed.data;
+    const created = await stacks.apply({
+      ...rest,
+      labels: owner ? { 'backstage.io/owner': owner } : undefined,
+      createOnly: true,
+    });
+    res.status(parsed.data.dryRun ? 200 : 201).json(created);
+  });
+
+  router.patch('/stacks/:namespace/:name', async (req, res) => {
+    await authorize(req, basisStackUpdatePermission);
+    const p = params(req);
+    const parsed = patchSchema.safeParse(req.body);
+    if (!parsed.success) throw new InputError(parsed.error.toString());
+    const { spec, owner, dryRun } = parsed.data;
+    res.json(await stacks.patch({ ...p, spec, labels: ownerLabel(owner), dryRun }));
+  });
+
+  router.delete('/stacks/:namespace/:name', async (req, res) => {
+    await authorize(req, basisStackDeletePermission);
+    const p = params(req);
+    await stacks.delete(p.namespace, p.name);
+    res.status(202).json({ status: 'deleting' });
+  });
+
+  // Switch a stack over (lossless) or fail it over to the other site: its
+  // database moves its primary, the cache and gateway follow. The same
+  // permissions as moving a database's primary.
+  router.post('/stacks/:namespace/:name/promote', async (req, res) => {
+    const p = params(req);
+    const parsed = promoteSchema.safeParse(req.body);
+    if (!parsed.success) throw new InputError(parsed.error.toString());
+    const { dryRun, ...request } = parsed.data;
+    await authorize(
+      req,
+      request.mode === 'Failover' ? basisClusterFailoverPermission : basisClusterSwitchoverPermission,
+    );
+    const plan = stackPromotionPatch(await stacks.get(p.namespace, p.name), request);
+    if ('error' in plan) throw new ConflictError(plan.error);
+    res.json(await stacks.patch({ ...p, spec: plan.spec, dryRun }));
+  });
+
+  // Model gateways (ai.cndev.nl ModelGateway): an OpenAI-compatible endpoint
+  // to a project's models, with a key per client. The spec goes to the XR
+  // as-is: the XRD validates it.
+  router.get('/gateways', async (req, res) => {
+    await authorize(req, basisGatewayReadPermission);
+    const q = z.object({ namespace: namespace.optional() }).safeParse(req.query);
+    if (!q.success) throw new InputError(q.error.toString());
+    const [items, projects] = await Promise.all([gateways.list(q.data.namespace), k8s.listProjects()]);
+    const byName = new Map(projects.map(p => [p.metadata.name, p]));
+    res.json({
+      items: items.map(g => {
+        const project = byName.get(g.metadata.namespace);
+        return withGatewayProject(summarizeGateway(g, project), project);
+      }),
+    });
+  });
+
+  router.get('/gateways/:namespace/:name', async (req, res) => {
+    await authorize(req, basisGatewayReadPermission);
+    const p = params(req);
+    const [resource, project, usedBy] = await Promise.all([
+      gateways.get(p.namespace, p.name),
+      k8s.getProject(p.namespace).catch(() => undefined),
+      stacks.list(p.namespace).catch(() => []),
+    ]);
+    res.json({
+      summary: withGatewayProject(summarizeGateway(resource, project), project),
+      resource,
+      // The stacks that use it: their own (it's theirs) or shared (spec.gateway.ref).
+      stacks: usedBy.map(s => summarizeStack(s)).filter(s => s.gatewayName === p.name).map(s => s.name).sort(),
+    });
+  });
+
+  router.get('/gateways/:namespace/:name/keys', async (req, res) => {
+    await authorize(req, basisGatewayReadPermission);
+    await authorize(req, basisGatewayCredentialsReadPermission);
+    const p = params(req);
+    // Carries API keys: keep them out of every cache.
+    res.set('Cache-Control', 'no-store');
+    res.json({ items: await gateways.keys(p.namespace, p.name, location => locations.kubeConfig(location)) });
+  });
+
+  router.post('/gateways', async (req, res) => {
+    await authorize(req, basisGatewayCreatePermission);
+    const parsed = createSchema.safeParse(req.body);
+    if (!parsed.success) throw new InputError(parsed.error.toString());
+    const { owner, ...rest } = parsed.data;
+    const created = await gateways.apply({
+      ...rest,
+      labels: owner ? { 'backstage.io/owner': owner } : undefined,
+      createOnly: true,
+    });
+    res.status(parsed.data.dryRun ? 200 : 201).json(created);
+  });
+
+  router.patch('/gateways/:namespace/:name', async (req, res) => {
+    await authorize(req, basisGatewayUpdatePermission);
+    const p = params(req);
+    assertNotStackOwned('ModelGateway', await gateways.get(p.namespace, p.name));
+    const parsed = patchSchema.safeParse(req.body);
+    if (!parsed.success) throw new InputError(parsed.error.toString());
+    const { spec, owner, dryRun } = parsed.data;
+    res.json(await gateways.patch({ ...p, spec, labels: ownerLabel(owner), dryRun }));
+  });
+
+  router.delete('/gateways/:namespace/:name', async (req, res) => {
+    await authorize(req, basisGatewayDeletePermission);
+    const p = params(req);
+    assertNotStackOwned('ModelGateway', await gateways.get(p.namespace, p.name));
+    const users = (await stacks.list(p.namespace)).filter(s => s.spec.gateway?.ref === p.name).map(s => s.metadata.name);
+    if (users.length) {
+      throw new ConflictError(`ModelGateway ${p.name} is used by stack(s) ${users.sort().join(', ')}; point them elsewhere first`);
+    }
+    await gateways.delete(p.namespace, p.name);
+    res.status(202).json({ status: 'deleting' });
+  });
+
   router.post('/clusters', async (req, res) => {
-    await authorize(req, cnpgClusterCreatePermission);
+    await authorize(req, basisClusterCreatePermission);
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) throw new InputError(parsed.error.toString());
     // A restore copies another cluster's data: the same permission as the restore endpoint.
-    if (parsed.data.spec.restore !== undefined) await authorize(req, cnpgClusterRestorePermission);
+    if (parsed.data.spec.restore !== undefined) await authorize(req, basisClusterRestorePermission);
     const { owner, ...rest } = parsed.data;
     const created = await k8s.apply({
       ...rest,
@@ -643,8 +858,8 @@ export async function createRouter(options: {
   });
 
   router.post('/projects/:name/restore', async (req, res) => {
-    await authorize(req, cnpgClusterCreatePermission);
-    await authorize(req, cnpgClusterRestorePermission);
+    await authorize(req, basisClusterCreatePermission);
+    await authorize(req, basisClusterRestorePermission);
     const p = z.object({ name: namespace }).safeParse(req.params);
     if (!p.success) throw new InputError(p.error.toString());
     const project = p.data.name;
@@ -686,11 +901,12 @@ export async function createRouter(options: {
   });
 
   router.put('/clusters/:namespace/:name', async (req, res) => {
-    await authorize(req, cnpgClusterUpdatePermission);
+    await authorize(req, basisClusterUpdatePermission);
     const p = params(req);
     const parsed = updateSchema.safeParse(req.body);
     if (!parsed.success) throw new InputError(parsed.error.toString());
     const existing = await k8s.get(p.namespace, p.name);
+    assertNotStackOwned('PostgresCluster', existing);
     // A full spec: a missing geoReplication keeps (or the XRD defaults) the primary site.
     assertKeepsPrimary(existing, {
       geoReplication: { primarySite: undefined, promotion: undefined, ...(parsed.data.spec.geoReplication as object) },
@@ -706,12 +922,14 @@ export async function createRouter(options: {
   });
 
   router.patch('/clusters/:namespace/:name', async (req, res) => {
-    await authorize(req, cnpgClusterUpdatePermission);
+    await authorize(req, basisClusterUpdatePermission);
     const p = params(req);
     const parsed = patchSchema.safeParse(req.body);
     if (!parsed.success) throw new InputError(parsed.error.toString());
     const { spec, owner, dryRun } = parsed.data;
-    assertKeepsPrimary(await k8s.get(p.namespace, p.name), spec);
+    const existing = await k8s.get(p.namespace, p.name);
+    assertNotStackOwned('PostgresCluster', existing);
+    assertKeepsPrimary(existing, spec);
     res.json(await k8s.patch({ ...p, spec, labels: ownerLabel(owner), dryRun }));
   });
 
@@ -723,16 +941,20 @@ export async function createRouter(options: {
     const { dryRun, ...request } = parsed.data;
     await authorize(
       req,
-      request.mode === 'Failover' ? cnpgClusterFailoverPermission : cnpgClusterSwitchoverPermission,
+      request.mode === 'Failover' ? basisClusterFailoverPermission : basisClusterSwitchoverPermission,
     );
-    const plan = promotionPatch(await k8s.get(p.namespace, p.name), request);
+    const existing = await k8s.get(p.namespace, p.name);
+    // A stack's database moves with the stack (POST /stacks/:namespace/:name/promote).
+    assertNotStackOwned('PostgresCluster', existing);
+    const plan = promotionPatch(existing, request);
     if ('error' in plan) throw new ConflictError(plan.error);
     res.json(await k8s.patch({ ...p, spec: plan.spec, dryRun }));
   });
 
   router.delete('/clusters/:namespace/:name', async (req, res) => {
-    await authorize(req, cnpgClusterDeletePermission);
+    await authorize(req, basisClusterDeletePermission);
     const p = params(req);
+    assertNotStackOwned('PostgresCluster', await k8s.get(p.namespace, p.name));
     await k8s.delete(p.namespace, p.name);
     res.status(202).json({ status: 'deleting' });
   });

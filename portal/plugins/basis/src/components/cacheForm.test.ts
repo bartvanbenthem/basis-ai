@@ -1,4 +1,4 @@
-import { cacheMaxMemory, type ValkeyCache } from '@internal/backstage-plugin-cnpg-common';
+import { cacheMaxMemory, type ValkeyCache } from '@internal/backstage-plugin-basis-common';
 import { defaultCacheForm, fromCache, toCacheEditPatch, toCacheSpec, validateCache } from './cacheForm';
 
 describe('cacheForm', () => {

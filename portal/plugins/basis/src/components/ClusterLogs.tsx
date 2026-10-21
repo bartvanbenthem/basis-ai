@@ -1,11 +1,11 @@
 import { LogViewer } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { Card, CardBody, Flex, Select, Switch, Text } from '@backstage/ui';
-import type { InstancePod } from '@internal/backstage-plugin-cnpg-common';
+import type { InstancePod } from '@internal/backstage-plugin-basis-common';
 import { useMemo, useState } from 'react';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { ErrorAlert } from './common';
 import { formatLogs } from './logFormat';
 
@@ -33,7 +33,7 @@ export const ClusterLogs = ({
   currentPrimary?: string;
   primaryLocation?: string;
 }) => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const multiLocation = new Set(pods.map(p => p.location)).size > 1;
   const fallback =
     pods.find(

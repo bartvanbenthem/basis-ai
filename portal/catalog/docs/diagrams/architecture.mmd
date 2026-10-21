@@ -19,12 +19,12 @@
   "flowchart": { "curve": "basis", "padding": 22, "nodeSpacing": 30, "rankSpacing": 50, "diagramPadding": 28, "htmlLabels": true, "wrappingWidth": 260 }
 }}%%
 flowchart TB
-  team(["<b>Teams</b><br/><span style='color:#9197a6'>portal · kubectl · GitOps&nbsp;&nbsp;</span>"])
+  team(["<b>Teams</b><br/><span style='color:#9197a6'>portal · kubectl · GitOps · agents (MCP)&nbsp;&nbsp;</span>"])
 
   subgraph cp["CONTROL PLANE"]
     direction LR
     portal["<b>Portal</b><br/><span style='color:#9197a6'>Backstage&nbsp;&nbsp;</span>"]
-    xr["<b>Crossplane</b><br/><span style='color:#9197a6'>Project · Location · AI services&nbsp;&nbsp;</span>"]
+    xr["<b>Crossplane</b><br/><span style='color:#9197a6'>GenAIStack · ModelGateway · Project&nbsp;&nbsp;</span>"]
     fn["<b>function-basis</b><br/><span style='color:#9197a6'>composes every site&nbsp;&nbsp;</span>"]
     obs["<b>Observability</b><br/><span style='color:#9197a6'>Prometheus · Grafana · OpenTelemetry&nbsp;&nbsp;</span>"]
     portal --> xr --> fn
@@ -33,14 +33,14 @@ flowchart TB
 
   subgraph prot["PROTECTED LOCATION"]
     direction TB
-    app["<b>Orchestration</b><br/><span style='color:#9197a6'>apps · agents · LangGraph&nbsp;&nbsp;</span>"]
-    gw["<b>AI gateway</b><br/><span style='color:#9197a6'>Envoy AI Gateway / agentgateway<br/>guardrails · auth · token budgets&nbsp;&nbsp;</span>"]
+    app(["<b>Your apps and agents</b><br/><span style='color:#9197a6'>one connection Secret&nbsp;&nbsp;</span>"])
+    gw["<b>Model gateway</b><br/><span style='color:#9197a6'>Agent Router · a key per client<br/>provider keys stay inside&nbsp;&nbsp;</span>"]
     cache["<b>Exact / semantic cache</b><br/><span style='color:#9197a6'>Valkey&nbsp;&nbsp;</span>"]
-    models["<b>Model API</b><br/><span style='color:#9197a6'>vLLM on KServe · llm-d<br/>prefix-cache-aware routing&nbsp;&nbsp;</span>"]
+    models["<b>Self-hosted models</b><br/><span style='color:#9197a6'>vLLM on KServe · llm-d&nbsp;&nbsp;</span>"]
     rag["<b>Context / RAG</b><br/><span style='color:#9197a6'>PostgreSQL · pgvector · CNPG&nbsp;&nbsp;</span>"]
     bucket[("<b>Object storage</b><br/><span style='color:#9197a6'>per Project · COSI&nbsp;&nbsp;</span>")]
     app -- "prompts" --> gw
-    gw <-- "hit / store" --> cache
+    app <-- "hit / store" --> cache
     gw -- "inference" --> models
     app -- "context" --> rag
     rag == "WAL + backups" ==> bucket
@@ -51,6 +51,8 @@ flowchart TB
     pg2["<b>Context / RAG</b><br/><span style='color:#9197a6'>replica cluster&nbsp;&nbsp;</span>"]
   end
 
+  hosted(["<b>Hosted models</b><br/><span style='color:#9197a6'>Claude · GPT · Mistral&nbsp;&nbsp;</span>"])
+  gw -- "provider key" --> hosted
   team --> cp
   cp -- "deploys every site" --> prot
   cp -- "deploys" --> rec
@@ -63,18 +65,18 @@ flowchart TB
   classDef planned fill:#16181f,stroke:#5b6170,stroke-width:1.2px,color:#e9ebf0,stroke-dasharray:5 4,rx:10,ry:10
   classDef actor fill:#0e0f13,stroke:#5b6170,stroke-width:1px,color:#e9ebf0,stroke-dasharray:3 3
   class portal,xr,fn,obs node
-  class rag,pg2,cache live
+  class rag,pg2,cache,gw live
   class bucket store
-  class app,gw,models planned
-  class team actor
+  class models planned
+  class team,app,hosted actor
 
   style cp fill:#16181f,stroke:#272a35,stroke-width:1px,color:#9197a6,rx:14,ry:14
   style prot fill:#16181f,stroke:#272a35,stroke-width:1px,color:#9197a6,rx:14,ry:14
   style rec fill:#16181f,stroke:#272a35,stroke-width:1px,color:#9197a6,rx:14,ry:14
 
   linkStyle 0,1 stroke:#5b6170,stroke-width:1.2px
-  linkStyle 3,4,5,6 stroke:#9197a6,stroke-width:1.2px
-  linkStyle 7,12 stroke:#00c300,stroke-width:2.2px
-  linkStyle 8 stroke:#5b6170,stroke-width:1.2px,stroke-dasharray:4 4
-  linkStyle 9,10,11 stroke:#9197a6,stroke-width:1.2px
-  linkStyle 13 stroke:#5b6170,stroke-width:1.2px,stroke-dasharray:4 4
+  linkStyle 3,4,6,9 stroke:#9197a6,stroke-width:1.2px
+  linkStyle 5,8 stroke:#5b6170,stroke-width:1.2px,stroke-dasharray:4 4
+  linkStyle 7,13 stroke:#00c300,stroke-width:2.2px
+  linkStyle 10,11,12 stroke:#9197a6,stroke-width:1.2px
+  linkStyle 14 stroke:#5b6170,stroke-width:1.2px,stroke-dasharray:4 4

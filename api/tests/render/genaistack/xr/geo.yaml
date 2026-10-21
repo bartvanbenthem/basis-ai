@@ -1,0 +1,22 @@
+# The same with a warm standby in the recovery location, switched over to it;
+# the observed state has the database moved there.
+apiVersion: ai.cndev.nl/v1alpha1
+kind: GenAIStack
+metadata:
+  name: support-bot
+  namespace: ai-team
+spec:
+  recovery:
+    enabled: true
+    activeSite: recovery
+  retrieval:
+    size: m
+    extensions: [vector, vchord, pg_search]
+  gateway:
+    models:
+      - name: claude
+        endpoint: https://api.anthropic.com/v1
+        schema: Anthropic
+        apiKeySecretRef:
+          name: anthropic
+          key: token

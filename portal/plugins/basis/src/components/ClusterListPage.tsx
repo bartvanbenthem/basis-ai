@@ -15,15 +15,15 @@ import {
   useTable,
 } from '@backstage/ui';
 import {
-  cnpgClusterCreatePermission,
+  basisClusterCreatePermission,
   type PostgresClusterSummary,
   PROFILES,
   VECTOR_EXTENSION,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { useMemo, useState } from 'react';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { clusterRouteRef, createClusterRouteRef } from '../routes';
 import { age, ErrorAlert, health, HealthBadge } from './common';
 
@@ -32,11 +32,11 @@ type Row = PostgresClusterSummary & { id: string };
 const ALL = '__all__';
 
 export const ClusterListPage = () => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const clusterLink = useRouteRef(clusterRouteRef);
   const createLink = useRouteRef(createClusterRouteRef);
   const { allowed: canCreate } = usePermission({
-    permission: cnpgClusterCreatePermission,
+    permission: basisClusterCreatePermission,
   });
   const [namespace, setNamespace] = useState<string>(ALL);
   const [search, setSearch] = useState('');
@@ -214,9 +214,15 @@ export const ClusterListPage = () => {
         description="CloudNativePG clusters provisioned through the PostgresCluster API"
         customActions={
           canCreate && createLink ? (
-            <ButtonLink href={createLink()} variant="primary">
-              Create cluster
-            </ButtonLink>
+            <Flex gap="2">
+              {/* The create form with the vector workload profile preset. */}
+              <ButtonLink href={`${createLink()}?profile=vector`} variant="secondary">
+                Create RAG cluster
+              </ButtonLink>
+              <ButtonLink href={createLink()} variant="primary">
+                Create cluster
+              </ButtonLink>
+            </Flex>
           ) : undefined
         }
       />

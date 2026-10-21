@@ -30,7 +30,7 @@ const LOCATION = {
     environment: 'production',
     region: 'ams',
     schedulable: true,
-    credentials: { secretRef: { namespace: 'cnpg-locations', name: 'prod-ams', key: 'kubeconfig' } },
+    credentials: { secretRef: { namespace: 'basis-locations', name: 'prod-ams', key: 'kubeconfig' } },
     crossplane: { compositionRef: { name: 'location' } },
   },
   status: {
@@ -44,7 +44,7 @@ const LOCATION = {
 const SECRET = {
   metadata: {
     name: 'prod-ams',
-    namespace: 'cnpg-locations',
+    namespace: 'basis-locations',
     labels: { 'platform.cndev.nl/location': 'true' },
   },
   data: { kubeconfig: b64(KUBECONFIG) },
@@ -74,7 +74,7 @@ function setup() {
     api === CoreV1Api ? core : custom) as any);
   const service = new LocationService({
     kubeConfig,
-    namespace: 'cnpg-locations',
+    namespace: 'basis-locations',
     logger: mockServices.logger.mock(),
   });
   // The cast keeps the fakes' jest.Mock typing for assertions.
@@ -113,7 +113,7 @@ describe('LocationService', () => {
       spec: { environment: 'production', region: '', owner: 'team-platform' },
     });
     expect(core.createNamespacedSecret.mock.calls[0][0]).toMatchObject({
-      namespace: 'cnpg-locations',
+      namespace: 'basis-locations',
       body: {
         metadata: { name: 'dr-rtm', labels: { 'platform.cndev.nl/location': 'true' } },
         stringData: { kubeconfig: expect.stringContaining('127.0.0.1:9') },
@@ -131,7 +131,7 @@ describe('LocationService', () => {
       spec: {
         environment: 'production',
         owner: 'team-platform',
-        credentials: { secretRef: { namespace: 'cnpg-locations', name: 'dr-rtm', key: 'kubeconfig' } },
+        credentials: { secretRef: { namespace: 'basis-locations', name: 'dr-rtm', key: 'kubeconfig' } },
       },
     });
     expect(core.createNamespacedSecret.mock.invocationCallOrder[0]).toBeLessThan(
@@ -153,7 +153,7 @@ describe('LocationService', () => {
     await expect(
       service.create({ name: 'dr-rtm', kubeconfig: KUBECONFIG, spec: {} }),
     ).rejects.toThrow(InputError);
-    expect(core.deleteNamespacedSecret).toHaveBeenCalledWith({ namespace: 'cnpg-locations', name: 'dr-rtm' });
+    expect(core.deleteNamespacedSecret).toHaveBeenCalledWith({ namespace: 'basis-locations', name: 'dr-rtm' });
   });
 
   it('replaces the settings but keeps the credentials and Crossplane fields', async () => {
@@ -173,7 +173,7 @@ describe('LocationService', () => {
     core.createNamespacedSecret.mockRejectedValueOnce(apiError(409, 'already exists'));
     await service.update('prod-ams', { spec: {}, kubeconfig: KUBECONFIG });
     expect(core.replaceNamespacedSecret.mock.calls[0][0]).toMatchObject({
-      namespace: 'cnpg-locations',
+      namespace: 'basis-locations',
       name: 'prod-ams',
       body: { stringData: { kubeconfig: expect.stringContaining('127.0.0.1:9') } },
     });
@@ -185,7 +185,7 @@ describe('LocationService', () => {
     expect(custom.deleteClusterCustomObject).toHaveBeenCalledWith(
       expect.objectContaining({ group: 'platform.cndev.nl', plural: 'locations', name: 'prod-ams' }),
     );
-    expect(core.deleteNamespacedSecret).toHaveBeenCalledWith({ namespace: 'cnpg-locations', name: 'prod-ams' });
+    expect(core.deleteNamespacedSecret).toHaveBeenCalledWith({ namespace: 'basis-locations', name: 'prod-ams' });
   });
 
   it('keeps the Secret when the API server refuses to delete a Location in use', async () => {
@@ -201,7 +201,7 @@ describe('LocationService', () => {
     const { service, core } = setup();
     const kc = await service.kubeConfig('prod-ams');
     expect(kc.getCurrentCluster()?.server).toBe('https://127.0.0.1:9');
-    expect(core.readNamespacedSecret).toHaveBeenCalledWith({ namespace: 'cnpg-locations', name: 'prod-ams' });
+    expect(core.readNamespacedSecret).toHaveBeenCalledWith({ namespace: 'basis-locations', name: 'prod-ams' });
   });
 });
 

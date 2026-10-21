@@ -1,0 +1,189 @@
+# ModelGateway: a namespaced Crossplane v2 composite resource for one
+# OpenAI-compatible entry point to a Project's models: hosted providers
+# (OpenAI, Anthropic, Mistral, ...) and self-hosted servers (vLLM, KServe,
+# Ollama), with the provider keys kept in the platform and an API key of its
+# own for every client (app, agent, coding assistant).
+#
+# Agent Router (formerly Envoy AI Gateway; on Envoy Gateway, CNCF) runs it in
+# the Project's protected location, plus a standby in its recovery location
+# with spec.recovery.enabled. Clients in a location reach it at
+# http://<name>.<namespace>.svc/v1 with Authorization: Bearer <key>; it routes
+# on the request's model to the model's backend and swaps the client key for
+# the provider's.
+#
+# A GenAIStack composes one (<stack>-gateway) unless spec.gateway.ref names
+# a ModelGateway to share. Composed by function-basis (../../function/modelgateway).
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: modelgateways.ai.cndev.nl
+spec:
+  group: ai.cndev.nl
+  scope: Namespaced
+  names:
+    kind: ModelGateway
+    plural: modelgateways
+    shortNames: [mgw]
+    categories: [crossplane, basis, ai]
+  defaultCompositionRef:
+    name: modelgateway
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: Models
+          type: integer
+          jsonPath: .status.models
+        - name: Clients
+          type: integer
+          jsonPath: .status.clients
+        - name: Recovery
+          type: boolean
+          jsonPath: .spec.recovery.enabled
+        - name: Active-Site
+          type: string
+          jsonPath: .status.activeSite
+        - name: Endpoint
+          type: string
+          jsonPath: .status.endpoint
+          priority: 1
+        # Crossplane appends SYNCED, READY, COMPOSITION and AGE itself.
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: An OpenAI-compatible gateway to a Project's models (Agent Router), in its site(s).
+          x-kubernetes-validations:
+            # The Gateway and its Service are <name>; Envoy Gateway names its
+            # Deployment envoy-<namespace>-<name>-<hash>.
+            - rule: "self.metadata.name.matches('^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$')"
+              message: ModelGateway names are lowercase letters, digits and "-", start with a letter, max 40 characters
+          properties:
+            spec:
+              type: object
+              x-kubernetes-validations:
+                - rule: "!has(self.activeSite) || self.activeSite == 'protected' || (has(self.recovery) && has(self.recovery.enabled) && self.recovery.enabled)"
+                  message: activeSite can only be recovery with recovery.enabled
+              properties:
+                replicas:
+                  type: integer
+                  description: Gateway (Envoy) replicas in the active site.
+                  minimum: 1
+                  maximum: 10
+                  default: 2
+                recovery:
+                  type: object
+                  description: >-
+                    A standby gateway in the Project's recovery location (the Project needs one),
+                    with the same models and client keys.
+                  default: {}
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    replicas:
+                      type: integer
+                      description: Gateway replicas in the standby site; it gets replicas once active.
+                      minimum: 0
+                      maximum: 10
+                      default: 1
+                activeSite:
+                  type: string
+                  description: >-
+                    The site that serves, with the full replicas: protected (default) or recovery.
+                    A GenAIStack sets it to where its database's primary runs.
+                  enum: [protected, recovery]
+                  default: protected
+                clients:
+                  type: array
+                  description: >-
+                    Who may call the gateway: each client gets an API key of its own, generated
+                    once into Secret <name>-keys (the client's name is the key). Removing a client
+                    revokes its key.
+                  maxItems: 100
+                  default: [{name: apps}]
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [name]
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name:
+                        type: string
+                        description: The client, e.g. an app, an agent or a team.
+                        pattern: '^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$'
+                models:
+                  type: array
+                  maxItems: 30
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [name]
+                  items:
+                    type: object
+                    required: [name, endpoint]
+                    properties:
+                      name:
+                        type: string
+                        description: The model name clients send (the request's "model").
+                        minLength: 1
+                        maxLength: 200
+                      endpoint:
+                        type: string
+                        description: >-
+                          Base URL of the provider's API, its path the API prefix, e.g.
+                          https://api.openai.com/v1, https://api.anthropic.com/v1 or
+                          http://vllm.models.svc:8000/v1 (self-hosted, OpenAI-compatible).
+                        pattern: '^https?://[^/:]+(:[0-9]+)?(/.*)?$'
+                      schema:
+                        type: string
+                        description: >-
+                          The provider's API: OpenAI (and every OpenAI-compatible server: vLLM,
+                          KServe, Ollama, Mistral, ...) or Anthropic.
+                        enum: [OpenAI, Anthropic]
+                        default: OpenAI
+                      upstreamModel:
+                        type: string
+                        description: The model name at the provider, when it differs from name.
+                        maxLength: 200
+                      apiKeySecretRef:
+                        type: object
+                        description: Secret in this namespace holding the provider's API key; none for an endpoint without auth.
+                        required: [name]
+                        properties:
+                          name:
+                            type: string
+                          key:
+                            type: string
+                            default: apiKey
+                            pattern: '^[-._a-zA-Z0-9]+$'
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                message:
+                  type: string
+                activeSite:
+                  type: string
+                models:
+                  type: integer
+                clients:
+                  type: integer
+                endpoint:
+                  type: string
+                  description: Base URL for OpenAI clients in each site's location (OPENAI_BASE_URL).
+                keysSecret:
+                  type: string
+                  description: Secret in this namespace with an API key per client.
+                sites:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      site:
+                        type: string
+                      location:
+                        type: string
+                      active:
+                        type: boolean
+                      replicas:
+                        type: integer

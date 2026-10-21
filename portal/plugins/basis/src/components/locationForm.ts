@@ -3,7 +3,7 @@ import type {
   LocationProvider,
   LocationSpec,
   LocationSummary,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { parse } from 'yaml';
 
 export const ENVIRONMENT_LABELS: Record<LocationEnvironment, string> = {

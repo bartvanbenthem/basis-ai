@@ -8,17 +8,27 @@
 # go to the locations as provider-kubernetes Objects (managed resources,
 # which Crossplane grants itself), applied there with each location's
 # kubeconfig. What PostgresClusters compose here is the GrafanaDashboard;
-# ValkeyCaches compose their password Secret (Crossplane's own ClusterRole
-# already covers Secrets).
+# ValkeyCaches compose their password Secret, ModelGateways their clients'
+# keys (Crossplane's own ClusterRole already covers Secrets).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: crossplane:composed:cnpg-platform
+  name: crossplane:composed:basis
   labels:
     rbac.crossplane.io/aggregate-to-crossplane: "true"
 rules:
   - apiGroups: [grafana.integreatly.org]
     resources: [grafanadashboards]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # GenAIStacks compose these APIs next to them (child XRs).
+  - apiGroups: [postgres.cndev.nl]
+    resources: [postgresclusters]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [cache.cndev.nl]
+    resources: [valkeycaches]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [ai.cndev.nl]
+    resources: [modelgateways]
     verbs: [get, list, watch, create, update, patch, delete]
 ---
 # What the Project composition (apis/project) composes on the control plane.
@@ -28,7 +38,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: crossplane:composed:cnpg-platform-projects
+  name: crossplane:composed:basis-projects
   labels:
     rbac.crossplane.io/aggregate-to-crossplane: "true"
 rules:
@@ -71,7 +81,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: crossplane:composed:cnpg-platform-locations
+  name: crossplane:composed:basis-locations
   labels:
     rbac.crossplane.io/aggregate-to-crossplane: "true"
 rules:
@@ -85,23 +95,23 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: cnpg-platform:postgresclusters:edit
+  name: basis:postgresclusters:edit
   labels:
     rbac.authorization.k8s.io/aggregate-to-admin: "true"
     rbac.authorization.k8s.io/aggregate-to-edit: "true"
 rules:
-  - apiGroups: [cnpg.cndev.nl]
+  - apiGroups: [postgres.cndev.nl]
     resources: [postgresclusters]
     verbs: [get, list, watch, create, update, patch, delete]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: cnpg-platform:postgresclusters:view
+  name: basis:postgresclusters:view
   labels:
     rbac.authorization.k8s.io/aggregate-to-view: "true"
 rules:
-  - apiGroups: [cnpg.cndev.nl]
+  - apiGroups: [postgres.cndev.nl]
     resources: [postgresclusters]
     verbs: [get, list, watch]
 ---
@@ -109,7 +119,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: cnpg-platform:valkeycaches:edit
+  name: basis:valkeycaches:edit
   labels:
     rbac.authorization.k8s.io/aggregate-to-admin: "true"
     rbac.authorization.k8s.io/aggregate-to-edit: "true"
@@ -121,12 +131,36 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: cnpg-platform:valkeycaches:view
+  name: basis:valkeycaches:view
   labels:
     rbac.authorization.k8s.io/aggregate-to-view: "true"
 rules:
   - apiGroups: [cache.cndev.nl]
     resources: [valkeycaches]
+    verbs: [get, list, watch]
+---
+# The same for GenAIStacks and ModelGateways.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: basis:genaistacks:edit
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+rules:
+  - apiGroups: [ai.cndev.nl]
+    resources: [genaistacks, modelgateways]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: basis:genaistacks:view
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+rules:
+  - apiGroups: [ai.cndev.nl]
+    resources: [genaistacks, modelgateways]
     verbs: [get, list, watch]
 ---
 # Projects are cluster-scoped, so the namespace roles don't apply: reading
@@ -135,7 +169,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: cnpg-platform:projects:view
+  name: basis:projects:view
   labels:
     rbac.authorization.k8s.io/aggregate-to-view: "true"
 rules:
@@ -146,7 +180,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: cnpg-platform:projects:admin
+  name: basis:projects:admin
 rules:
   - apiGroups: [platform.cndev.nl]
     resources: [projects]
@@ -158,7 +192,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: cnpg-platform:locations:view
+  name: basis:locations:view
   labels:
     rbac.authorization.k8s.io/aggregate-to-view: "true"
 rules:

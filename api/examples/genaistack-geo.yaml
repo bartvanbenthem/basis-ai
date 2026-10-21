@@ -1,0 +1,42 @@
+# The same stack with a warm standby in the Project's recovery location (the
+# Project needs spec.locations.recovery, and a backup bucket: the database
+# replica is fed from it).
+#
+#   protected (active)   database primary, cache 2Gi, gateway 2 replicas
+#   recovery (standby)   database replica (read-only, minutes behind),
+#                        cache 512Mi (cold), gateway 1 replica
+#
+# Both sites have Secret support-bot-connection with the same keys (SITE and
+# ACTIVE tell them apart); deploy the app in both, pointing at it. Switch the
+# stack over with spec.recovery.activeSite: recovery (or Switch site in the
+# portal): the database moves its primary first, then the recovery site gets
+# the full-size cache and gateway, ACTIVE=true. With the protected site down,
+# add promotion: Failover. The stack's database, caches and gateway only
+# change through the stack.
+#
+# Caches don't replicate between sites; the corpus version in the cache keys
+# (see genaistack.yaml) keeps each site's cache consistent with its own
+# database, without messaging between the sites.
+apiVersion: ai.cndev.nl/v1alpha1
+kind: GenAIStack
+metadata:
+  name: support-bot
+  namespace: demo
+spec:
+  recovery:
+    enabled: true
+    activeSite: protected     # recovery switches the stack over
+    cacheMemory: 512Mi
+    gatewayReplicas: 1
+  retrieval:
+    size: m
+    extensions: [vector, vchord, pg_search]
+  cache:
+    mode: semantic
+    memory: 2Gi
+  gateway:
+    models:
+      - name: gpt-4o-mini
+        endpoint: https://api.openai.com/v1
+        apiKeySecretRef:
+          name: openai

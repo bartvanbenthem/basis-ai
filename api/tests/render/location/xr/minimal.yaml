@@ -10,5 +10,5 @@ spec:
   region: eu01
   credentials:
     secretRef:
-      namespace: cnpg-locations
+      namespace: basis-locations
       name: si-ske-demo

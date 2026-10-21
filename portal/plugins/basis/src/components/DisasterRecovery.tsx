@@ -1,8 +1,9 @@
-import { useApi } from '@backstage/frontend-plugin-api';
+import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { usePermission } from '@backstage/plugin-permission-react';
 import {
   Alert,
   Button,
+  ButtonLink,
   Card,
   CardBody,
   CardHeader,
@@ -17,16 +18,17 @@ import {
 } from '@backstage/ui';
 import {
   allowedPromotions,
-  cnpgClusterFailoverPermission,
-  cnpgClusterSwitchoverPermission,
+  basisClusterFailoverPermission,
+  basisClusterSwitchoverPermission,
   type ClusterLocationStatus,
   type PostgresClusterDetails,
   primaryState,
   type PromotionRequest,
   type Site,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { useState } from 'react';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
+import { stackRouteRef } from '../routes';
 import { ErrorAlert, Fields, Panel, StatusDot, type Health } from './common';
 
 const SITES: Site[] = ['protected', 'recovery'];
@@ -97,7 +99,7 @@ const PromoteDialog = ({
   onClose: () => void;
   onDone: () => void;
 }) => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const { name, namespace } = details.summary;
   const state = primaryState(details.resource);
   const failover = request.mode === 'Failover';
@@ -188,9 +190,12 @@ export const DisasterRecovery = ({
   details: PostgresClusterDetails;
   onChanged: () => void;
 }) => {
-  const { allowed: canSwitchover } = usePermission({ permission: cnpgClusterSwitchoverPermission });
-  const { allowed: canFailover } = usePermission({ permission: cnpgClusterFailoverPermission });
+  const { allowed: canSwitchover } = usePermission({ permission: basisClusterSwitchoverPermission });
+  const { allowed: canFailover } = usePermission({ permission: basisClusterFailoverPermission });
+  const stackLink = useRouteRef(stackRouteRef);
   const [request, setRequest] = useState<PromotionRequest>();
+  // A stack's database moves with the stack: its cache and gateway follow.
+  const stack = details.summary.stack;
   const { resource } = details;
   const status = resource.status ?? {};
   const state = primaryState(resource);
@@ -240,7 +245,22 @@ export const DisasterRecovery = ({
         ))}
       </Grid.Root>
 
-      {state.geoReplication && (
+      {state.geoReplication && stack && (
+        <Alert
+          status="info"
+          title={`Part of stack ${stack}`}
+          description="Switch the stack over on its page: the database moves its primary, and the stack's cache and gateway follow."
+          customActions={
+            stackLink ? (
+              <ButtonLink href={stackLink({ namespace: details.summary.namespace, name: stack })} variant="secondary" size="small">
+                Open stack
+              </ButtonLink>
+            ) : undefined
+          }
+        />
+      )}
+
+      {state.geoReplication && !stack && (
         <Panel title="Move the primary">
           <Flex direction="column" gap="3">
             {switchover && (

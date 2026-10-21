@@ -40,9 +40,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/function-basis.sh
 source "${ROOT}/hack/lib/function-basis.sh"
-CP="${CONTROL_PLANE_CLUSTER:-cnpg-e2e-cp}"
-PROT="${PROTECTED_CLUSTER:-cnpg-e2e-protected}"
-REC="${RECOVERY_CLUSTER:-cnpg-e2e-recovery}"
+CP="${CONTROL_PLANE_CLUSTER:-basis-e2e-cp}"
+PROT="${PROTECTED_CLUSTER:-basis-e2e-protected}"
+REC="${RECOVERY_CLUSTER:-basis-e2e-recovery}"
 PROTECTED=e2e-protected
 RECOVERY=e2e-recovery
 WORK="${ROOT}/.e2e"
@@ -108,7 +108,7 @@ for kc in "${PROT_KUBECONFIG}" "${REC_KUBECONFIG}"; do
     kubectl --kubeconfig "${kc}" apply --server-side -f "${crd}" >/dev/null
   done
   kubectl --kubeconfig "${kc}" -n cert-manager wait deploy --all --for=condition=Available --timeout=300s
-  KUBECONFIG="${kc}" "${ROOT}/operator/install.sh"
+  KUBECONFIG="${kc}" "${ROOT}/deps/cnpg/install.sh"
 done
 
 echo "==> MinIO on the control plane (NodePort 30900, reachable from both locations)"
@@ -184,11 +184,11 @@ for loc in "${PROTECTED}:${PROT}" "${RECOVERY}:${REC}"; do
   KUBECONFIG="${CP_KUBECONFIG}" "${ROOT}/api/install/add-location.sh" \
     "${name}" "${WORK}/${name}-internal.kubeconfig"
   if ! "${C[@]}" wait "location/${name}" --for=condition=Ready --timeout=300s; then
-    "${C[@]}" get location "${name}" -o yaml; "${C[@]}" -n cnpg-locations get objects.kubernetes.m.crossplane.io -o wide; exit 1
+    "${C[@]}" get location "${name}" -o yaml; "${C[@]}" -n basis-locations get objects.kubernetes.m.crossplane.io -o wide; exit 1
   fi
 done
 "${C[@]}" get locations -o wide
-"${P[@]}" get clusterrole cnpg-platform:project-prometheus
+"${P[@]}" get clusterrole basis:project-prometheus
 
 echo "==> Project ${NS}: protected ${PROTECTED}, recovery ${RECOVERY}"
 "${C[@]}" apply -f - <<YAML
@@ -232,20 +232,20 @@ reject() { # <what> <expected message part>: stdin must be refused by --dry-run=
 }
 "${C[@]}" create namespace not-a-project --dry-run=client -o yaml | "${C[@]}" apply -f - >/dev/null
 reject "a database outside a Project (on the control plane)" "never on the control plane" <<YAML
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata: {name: stray-db, namespace: not-a-project}
 spec: {instances: 1}
 YAML
 reject "geoReplication without backups" "geoReplication needs backup.enabled" <<YAML
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata: {name: nobackup-db, namespace: ${NS}}
 spec:
   geoReplication: {enabled: true}
 YAML
 reject "a recovery primary without geoReplication" "primarySite can only be recovery" <<YAML
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata: {name: noprimary-db, namespace: ${NS}}
 spec:
@@ -273,7 +273,7 @@ echo "rejected as expected: deleting a Location a Project uses"
 wait_for "namespace ${NS} lists ${RECOVERY} as unschedulable" 30 bash -c \
   "[[ \$(kubectl --kubeconfig '${CP_KUBECONFIG}' get ns ${NS} -o jsonpath='{.metadata.annotations.platform\.cndev\.nl/unschedulable-locations}') == ${RECOVERY} ]]"
 reject "a new replica cluster in a closed location" "closed to new replica clusters" <<YAML
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata: {name: closed-db, namespace: ${NS}}
 spec:
@@ -289,7 +289,7 @@ echo "==> PostgresCluster ${NS}/ledger-db: primary in ${PROTECTED}, replica clus
   --from-literal=ACCESS_KEY_ID=e2e-access --from-literal=ACCESS_SECRET_KEY=e2e-secret-key \
   --dry-run=client -o yaml | "${C[@]}" apply -f -
 "${C[@]}" apply -f - <<YAML
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: ledger-db
@@ -361,14 +361,14 @@ TARGET="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 sleep 3
 psql_in "${P[@]}" "insert into e2e values ('after-target'); select pg_switch_wal();" >/dev/null
 reject "adding restore to an existing cluster" "restore can only be set when the cluster is created" <<YAML
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata: {name: ledger-db, namespace: ${NS}}
 spec:
   restore: {source: {serverName: ledger-db}}
 YAML
 "${C[@]}" apply -f - <<YAML
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: ledger-copy
@@ -420,7 +420,7 @@ wait_for "ledger-copy archives WAL to ${folder}" 30 bash -c \
 psql_in "${P[@]}" "select v from e2e" | grep -q after-target \
   || { echo "FAIL: the source lost data"; exit 1; }
 reject "changing restore on a restored cluster" "restore is immutable" <<YAML
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata: {name: ledger-copy, namespace: ${NS}}
 spec:

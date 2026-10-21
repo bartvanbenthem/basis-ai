@@ -3,7 +3,7 @@
  * control plane (where Crossplane and the portal run) runs none. Each one is
  * a Location (platform.cndev.nl/v1alpha1, cluster-scoped, see
  * api/apis/location) with the settings below, pointing at a
- * Secret on the control plane (namespace `cnpg.locations.namespace`) that
+ * Secret on the control plane (namespace `basis.locations.namespace`) that
  * holds its kubeconfig under the `kubeconfig` key. The Location composition
  * creates the provider-kubernetes ClusterProviderConfig the Project and
  * PostgresCluster compositions place objects through. The kubeconfig never
@@ -85,8 +85,8 @@ export interface LocationStatus {
   /** Crossplane reached the API server with the kubeconfig. */
   connected?: boolean;
   /** Operators found there; unset until connected. */
-  /** valkey: the optional Valkey operator ValkeyCaches need. */
-  operators?: { cloudnativepg?: boolean; prometheusOperator?: boolean; valkey?: boolean };
+  /** valkey, agentRouter: optional, for ValkeyCaches and GenAIStacks' gateways. */
+  operators?: { cloudnativepg?: boolean; prometheusOperator?: boolean; valkey?: boolean; agentRouter?: boolean };
 }
 
 export interface LocationSummary {

@@ -2,7 +2,7 @@ import { Flex, Text } from '@backstage/ui';
 import type {
   CheckStatus,
   LocationHealth,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { age, StatusDot } from './common';
 
 export const LocationHealthBadge = ({ health }: { health?: LocationHealth }) =>

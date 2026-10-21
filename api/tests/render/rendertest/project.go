@@ -199,7 +199,7 @@ func assertProject(r *render) {
 		objs, loc := remote[site], str(sites, site)
 		if obj, ok := objs["prometheus-clusterrolebinding"]; ok {
 			manifest := mp(obj, "spec", "forProvider", "manifest")
-			check(str(manifest, "roleRef", "name") == "cnpg-platform:project-prometheus", "CRB must bind the shared ClusterRole")
+			check(str(manifest, "roleRef", "name") == "basis:project-prometheus", "CRB must bind the shared ClusterRole")
 			check(equal(get(manifest, "subjects"), L{M{"kind": "ServiceAccount", "name": "prometheus", "namespace": name}}),
 				"CRB subject must be the project's prometheus ServiceAccount")
 		}

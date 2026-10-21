@@ -27,7 +27,7 @@ const Notice = ({
  * The GrafanaDashboard a composition creates for a PostgresCluster (the
  * CloudNativePG dashboard) or a ValkeyCache (the Valkey cache dashboard), uid
  * in status.monitoring.dashboardUid, embedded from the project's Grafana (or
- * the one configured as cnpg.grafanaUrl). Both dashboards take the namespace
+ * the one configured as basis.grafanaUrl). Both dashboards take the namespace
  * and cluster variables.
  */
 export const GrafanaDashboard = ({
@@ -70,7 +70,7 @@ export const GrafanaDashboard = ({
           The composition created dashboard <Mono>{uid}</Mono> for this {subject}.
           To show it here, set the Grafana base URL and restart the portal:
         </Text>
-        <Mono>CNPG_GRAFANA_URL=https://grafana.example.com</Mono>
+        <Mono>BASIS_GRAFANA_URL=https://grafana.example.com</Mono>
         <Text color="secondary">
           Grafana must allow embedding (
           <Mono>security.allow_embedding = true</Mono>) and give the browser a

@@ -1,0 +1,130 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: model-gateway
+  title: Model gateway
+  description: >-
+    One OpenAI-compatible endpoint to a project's models, hosted (OpenAI, Anthropic, ...)
+    and self-hosted (vLLM, KServe, Ollama), through the ai.cndev.nl ModelGateway API: provider
+    keys stay in the platform, every client (app, agent, GenAI stack) gets a key of its own.
+    Runs Agent Router in the project's location(s).
+  tags: [genai, llm, gateway]
+spec:
+  owner: group:default/guests
+  type: resource
+
+  parameters:
+    - title: Gateway
+      required: [name, project, owner]
+      properties:
+        name:
+          title: Name
+          type: string
+          description: Lowercase letters, digits and "-", max 40 characters. Clients call http://<name>.<project>.svc/v1.
+          pattern: '^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$'
+          ui:autofocus: true
+        project:
+          title: Project
+          type: string
+          description: The project the gateway lives in; it runs in the project's locations.
+          ui:field: EntityPicker
+          ui:options:
+            allowArbitraryValues: false
+            defaultKind: Resource
+            catalogFilter:
+              kind: Resource
+              spec.type: project
+        owner:
+          title: Owner
+          type: string
+          ui:field: OwnerPicker
+          ui:options:
+            catalogFilter:
+              kind: Group
+        system:
+          title: System
+          type: string
+          ui:field: EntityPicker
+          ui:options:
+            catalogFilter:
+              kind: System
+        recovery:
+          title: Standby in the recovery site
+          type: boolean
+          description: The same gateway in the project's recovery location (the project needs one).
+          default: false
+
+    - title: Clients and models
+      properties:
+        clients:
+          title: Clients
+          description: >-
+            Who may call the gateway. Each client gets an API key in Secret <name>-keys; a GenAI
+            stack that shares this gateway is a client named after the stack.
+          type: array
+          default: [{name: apps}]
+          items:
+            type: object
+            required: [name]
+            properties:
+              name:
+                title: Client name
+                type: string
+                pattern: '^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$'
+        models:
+          title: Models
+          description: >-
+            What the gateway routes to. Put a provider's API key in a Secret in the project
+            first (kubectl -n <project> create secret generic openai --from-literal=apiKey=...).
+          type: array
+          items:
+            type: object
+            required: [name, endpoint]
+            properties:
+              name:
+                title: Model name (what clients send)
+                type: string
+              endpoint:
+                title: Endpoint
+                type: string
+                description: e.g. https://api.anthropic.com/v1 or http://vllm.models.svc:8000/v1
+              schema:
+                title: API
+                type: string
+                enum: [OpenAI, Anthropic]
+                default: OpenAI
+              upstreamModel:
+                title: Model at the provider (if different)
+                type: string
+              secretName:
+                title: API key Secret (empty for none)
+                type: string
+
+  steps:
+    - id: create
+      name: Create ModelGateway
+      action: basis:modelgateway:create
+      input:
+        name: ${{ parameters.name }}
+        namespace: ${{ parameters.project }}
+        owner: ${{ parameters.owner }}
+        system: ${{ parameters.system }}
+        spec:
+          recovery:
+            enabled: ${{ parameters.recovery }}
+          clients: ${{ parameters.clients }}
+          # The action turns each model's secretName into apiKeySecretRef.
+          models: ${{ parameters.models }}
+
+  output:
+    links:
+      - title: Open in the portal
+        url: ${{ steps['create'].output.portalPath }}
+      - title: Catalog entity (appears within ~30s)
+        icon: catalog
+        entityRef: ${{ steps['create'].output.entityRef }}
+    text:
+      - title: Calling it
+        content: |
+          In the project's location: `OPENAI_BASE_URL=http://${{ parameters.name }}.<project>.svc/v1`, and as
+          `OPENAI_API_KEY` the client's key from Secret `${{ parameters.name }}-keys` (or the portal's Keys panel).

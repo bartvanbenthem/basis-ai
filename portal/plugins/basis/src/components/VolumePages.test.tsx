@@ -4,8 +4,8 @@ import { AuthorizeResult } from '@backstage/plugin-permission-common';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { ReactElement } from 'react';
 import { SWRConfig } from 'swr';
-import type { VolumeSummary } from '@internal/backstage-plugin-cnpg-common';
-import { CnpgApi, cnpgApiRef } from '../api';
+import type { VolumeSummary } from '@internal/backstage-plugin-basis-common';
+import { BasisApi, basisApiRef } from '../api';
 import { rootRouteRef } from '../routes';
 import { VolumeListPage } from './VolumeListPage';
 
@@ -42,12 +42,12 @@ const orphan: VolumeSummary = {
   reclaimPolicy: 'Retain',
 };
 
-const apis = (api: Partial<CnpgApi>, allow = true) => ({
+const apis = (api: Partial<BasisApi>, allow = true) => ({
   apis: [
-    [cnpgApiRef, api],
+    [basisApiRef, api],
     [permissionApiRef, mockApis.permission({ authorize: allow ? AuthorizeResult.ALLOW : AuthorizeResult.DENY })],
   ] as const,
-  mountedRoutes: { '/cnpg': rootRouteRef },
+  mountedRoutes: { '/basis': rootRouteRef },
 });
 
 /** usePermission caches decisions in SWR's global cache; a fresh one per render keeps tests apart. */
@@ -55,21 +55,21 @@ const fresh = (ui: ReactElement) => <SWRConfig value={{ provider: () => new Map(
 
 describe('VolumeListPage', () => {
   it('lists the volumes with their state, cluster and usage', async () => {
-    const api: Partial<CnpgApi> = { listVolumes: jest.fn(async () => ({ items: [live, orphan] })) };
+    const api: Partial<BasisApi> = { listVolumes: jest.fn(async () => ({ items: [live, orphan] })) };
     await renderInTestApp(fresh(<VolumeListPage />), apis(api) as any);
 
     expect(await screen.findByText('gone-db-1')).toBeInTheDocument();
     const table = within(screen.getByRole('grid'));
     expect(table.getByText('In use')).toBeInTheDocument();
     expect(table.getByText('Orphaned')).toBeInTheDocument();
-    expect(table.getByText('orders-db')).toHaveAttribute('href', '/cnpg/demo/orders-db');
+    expect(table.getByText('orders-db')).toHaveAttribute('href', '/basis/demo/orders-db');
     expect(table.getByText('gone-db (deleted)')).toBeInTheDocument();
     expect(table.getByText('5.0 GiB (25%)')).toBeInTheDocument();
     expect(table.getAllByRole('button', { name: 'Delete' })).toHaveLength(1);
   });
 
   it('deletes an orphaned volume after typing its claim name', async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       listVolumes: jest.fn(async () => ({ items: [live, orphan] })),
       deleteVolume: jest.fn(async () => undefined),
     };
@@ -87,14 +87,14 @@ describe('VolumeListPage', () => {
   });
 
   it('offers no delete without the permission', async () => {
-    const api: Partial<CnpgApi> = { listVolumes: jest.fn(async () => ({ items: [orphan] })) };
+    const api: Partial<BasisApi> = { listVolumes: jest.fn(async () => ({ items: [orphan] })) };
     await renderInTestApp(fresh(<VolumeListPage />), apis(api, false) as any);
     expect(await screen.findByText('gone-db (deleted)')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
   it('warns about an unreachable location', async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       listVolumes: jest.fn(async () => ({ items: [], unreachable: [{ location: 'dr-rtm', message: 'timeout' }] })),
     };
     await renderInTestApp(fresh(<VolumeListPage />), apis(api) as any);

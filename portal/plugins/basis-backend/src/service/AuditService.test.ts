@@ -1,4 +1,4 @@
-import { PostgresCluster, Project } from '@internal/backstage-plugin-cnpg-common';
+import { PostgresCluster, Project } from '@internal/backstage-plugin-basis-common';
 import { AuditCore, AuditService } from './AuditService';
 
 const demo: Project = {
@@ -10,7 +10,7 @@ const demo: Project = {
 
 const cluster = (name: string, parameters?: Record<string, string>): PostgresCluster =>
   ({
-    apiVersion: 'cnpg.cndev.nl/v1alpha1',
+    apiVersion: 'postgres.cndev.nl/v1alpha1',
     kind: 'PostgresCluster',
     metadata: { name, namespace: 'demo' },
     spec: parameters ? { postgresql: { parameters } } : {},

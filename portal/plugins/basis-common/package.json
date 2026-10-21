@@ -1,9 +1,9 @@
 {
-  "name": "@internal/backstage-plugin-cnpg-common",
+  "name": "@internal/backstage-plugin-basis-common",
   "version": "0.1.0",
   "license": "UNLICENSED",
   "private": true,
-  "description": "Types and permissions shared by the cnpg (CloudNativePG portal) plugins",
+  "description": "Types and permissions shared by the basis (BASIS portal) plugins",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "publishConfig": {
@@ -14,7 +14,7 @@
   },
   "backstage": {
     "role": "common-library",
-    "pluginId": "cnpg"
+    "pluginId": "basis"
   },
   "sideEffects": false,
   "scripts": {

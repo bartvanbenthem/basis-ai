@@ -1,12 +1,18 @@
-# api/: the `PostgresCluster` and `Project` APIs
+# api/: the BASIS APIs
 
-Two Crossplane **v2** composite resources:
+Crossplane **v2** composite resources on three levels:
 
-- `cnpg.cndev.nl/v1alpha1 PostgresCluster` (namespaced) turns ~10 lines of YAML into a production
-  CloudNativePG setup.
-- `platform.cndev.nl/v1alpha1 Project` (cluster-scoped) is a namespace pre-staged with its own
-  Prometheus and Grafana, so every PostgresCluster created in it gets metrics, alerts and a dashboard
-  without further setup. See [The Project API](#the-project-api).
+| Level | API | What |
+|---|---|---|
+| Product | `ai.cndev.nl/v1alpha1 GenAIStack` | Retrieval, cache, model gateway and wiring for an AI service, per site. See [The GenAIStack API](#the-genaistack-api) |
+| Building blocks | `ai.cndev.nl/v1alpha1 ModelGateway` | An OpenAI-compatible gateway to hosted and self-hosted models, a key per client. See [The ModelGateway API](#the-modelgateway-api) |
+| | `postgres.cndev.nl/v1alpha1 PostgresCluster` | ~10 lines of YAML into a production CloudNativePG setup (below) |
+| | `cache.cndev.nl/v1alpha1 ValkeyCache` | An exact or semantic cache. See [The ValkeyCache API](#the-valkeycache-api) |
+| Platform | `platform.cndev.nl/v1alpha1 Project`, `Location` | A team's namespace with its own Prometheus and Grafana, and the clusters workloads run in. See [The Project API](#the-project-api), [Locations](#locations) |
+
+A stack composes building blocks next to it and owns them (label `ai.cndev.nl/genaistack`; an
+admission policy lets only Crossplane change them). Every composition is Go, in one composition
+function, [function-basis](#function-basis).
 
 The APIs run on a **control plane**: a Kubernetes cluster with Crossplane (and the portal) that
 runs no databases itself. The databases run in **locations**, other Kubernetes clusters
@@ -15,7 +21,7 @@ and optionally a **recovery** location. A PostgresCluster with `geoReplication` 
 CloudNativePG replica cluster there, ready to take over. See [Locations](#locations).
 
 ```yaml
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db
@@ -39,7 +45,7 @@ the control plane.
 
 | Composed resource | When | Notes |
 |---|---|---|
-| `postgresql.cnpg.io/v1 Cluster` | always | Image from the `ClusterImageCatalog` by major version; pod anti-affinity, zone spread, quorum sync replication, managed roles, optional WAL volume and external LoadBalancer. `inheritedMetadata` puts `cnpg.cndev.nl/postgrescluster` and `backstage.io/kubernetes-id` on every pod/PVC/Service. |
+| `postgresql.cnpg.io/v1 Cluster` | always | Image from the `ClusterImageCatalog` by major version; pod anti-affinity, zone spread, quorum sync replication, managed roles, optional WAL volume and external LoadBalancer. `inheritedMetadata` puts `postgres.cndev.nl/postgrescluster` and `backstage.io/kubernetes-id` on every pod/PVC/Service. |
 | `barmancloud.cnpg.io/v1 ObjectStore` + `ScheduledBackup` | `backup.enabled` | Barman Cloud **plugin**, replacing the deprecated in-tree `barmanObjectStore`. WAL archiving, an immediate first base backup, then on schedule, with retention. |
 | `barmancloud.cnpg.io/v1 ObjectStore` `<name>-restore` (protected site) | `restore` | The backup store the cluster restores from, read-only (no retention policy). See [Restore](#postgrescluster-restore). |
 | `postgresql.cnpg.io/v1 Database` (per entry) | `databases[]` | Declarative extra databases and extensions |
@@ -172,8 +178,8 @@ spec:
   ([`function/`](function/)), with typed inputs, the switchover state machine as a pure function
   ([`topology.go`](function/postgrescluster/topology.go)) and unit tests. It emits only the fields
   it sets (not the upstream CNPG Go types, which would apply defaulted and empty fields to every
-  running cluster). ValkeyCache runs on it too ([`function/valkeycache`](function/valkeycache)).
-  The Project and Location compositions are still function-go-templating.
+  running cluster). Every other API runs on it too, a package each (`function/<api>`), the Project
+  and Location compositions included.
 - Readiness is set explicitly per resource, so `function-auto-ready` isn't needed. The custom
   `PostgresReady` condition is a function condition, not hand-written `status.conditions`.
 - The dashboard JSON and alert rules are kept as readable sources in `src/`; `make generate`
@@ -212,7 +218,7 @@ In the protected and the recovery location (provider-kubernetes `Object`s):
 | Composed resource | When | Notes |
 |---|---|---|
 | `Namespace <name>` | always | Same labels; never deleted by Crossplane |
-| `ServiceAccount` + `Prometheus` + `PersistentVolumeClaim` + `ClusterRoleBinding platform:project:<name>:prometheus` | `observability.prometheus.enabled` (default) | Scrapes every `PodMonitor`/`PrometheusRule` in the namespace plus kube-prometheus-stack's node/container ServiceMonitors, evaluates the alerts, labels its series `location`/`site` and sends them to the control plane. The binding points at `cnpg-platform:project-prometheus`, which the Location creates there |
+| `ServiceAccount` + `Prometheus` + `PersistentVolumeClaim` + `ClusterRoleBinding basis:project:<name>:prometheus` | `observability.prometheus.enabled` (default) | Scrapes every `PodMonitor`/`PrometheusRule` in the namespace plus kube-prometheus-stack's node/container ServiceMonitors, evaluates the alerts, labels its series `location`/`site` and sends them to the control plane. The binding points at `basis:project-prometheus`, which the Location creates there |
 | `RoleBinding` per `access[]` entry | `access` | So the team can see what runs there |
 | `ResourceQuota` + `LimitRange` | `quota` | The LimitRange gives default requests so operator-generated pods pass the quota |
 
@@ -221,8 +227,9 @@ fail. The XR is `Ready` when the namespace is Active, Prometheus is `Available` 
 `complete/success`. `ObservabilityReady` carries the message.
 
 **Cluster-wide settings** (the Grafana ingress host, where kube-prometheus-stack runs) come from the
-`EnvironmentConfig` named `project-defaults`, requested through function-go-templating's
-`ExtraResources`, so no second function is needed. Every key is optional; see
+`EnvironmentConfig` named `project-defaults`, which function-basis requests (with the Locations,
+COSI's Secrets and the backup stores; what it asks for depends on project-defaults, so the
+requirements settle on the second round). Every key is optional; see
 [`examples/project-defaults.yaml`](examples/project-defaults.yaml).
 
 **Resizing**: `observability.prometheus.storage.size` can grow (the PVC grows online if its
@@ -255,13 +262,13 @@ remote-write endpoint), ClusterUsages and ClusterProviderConfigs. To create bind
 holding the bound permissions itself, it gets `bind` on just `admin`, `edit` and `view`. What goes
 to a location is applied there with that location's kubeconfig. Projects are
 cluster-scoped, so the namespace roles don't cover creating them: bind
-`cnpg-platform:projects:admin` to whoever may create projects.
+`basis:projects:admin` to whoever may create projects.
 
 ## The ValkeyCache API
 
 The cache layer of an AI service, on [Valkey](https://valkey.io/) (BSD-licensed, Linux Foundation),
 run by the official [valkey-io operator](https://github.com/valkey-io/valkey-operator) in one of the
-Project's locations ([`deps/`](../deps/README.md#5-valkey-operator-locations-with-caches)):
+Project's locations ([`deps/`](../deps/README.md#6-valkey-operator-locations-with-caches)):
 
 ```yaml
 apiVersion: cache.cndev.nl/v1alpha1
@@ -331,6 +338,118 @@ context construction; include the model ID and system-prompt version in the key;
 thresholds strict (about 0.9) and measure hits against wrong answers; and purge or shorten TTLs when
 source data changes. This is not the inference engine's KV/prefix cache (vLLM, LMCache).
 
+## The ModelGateway API
+
+One OpenAI-compatible entry point to a Project's models, hosted and self-hosted, on
+[Agent Router](https://github.com/theagentrouter/agent-router) (formerly Envoy AI Gateway;
+Apache-2.0, on Envoy Gateway, CNCF), with the provider keys kept in the platform and an API key per
+client:
+
+```yaml
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelGateway
+metadata:
+  name: llm
+  namespace: demo
+spec:
+  clients: [{name: support-bot}, {name: coding-agent}]   # a key each in Secret llm-keys
+  models:
+    - name: claude-sonnet                       # what clients send as "model"
+      endpoint: https://api.anthropic.com/v1
+      schema: Anthropic
+      upstreamModel: claude-sonnet-5-5
+      apiKeySecretRef: {name: anthropic}        # Secret in the Project, key apiKey
+    - name: llama                               # self-hosted, OpenAI-compatible
+      endpoint: http://vllm.models.svc:8000/v1
+      upstreamModel: meta-llama/Llama-3.1-8B-Instruct
+```
+
+See [`examples/modelgateway.yaml`](examples/modelgateway.yaml) and
+[`apis/modelgateway/definition.yaml`](apis/modelgateway/definition.yaml).
+
+| Composed resource | Where | Notes |
+|---|---|---|
+| `Secret <name>-keys` | control plane | A key per `spec.clients` entry, generated once and kept; a removed client's key goes |
+| `Gateway <name>` + `EnvoyProxy <name>` | each site's location (Object) | Internal Service `<name>` (ClusterIP): `http://<name>.<namespace>.svc/v1`; `replicas` in the active site, `recovery.replicas` in the standby |
+| `SecurityPolicy`, `ClientTrafficPolicy`, `Secret <name>-keys` (copy) | each site's location | Client API key auth on `Authorization: Bearer`, not forwarded; prompts up to 50Mi |
+| `AIGatewayRoute <name>` | each site's location | A rule per model on the request's `model` |
+| `Backend`, `AIServiceBackend`, `BackendTLSPolicy`, `BackendSecurityPolicy`, `Secret` per model | each site's location | The provider's endpoint (TLS for https), its key copied from the Project's Secret under `apiKey` |
+
+It runs in the Project's protected location and, with `recovery.enabled`, a standby in the recovery
+location ([`apis/modelgateway/policies.yaml`](apis/modelgateway/policies.yaml) refuses either
+without a Project location). A GenAIStack composes one of its own (`<stack>-gateway`, client
+`apps`), or uses a shared one with `gateway.ref` as client `gateway.client` (the stack's name by
+default). Needs Envoy Gateway + Agent Router in the location
+([`deps/`](../deps/README.md#7-envoy-gateway--agent-router-locations-with-model-gateways)).
+
+## The GenAIStack API
+
+One object wires up the platform side of a generative AI service in a Project: retrieval, cache,
+gateway and the wiring between them, in its protected site and optionally a warm standby in its
+recovery site.
+
+```yaml
+apiVersion: ai.cndev.nl/v1alpha1
+kind: GenAIStack
+metadata:
+  name: support-bot          # max 28 characters
+  namespace: demo            # a Project
+spec:
+  recovery: {enabled: true}  # warm standby in the Project's recovery location
+  retrieval: {size: m, extensions: [vector, vchord, pg_search]}
+  cache: {mode: semantic, memory: 2Gi}
+  gateway:
+    models:
+      - name: gpt-4o-mini                       # what apps send as "model"
+        endpoint: https://api.openai.com/v1
+        apiKeySecretRef: {name: openai}         # Secret in the Project, key apiKey
+      - name: llama                             # self-hosted, OpenAI-compatible
+        endpoint: http://vllm.models.svc:8000/v1
+        upstreamModel: meta-llama/Llama-3.1-8B-Instruct
+```
+
+See [`examples/genaistack.yaml`](examples/genaistack.yaml),
+[`examples/genaistack-geo.yaml`](examples/genaistack-geo.yaml) and
+[`apis/genaistack/definition.yaml`](apis/genaistack/definition.yaml).
+
+| Component | What | Where |
+|---|---|---|
+| Retrieval | `PostgresCluster <name>-db`: profile vector, PostgreSQL 18, a role `<name>_stack` (member of the database owner) whose password the stack generates; geo-replicated with recovery | child XR next to the stack |
+| Cache | `ValkeyCache <name>-cache` (protected) and `<name>-cache-dr` (recovery), one node each so any client works | child XRs |
+| Gateway | `ModelGateway <name>-gateway` with `gateway.models` and client `apps`, following the active site; or, with `gateway.ref`, a shared ModelGateway the stack is a client of | child XR, or shared |
+| Wiring | Secret `<name>-connection` with `DATABASE_URL` (and host, port, name, user, password), `VALKEY_URL` (and host, port, password, `VALKEY_CLUSTER=false`), `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `SITE`, `ACTIVE`: the same keys in both sites | each site's location |
+
+Apps in a site mount the connection Secret (`envFrom: [{secretRef: {name: <name>-connection}}]`)
+and use any OpenAI SDK against the gateway. Agent Router has no response cache, so the app does its
+own exact or semantic lookups in the cache; the gateway keeps credentials, routing and failover
+between providers.
+
+**Sites and failover.** The active site is where the database's primary runs
+(`PostgresCluster` `status.primarySite`). It gets the full-size cache (`cache.memory`) and gateway
+(`gateway.replicas`); the standby site `recovery.cacheMemory` and `recovery.gatewayReplicas`. To
+switch, set `recovery.activeSite` (and `recovery.promotion: Failover` when the active site is
+down), or **Switch site** in the portal: the stack passes it to its database's
+`geoReplication.primarySite`/`promotion`, and the rest follows once the database has moved,
+`ACTIVE=true` in the new site's connection Secret. Caches don't replicate; each site's cache warms up
+from traffic.
+
+**Corpus version in the cache keys.** Keep a version counter in a table of the RAG database and bump
+it in the same transaction as each ingestion batch. Put it in every cache key (with the tenant, the
+model and the system-prompt version), or as a TAG filter in the semantic KNN query: new data makes
+old answers unreachable, and because the counter replicates with the data, the recovery site never
+serves answers newer or older than its own database, without messaging between the sites.
+
+**Guardrails.** `deletionProtection` (default on) refuses deleting the stack, which deletes its
+database; the portal turns it off when you delete there. A new stack needs a Project with a
+protected location, and recovery a recovery location, both open to new workloads
+([`apis/genaistack/policies.yaml`](apis/genaistack/policies.yaml)). The database, caches and
+gateway carry the stack's label `ai.cndev.nl/genaistack`, and the same policies let only Crossplane
+(and the garbage collector) create, change or delete what carries it: change the stack instead.
+That includes the database's switchover, which goes through `recovery.activeSite`.
+
+Needs, in each location: the Valkey operator and Envoy Gateway + Agent Router
+([`deps/`](../deps/README.md#7-envoy-gateway--agent-router-locations-with-model-gateways)).
+
 ## Locations
 
 The control plane runs Crossplane, these APIs and the portal, but no databases. The databases run
@@ -338,8 +457,8 @@ in **locations**: other Kubernetes clusters registered with the platform. Each P
 location as its **protected site** and optionally another as its **recovery site**.
 
 ```sh
-KUBECONFIG=dc-a.kubeconfig ../operator/install.sh           # in every location: CNPG, Barman Cloud, catalogs
-KUBECONFIG=dc-b.kubeconfig ../operator/install.sh
+KUBECONFIG=dc-a.kubeconfig ../deps/cnpg/install.sh           # in every location: CNPG, Barman Cloud, catalogs
+KUBECONFIG=dc-b.kubeconfig ../deps/cnpg/install.sh
 install/add-location.sh dc-a dc-a.kubeconfig                    # on the control plane, or: portal > Locations > Add
 install/add-location.sh dc-b dc-b.kubeconfig
 kubectl get locations -o wide                                    # CONNECTED, READY, what's missing
@@ -353,7 +472,7 @@ A location is a **`Location`** (`platform.cndev.nl/v1alpha1`, cluster-scoped,
 [`apis/location`](apis/location/definition.yaml)): settings (`displayName`, `environment`,
 `provider`, `region`, `owner`, `storageClass`, `schedulable`) and `credentials.secretRef`, a Secret
 with its kubeconfig. [`install/add-location.sh`](install/add-location.sh) and the portal write
-that Secret to `cnpg-locations` and create the Location. Anything else that can deliver a Secret
+that Secret to `basis-locations` and create the Location. Anything else that can deliver a Secret
 works too (External Secrets, Sealed Secrets, a GitOps repo with the Location next to it):
 
 ```yaml
@@ -365,11 +484,11 @@ spec:
   environment: production
   region: dc-amsterdam-1
   credentials:
-    secretRef: {namespace: cnpg-locations, name: dc-a}   # key defaults to kubeconfig
+    secretRef: {namespace: basis-locations, name: dc-a}   # key defaults to kubeconfig
 ```
 
 The Location's composition creates the provider-kubernetes `ClusterProviderConfig` with the same
-name, the `cnpg-platform:project-prometheus` ClusterRole in the location (never deleted by
+name, the `basis:project-prometheus` ClusterRole in the location (never deleted by
 Crossplane), and two observe-only `Object`s that check whether CloudNativePG and the Prometheus
 Operator are installed there. `status.connected`, `status.operators` and `status.message` show what
 Crossplane found. The Location is `READY` once it is connected and both operators are there.
@@ -377,7 +496,7 @@ Crossplane found. The Location is `READY` once it is connected and both operator
 Every object for a location is a namespaced `kubernetes.m.crossplane.io` `Object` next to the XR
 on the control plane, which the provider applies in that location with that kubeconfig. Its live
 state comes back through `status.atProvider.manifest`, and the compositions read it from there.
-The location needs [`operator`](../operator) and the Prometheus Operator CRDs. The
+The location needs [`deps/cnpg`](../deps/cnpg) and the Prometheus Operator CRDs. The
 kubeconfig's identity needs cluster-admin or an equivalent role, and must work from inside the
 control plane (no exec plugins).
 
@@ -458,7 +577,7 @@ why; the portal's project page shows it. The namespace annotation
 `status.backup.servers` is the Project's **inventory of the bucket**: one entry per backup folder
 (Barman server name) a PostgresCluster site archives to, with its cluster, location, PostgreSQL
 version, database and recoverable window. The Project finds them through the label
-`cnpg.cndev.nl/backup-store` on the clusters' `ObjectStore` Objects, and keeps entries after their
+`postgres.cndev.nl/backup-store` on the clusters' `ObjectStore` Objects, and keeps entries after their
 cluster is deleted (`active: false`): the retained bucket still has the backups, and this is where
 a [restore](#postgrescluster-restore) finds them. Folders of clusters deleted before the inventory
 existed aren't listed; restore them by `serverName` all the same.
@@ -574,7 +693,7 @@ taken after the switchover: restore from before it out of the protected site's f
 ```
 apis/postgrescluster/definition.yaml       XRD (the API contract)
 apis/postgrescluster/composition.yaml      one pipeline step: function-basis
-function/                                  function-basis: the PostgresCluster and ValkeyCache compositions in Go
+function/                                  function-basis: every API's composition in Go (fn.go dispatches on the kind)
 function/postgrescluster/                  what gets composed (compose.go), per location (member.go),
                                            the primary/switchover state machine (topology.go), status
 function/postgrescluster/assets/           what it embeds: monitoring queries, GENERATED dashboard and alerts
@@ -586,11 +705,24 @@ src/dashboards/cnpg-cluster.json           CNPG Grafana dashboard (Apache-2.0)
 src/alerts/cnpg-cluster-rules.yaml         CNPG alerts from the cnpg/cluster chart (hack/refresh-alerts.sh)
 src/alerts/local-rules.yaml                our changes to those alerts (replace upstream rules by name)
 apis/location/definition.yaml              Location XRD (cluster-scoped): another Kubernetes cluster
-apis/location/composition.yaml             its ClusterProviderConfig, Prometheus ClusterRole, operator checks
+apis/location/composition.yaml             one pipeline step: function-basis
 apis/project/definition.yaml               Project XRD (cluster-scoped)
-apis/project/composition.yaml              Project composition (hand-written, nothing embedded)
+apis/project/composition.yaml              one pipeline step: function-basis
+function/project/                          the Project composition in Go: namespaces, Prometheus, Grafana,
+                                           access, quota, backup bucket (COSI) per location
+function/location/                         the Location composition in Go: ClusterProviderConfig, checks
 apis/project/policies.yaml                 deletion protection, PostgresClusters only in a Project's
                                            sites, unschedulable locations
+apis/genaistack/definition.yaml            GenAIStack XRD (namespaced): retrieval, cache, gateway and wiring per site
+apis/genaistack/composition.yaml           one pipeline step: function-basis
+apis/genaistack/policies.yaml              deletion protection; stacks only in a Project's open locations;
+                                           what a stack composes only changes through it
+function/genaistack/                       the GenAIStack composition in Go: child PostgresCluster/ValkeyCaches/
+                                           ModelGateway and the connection Secret per site
+apis/modelgateway/definition.yaml          ModelGateway XRD (namespaced): models, clients, sites
+apis/modelgateway/composition.yaml         one pipeline step: function-basis
+apis/modelgateway/policies.yaml            gateways only in a Project's open locations
+function/modelgateway/                     the ModelGateway composition in Go: client keys, Agent Router per site
 apis/valkeycache/definition.yaml           ValkeyCache XRD (namespaced): an exact or semantic Valkey cache
 apis/valkeycache/composition.yaml          one pipeline step: function-basis
 function/valkeycache/                      the ValkeyCache composition in Go: password Secret, ValkeyCluster,
@@ -604,10 +736,12 @@ hack/xpkgcache/                            seeds Crossplane's package cache (e2e
 hack/observe/                              generates tests/render observed-state fixtures
 hack/alertrules/                           writes src/alerts/ for hack/refresh-alerts.sh
 internal/doc/                              shared YAML helpers for the Go tools
-install/                                   Crossplane, the functions, provider-kubernetes, RBAC,
-                                           install/uninstall, add-location.sh, migrate-locations.sh
+install/                                   Crossplane, function-basis, provider-kubernetes, RBAC,
+                                           install/uninstall, add-location.sh, migrate-locations.sh,
+                                           migrate-to-basis.sh (from the cnpg names)
 examples/                                  PostgresClusters (incl. a geo-replicated and a restored one), a Project, the
-                                           project-defaults EnvironmentConfig, a ValkeyCache
+                                           project-defaults EnvironmentConfig, a ValkeyCache, a ModelGateway,
+                                           GenAIStacks (single site and geo)
 tests/render/<api>/                        offline render + schema validation tests per API
 tests/render/rendertest/                   their assertions (one Go file per API)
 ```
@@ -620,7 +754,7 @@ Prometheus and Grafana; CloudNativePG isn't needed there):
 ```sh
 install/install.sh                        # Crossplane 2.4.2 + everything above (+ the size and extension catalogs, once)
 SKIP_CROSSPLANE=true install/install.sh   # Crossplane already installed
-install/add-location.sh dc-a dc-a.kubeconfig      # every location: ../operator/install.sh there first
+install/add-location.sh dc-a dc-a.kubeconfig      # every location: ../deps/cnpg/install.sh there first
 kubectl apply -f examples/project-defaults.yaml   # edit the ingress hosts first
 kubectl apply -f examples/project.yaml            # edit spec.locations first
 kubectl apply -f examples/minimal.yaml
@@ -631,10 +765,22 @@ kubectl get project,postgrescluster -A
 [`install/function-basis.yaml`](install/function-basis.yaml) and waits until it's Healthy;
 `FUNCTION_MANIFEST=<file> install/install.sh` installs another one. See below for publishing it.
 
+### Migrating from the cnpg names
+
+Control planes installed before function-basis v0.4.0 used `cnpg.cndev.nl` for PostgresCluster,
+`cnpg-platform:*` ClusterRoles and `cnpg-locations` for the location kubeconfigs, and composed
+Project and Location with function-go-templating. After publishing v0.4.0, run
+[`install/migrate-to-basis.sh`](install/migrate-to-basis.sh) instead of `install.sh`. It needs no
+PostgresCluster of the old group left (a Composition's `compositeTypeRef` can't change, so that API
+is removed, not converted) and stops if there are; it moves bindings to the old roles and the
+location kubeconfigs, installs everything, and removes the old RBAC in the locations once its
+replacement is there. The Prometheus ClusterRoleBinding of each Project in its locations is now
+`basis:project:<name>:prometheus`: a `roleRef` can't change in place.
+
 ### Migrating from `*.basis.com`
 
 The APIs moved from `platform.basis.com` and `cnpg.basis.com` to `platform.cndev.nl` and
-`cnpg.cndev.nl`. To Kubernetes these are different APIs. Objects created under the old groups don't
+`postgres.cndev.nl`. To Kubernetes these are different APIs. Objects created under the old groups don't
 move to the new ones, and `install.sh` installs the new XRDs next to the old XRDs without removing
 them. On a control plane that ran the old groups:
 
@@ -665,7 +811,7 @@ them. On a control plane that ran the old groups:
 
 `install/uninstall.sh` only knows the new groups and leaves the old ones in place. While both
 XRDs exist, the short names `pgc`, `proj` and `loc` match both groups, so name the group in full
-(`kubectl get postgresclusters.cnpg.cndev.nl -A`).
+(`kubectl get postgresclusters.postgres.cndev.nl -A`).
 
 ## function-basis
 
@@ -767,8 +913,8 @@ function-basis doesn't compose cnpg.example.com/v1alpha1, Kind=PostgresCluster
 ```
 
 Change `postgresClusterGVK` together with the XRD and Composition. Then publish and roll out a new
-version (above) before, or together with, applying the new XRD. The Location and Project
-compositions use `function-go-templating` and don't depend on this.
+version (above) before, or together with, applying the new XRD. The same holds for every API:
+function-basis composes them all.
 
 ### Develop and test it
 

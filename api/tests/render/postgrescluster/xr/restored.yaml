@@ -1,7 +1,7 @@
 # Restored from the Project's bucket to a point in time: secrets-db's
 # backup folder, into a new geo-replicated cluster that backs up to the same
 # bucket, in folders of its own (secrets-db-r-3f2a9c1e, ...-onprem-ams).
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: secrets-db-r

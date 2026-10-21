@@ -1,6 +1,6 @@
 # A namespace that isn't a Project: the control plane runs no databases, so
 # only the dashboard is composed and the XR says why nothing else is.
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

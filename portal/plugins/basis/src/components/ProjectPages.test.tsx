@@ -5,8 +5,8 @@ import { Route, Routes } from 'react-router-dom';
 import type {
   PostgresClusterSummary,
   ProjectSummary,
-} from '@internal/backstage-plugin-cnpg-common';
-import { CnpgApi, cnpgApiRef } from '../api';
+} from '@internal/backstage-plugin-basis-common';
+import { BasisApi, basisApiRef } from '../api';
 import { rootRouteRef } from '../routes';
 import { CreateClusterPage } from './CreateClusterPage';
 import { ProjectDetailPage } from './ProjectDetailPage';
@@ -29,17 +29,17 @@ const project = (over: Partial<ProjectSummary>): ProjectSummary => ({
 const cluster = (namespace: string, name: string) =>
   ({ name, namespace, instances: 1, readyInstances: 1, ready: true }) as PostgresClusterSummary;
 
-const apis = (api: Partial<CnpgApi>) => ({
+const apis = (api: Partial<BasisApi>) => ({
   apis: [
-    [cnpgApiRef, api],
+    [basisApiRef, api],
     [permissionApiRef, mockApis.permission()],
   ] as const,
-  mountedRoutes: { '/cnpg': rootRouteRef },
+  mountedRoutes: { '/basis': rootRouteRef },
 });
 
 describe('ProjectListPage', () => {
   it('lists projects with health, cluster count and Grafana', async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       listProjects: jest.fn(async () => [
         project({}),
         project({ name: 'payments', ready: false, grafanaUrl: undefined, owner: undefined }),
@@ -60,14 +60,14 @@ describe('ProjectListPage', () => {
 });
 
 describe('CreateClusterPage', () => {
-  const base: Partial<CnpgApi> = {
+  const base: Partial<BasisApi> = {
     getConfig: jest.fn(async () => ({ storageClasses: [] })),
     listSizes: jest.fn(async () => []),
     listExtensions: jest.fn(async () => []),
   };
 
   it('offers projects instead of free-text namespaces', async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       ...base,
       listProjects: jest.fn(async () => [project({})]),
     };
@@ -77,7 +77,7 @@ describe('CreateClusterPage', () => {
   });
 
   it('points to project creation when there are no projects', async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       ...base,
       listProjects: jest.fn(async () => []),
     };
@@ -87,7 +87,7 @@ describe('CreateClusterPage', () => {
   });
 
   it("starts at the catalog's first size, with its volumes", async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       ...base,
       listProjects: jest.fn(async () => [project({})]),
       listSizes: jest.fn(async () => [
@@ -112,14 +112,14 @@ describe('CreateClusterPage', () => {
   });
 
   it('offers custom resources without a catalog', async () => {
-    const api: Partial<CnpgApi> = { ...base, listProjects: jest.fn(async () => [project({})]) };
+    const api: Partial<BasisApi> = { ...base, listProjects: jest.fn(async () => [project({})]) };
     await renderInTestApp(<CreateClusterPage />, apis(api) as any);
     expect(await screen.findByLabelText('CPU request')).toBeInTheDocument();
     expect(screen.queryByText('Size')).not.toBeInTheDocument();
   });
 
   it('adds pgvector from the extension catalog to the bootstrap database', async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       ...base,
       listProjects: jest.fn(async () => [project({})]),
       listExtensions: jest.fn(async () => [
@@ -136,7 +136,7 @@ describe('CreateClusterPage', () => {
 });
 
 describe('ProjectDetailPage', () => {
-  const render = (api: Partial<CnpgApi>) =>
+  const render = (api: Partial<BasisApi>) =>
     renderInTestApp(
       <Routes>
         <Route path="/p/:name" element={<ProjectDetailPage />} />
@@ -149,7 +149,7 @@ describe('ProjectDetailPage', () => {
   }));
 
   it("won't delete a project that still has clusters", async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       getProject,
       listClusters: jest.fn(async () => [cluster('demo', 'orders-db')]),
       deleteProject: jest.fn(),
@@ -163,7 +163,7 @@ describe('ProjectDetailPage', () => {
   });
 
   it('deletes an empty project once its name is typed', async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       getProject,
       listClusters: jest.fn(async () => []),
       deleteProject: jest.fn(async () => undefined),
@@ -182,7 +182,7 @@ describe('ProjectDetailPage', () => {
 
   it('shows per location whether it reaches the backup bucket, and why not', async () => {
     const ago = (s: number) => new Date(Date.now() - s * 1000).toISOString();
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       getProject: jest.fn(async () => ({
         summary: project({
           protectedLocation: 'ske',
@@ -218,7 +218,7 @@ describe('ProjectDetailPage', () => {
   });
 
   it("lists the bucket's backup folders and restores a deleted cluster's into a new one", async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       getProject: jest.fn(async () => ({
         summary: project({ backupBucket: { ready: true, bucket: 'demo-backups', reachability: [] } }),
         resource: {

@@ -194,6 +194,9 @@ components:
             operators:
               description: Operators found in the cluster (unknown until connected).
               properties:
+                agentRouter:
+                  description: Agent Router on Envoy Gateway, which GenAIStacks' gateways need (optional).
+                  type: boolean
                 cloudnativepg:
                   type: boolean
                 prometheusOperator:

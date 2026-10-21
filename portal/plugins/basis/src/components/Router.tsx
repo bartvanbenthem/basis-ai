@@ -3,6 +3,12 @@ import { AuditLogPage } from './AuditLogPage';
 import { CacheDetailPage } from './CacheDetailPage';
 import { CreateCachePage, EditCachePage } from './CacheFormPages';
 import { CacheListPage } from './CacheListPage';
+import { StackDetailPage } from './StackDetailPage';
+import { CreateStackPage, EditStackPage } from './StackFormPages';
+import { StackListPage } from './StackListPage';
+import { GatewayDetailPage } from './GatewayDetailPage';
+import { CreateGatewayPage, EditGatewayPage } from './GatewayFormPages';
+import { GatewayListPage } from './GatewayListPage';
 import { BucketDetailPage } from './BucketDetailPage';
 import { BucketListPage } from './BucketListPage';
 import { ClusterDetailPage } from './ClusterDetailPage';
@@ -18,13 +24,13 @@ import { ProjectDetailPage } from './ProjectDetailPage';
 import { ProjectListPage } from './ProjectListPage';
 import { VolumeListPage } from './VolumeListPage';
 
-/** Everything under /cnpg; paths mirror the sub-route refs in ../routes.ts. */
+/** Everything under /basis; paths mirror the sub-route refs in ../routes.ts. */
 export const Router = () => (
   <Routes>
     <Route path="/" element={<ClusterListPage />} />
     <Route path="/create" element={<CreateClusterPage />} />
     <Route path="/audit" element={<AuditLogPage />} />
-    {/* Static "locations"/"projects"/"buckets"/"volumes"/"caches" segments outrank /:namespace/:name; all are reserved project names. */}
+    {/* Static "locations"/"projects"/"buckets"/"volumes"/"caches"/"stacks"/"gateways" segments outrank /:namespace/:name; all are reserved project names. */}
     <Route path="/locations" element={<LocationListPage />} />
     <Route path="/locations/create" element={<CreateLocationPage />} />
     <Route path="/locations/:name" element={<LocationDetailPage />} />
@@ -32,6 +38,14 @@ export const Router = () => (
     <Route path="/buckets" element={<BucketListPage />} />
     <Route path="/buckets/:name" element={<BucketDetailPage />} />
     <Route path="/volumes" element={<VolumeListPage />} />
+    <Route path="/stacks" element={<StackListPage />} />
+    <Route path="/stacks/create" element={<CreateStackPage />} />
+    <Route path="/stacks/:namespace/:name" element={<StackDetailPage />} />
+    <Route path="/stacks/:namespace/:name/edit" element={<EditStackPage />} />
+    <Route path="/gateways" element={<GatewayListPage />} />
+    <Route path="/gateways/create" element={<CreateGatewayPage />} />
+    <Route path="/gateways/:namespace/:name" element={<GatewayDetailPage />} />
+    <Route path="/gateways/:namespace/:name/edit" element={<EditGatewayPage />} />
     <Route path="/caches" element={<CacheListPage />} />
     <Route path="/caches/create" element={<CreateCachePage />} />
     <Route path="/caches/:namespace/:name" element={<CacheDetailPage tab="overview" />} />

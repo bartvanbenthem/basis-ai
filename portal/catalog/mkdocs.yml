@@ -1,20 +1,25 @@
 site_name: BASIS
 site_description: >-
-  Build AI Services In Sovereign infrastructure — a platform for generative AI
-  services on Kubernetes
+  Build AI Services In Sovereign infrastructure — the platform side of
+  generative AI services and agents, on Kubernetes clusters you own
 repo_url: https://github.com/bartvanbenthem/basis
 edit_uri: edit/main/portal/catalog/docs/
 nav:
   - Overview: index.md
   - Platform scope: scope.md
   - Getting started: getting-started.md
-  - Context / RAG (PostgreSQL):
-      - Configure a cluster: clusters/configure.md
-      - Vector & RAG: clusters/vector-rag.md
-      - Geo replication and disaster recovery: clusters/disaster-recovery.md
-      - Backups and restore: clusters/backup-restore.md
-  - Cache (Valkey):
-      - Valkey caches: caches/valkey.md
+  - AI services:
+      - GenAI stacks: ai/genai-stacks.md
+      - Model gateways: ai/model-gateways.md
+      - Agents and MCP: ai/agents.md
+  - Building blocks:
+      - Context / RAG (PostgreSQL):
+          - Create a cluster: clusters/create.md
+          - Configure a cluster: clusters/configure.md
+          - Vector & RAG: clusters/vector-rag.md
+          - Geo replication and disaster recovery: clusters/disaster-recovery.md
+          - Backups and restore: clusters/backup-restore.md
+      - Cache (Valkey): caches/valkey.md
   - API reference: api.md
   - Platform:
       - Architecture: platform/architecture.md

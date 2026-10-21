@@ -23,7 +23,7 @@ spec:
   schedulable: false
   credentials:
     secretRef:
-      namespace: cnpg-locations
+      namespace: basis-locations
       name: si-ske-demo
 ---
 apiVersion: platform.cndev.nl/v1alpha1
@@ -33,5 +33,5 @@ metadata:
 spec:
   credentials:
     secretRef:
-      namespace: cnpg-locations
+      namespace: basis-locations
       name: onprem-ams

@@ -23,12 +23,12 @@ import {
 import {
   type BucketDetails,
   type BucketFolder,
-  cnpgBucketDeletePermission,
-} from '@internal/backstage-plugin-cnpg-common';
+  basisBucketDeletePermission,
+} from '@internal/backstage-plugin-basis-common';
 import { type ReactNode, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { bucketsRouteRef, clusterRouteRef, projectRouteRef } from '../routes';
 import { age, BucketStateBadge, ErrorAlert, Fields, Mono, Panel, usageText } from './common';
 
@@ -42,7 +42,7 @@ const DeleteDialog = ({
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
 }) => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const navigate = useNavigate();
   const listLink = useRouteRef(bucketsRouteRef);
   const [confirm, setConfirm] = useState('');
@@ -57,7 +57,7 @@ const DeleteDialog = ({
     try {
       await api.deleteBucket(name);
       onOpenChange(false);
-      navigate(listLink?.() ?? '/cnpg/buckets');
+      navigate(listLink?.() ?? '/basis/buckets');
     } catch (e) {
       setError(e as Error);
     } finally {
@@ -144,9 +144,9 @@ const FolderTable = ({ bucket }: { bucket: BucketDetails }) => {
 /** One bucket: what uses it, its usage per folder, and deleting it when orphaned. */
 export const BucketDetailPage = () => {
   const { name = '' } = useParams();
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const projectLink = useRouteRef(projectRouteRef);
-  const { allowed: canDelete } = usePermission({ permission: cnpgBucketDeletePermission });
+  const { allowed: canDelete } = usePermission({ permission: basisBucketDeletePermission });
   const [deleting, setDeleting] = useState(false);
   const { value, error } = useAsyncRetry(() => api.getBucket(name), [api, name]);
   const summary = value?.summary;

@@ -26,9 +26,11 @@ import (
 
 // The APIs to document, in apis/, with their catalog entity's title and description.
 var openAPIs = []struct{ name, title, description string }{
-	{"postgrescluster", "PostgresCluster API", "A production-ready PostgreSQL cluster (cnpg.cndev.nl/v1alpha1), namespaced in its Project"},
+	{"postgrescluster", "PostgresCluster API", "A production-ready PostgreSQL cluster (postgres.cndev.nl/v1alpha1), namespaced in its Project"},
 	{"project", "Project API", "A team's namespace with its locations, access, quota, Prometheus and Grafana (platform.cndev.nl/v1alpha1)"},
-	{"location", "Location API", "A Kubernetes cluster the platform runs databases in (platform.cndev.nl/v1alpha1)"},
+	{"location", "Location API", "A Kubernetes cluster the platform runs workloads in (platform.cndev.nl/v1alpha1)"},
+	{"genaistack", "GenAIStack API", "A generative AI stack in a Project's site(s): RAG database, cache, model gateway and wiring (ai.cndev.nl/v1alpha1)"},
+	{"modelgateway", "ModelGateway API", "An OpenAI-compatible gateway to a Project's models, hosted and self-hosted, with a key per client (ai.cndev.nl/v1alpha1)"},
 	{"valkeycache", "ValkeyCache API", "An exact or semantic Valkey cache for an AI service (cache.cndev.nl/v1alpha1), namespaced in its Project"},
 }
 

@@ -1,6 +1,6 @@
 # The protected location is gone: promotion Failover promotes the recovery
 # site right away, without waiting for a demotion token.
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

@@ -1,0 +1,42 @@
+# A gateway shared by a Project's apps and agents: one OpenAI-compatible
+# endpoint for hosted and self-hosted models, the provider keys kept in the
+# platform, and a key of its own for every client. Needs Envoy Gateway +
+# Agent Router in the location (deps/README.md) and the provider keys in
+# Secrets first:
+#
+#   kubectl -n demo create secret generic anthropic --from-literal=apiKey=sk-ant-...
+#   kubectl -n demo create secret generic openai --from-literal=apiKey=sk-...
+#
+# Each client reads its key from Secret demo/llm-keys (the client's name is
+# the key) and calls, in the location:
+#
+#   OPENAI_BASE_URL=http://llm.demo.svc/v1   OPENAI_API_KEY=<its key>
+#
+# Removing a client from spec.clients revokes its key. A GenAIStack uses this
+# gateway with spec.gateway.ref: llm (and a client named after the stack, or
+# spec.gateway.client).
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelGateway
+metadata:
+  name: llm
+  namespace: demo
+spec:
+  replicas: 2
+  clients:
+    - name: support-bot       # the GenAIStack support-bot (spec.gateway.ref: llm)
+    - name: coding-agent      # e.g. an agent running in the location
+  models:
+    - name: claude-sonnet
+      endpoint: https://api.anthropic.com/v1
+      schema: Anthropic
+      upstreamModel: claude-sonnet-5-5
+      apiKeySecretRef:
+        name: anthropic
+    - name: gpt-4o-mini
+      endpoint: https://api.openai.com/v1
+      apiKeySecretRef:
+        name: openai
+    # A self-hosted, OpenAI-compatible server (vLLM, KServe, Ollama, ...).
+    - name: llama
+      endpoint: http://vllm.models.svc:8000/v1
+      upstreamModel: meta-llama/Llama-3.1-8B-Instruct

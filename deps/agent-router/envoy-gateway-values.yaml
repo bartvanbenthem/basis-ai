@@ -1,0 +1,42 @@
+# Envoy Gateway helm values for Agent Router (formerly Envoy AI Gateway) in a
+# BASIS location: the upstream base values of Agent Router v1.2.0
+# (manifests/envoy-gateway-values.yaml) plus GatewayNamespace mode, so each
+# GenAIStack's Envoy proxies run in its Project's namespace (its quota, its
+# RoleBindings) instead of envoy-gateway-system.
+config:
+  envoyGateway:
+    gateway:
+      controllerName: gateway.envoyproxy.io/gatewayclass-controller
+    logging:
+      level:
+        default: info
+    provider:
+      type: Kubernetes
+      kubernetes:
+        deploy:
+          type: GatewayNamespace
+    extensionApis:
+      enableEnvoyPatchPolicy: true
+      # Required: the Backend API for AI service backends.
+      enableBackend: true
+    # Required: Agent Router fine-tunes the xDS resources Envoy Gateway generates.
+    extensionManager:
+      hooks:
+        xdsTranslator:
+          translation:
+            listener:
+              includeAll: true
+            route:
+              includeAll: true
+            cluster:
+              includeAll: true
+            secret:
+              includeAll: true
+          post:
+            - Translation
+            - Cluster
+            - Route
+      service:
+        fqdn:
+          hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
+          port: 1063

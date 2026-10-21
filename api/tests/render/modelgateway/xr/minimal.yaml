@@ -1,0 +1,19 @@
+# A gateway in the protected location for a hosted and a self-hosted model,
+# with two clients.
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelGateway
+metadata:
+  name: llm
+  namespace: ai-team
+spec:
+  clients:
+    - name: support-bot
+    - name: coding-agent
+  models:
+    - name: gpt-4o-mini
+      endpoint: https://api.openai.com/v1
+      apiKeySecretRef:
+        name: openai
+    - name: llama
+      endpoint: http://vllm.models.svc:8000/v1
+      upstreamModel: meta-llama/Llama-3.1-8B-Instruct

@@ -6,7 +6,9 @@ them against the schema: types, defaults, enums and rules.
 
 | API | Kind | Scope | Reference |
 |---|---|---|---|
-| `cnpg.cndev.nl/v1alpha1` | `PostgresCluster` (`pgc`) | in a Project's namespace | [PostgresCluster API](/catalog/default/api/postgrescluster/definition) |
+| `ai.cndev.nl/v1alpha1` | `GenAIStack` (`gstack`) | in a Project's namespace | [GenAIStack API](/catalog/default/api/genaistack/definition) |
+| `ai.cndev.nl/v1alpha1` | `ModelGateway` (`mgw`) | in a Project's namespace | [ModelGateway API](/catalog/default/api/modelgateway/definition) |
+| `postgres.cndev.nl/v1alpha1` | `PostgresCluster` (`pgc`) | in a Project's namespace | [PostgresCluster API](/catalog/default/api/postgrescluster/definition) |
 | `cache.cndev.nl/v1alpha1` | `ValkeyCache` (`vcache`) | in a Project's namespace | [ValkeyCache API](/catalog/default/api/valkeycache/definition) |
 | `platform.cndev.nl/v1alpha1` | `Project` (`proj`) | cluster | [Project API](/catalog/default/api/project/definition) |
 | `platform.cndev.nl/v1alpha1` | `Location` (`loc`) | cluster | [Location API](/catalog/default/api/location/definition) |
@@ -21,8 +23,10 @@ same reference is under **APIs** in the catalog.
 ## From the command line
 
 ```sh
-kubectl explain postgrescluster.spec                 # the fields, from the same schema
+kubectl explain genaistack.spec                      # the fields, from the same schema
+kubectl explain postgrescluster.spec
 kubectl explain postgrescluster.spec.geoReplication
+kubectl get genaistacks,modelgateways -A            # READY, active site, models
 kubectl get postgresclusters -A                      # VERSION, SIZE, PHASE, PRIMARY, LOCATION, READY
 kubectl get valkeycaches -A                         # MODE, SHARDS, REPLICAS, STATE, SITE, LOCATION, READY
 kubectl apply --dry-run=server -f my-cluster.yaml    # validate, including admission policies
@@ -37,7 +41,10 @@ Admission policies check what a schema can't, against the platform's catalogs:
   PostgreSQL 18.
 - A cluster needs a namespace whose Project has a protected location, and geo replication needs a
   recovery location.
-- A cache needs a namespace whose Project has a location for its `site`, open to new workloads.
+- A cache needs a namespace whose Project has a location for its `site`, open to new workloads; a
+  stack or gateway its protected location, and with recovery its recovery location.
+- What a GenAIStack composes (its database, caches and gateway, label `ai.cndev.nl/genaistack`)
+  changes only through the stack: changing or deleting it directly is refused.
 - A Project with `deletionProtection: true` can't be deleted.
 
 `--dry-run=server` (or **Validate** in the portal) runs all of them without creating anything.

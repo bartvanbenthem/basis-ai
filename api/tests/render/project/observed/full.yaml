@@ -68,7 +68,7 @@ status:
           platform.cndev.nl/group: payments-devs
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: project-edit-163c746e
         namespace: team-payments
@@ -105,7 +105,7 @@ status:
           platform.cndev.nl/group: auditors
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: project-view-f2efb158
         namespace: team-payments
@@ -140,7 +140,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: project-defaults
         namespace: team-payments
@@ -177,7 +177,7 @@ status:
           platform.cndev.nl/description: Payment services
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           backstage.io/owner: team-payments
           dashboards.paas.cndev.nl/scope: team-payments
           platform.cndev.nl/project: team-payments
@@ -209,7 +209,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: prometheus
         namespace: team-payments
@@ -296,13 +296,13 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: platform:project:team-payments:prometheus
       roleRef:
         apiGroup: rbac.authorization.k8s.io
         kind: ClusterRole
-        name: cnpg-platform:project-prometheus
+        name: basis:project-prometheus
       subjects:
       - kind: ServiceAccount
         name: prometheus
@@ -330,7 +330,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: prometheus-prometheus-db-prometheus-prometheus-0
         namespace: team-payments
@@ -364,7 +364,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: prometheus
         namespace: team-payments
@@ -391,7 +391,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: project
         namespace: team-payments
@@ -426,7 +426,7 @@ status:
           platform.cndev.nl/group: payments-devs
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: project-edit-163c746e
         namespace: team-payments
@@ -463,7 +463,7 @@ status:
           platform.cndev.nl/group: auditors
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: project-view-f2efb158
         namespace: team-payments
@@ -498,7 +498,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: project-defaults
         namespace: team-payments
@@ -535,7 +535,7 @@ status:
           platform.cndev.nl/description: Payment services
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           backstage.io/owner: team-payments
           dashboards.paas.cndev.nl/scope: team-payments
           platform.cndev.nl/project: team-payments
@@ -567,7 +567,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: prometheus
         namespace: team-payments
@@ -654,13 +654,13 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: platform:project:team-payments:prometheus
       roleRef:
         apiGroup: rbac.authorization.k8s.io
         kind: ClusterRole
-        name: cnpg-platform:project-prometheus
+        name: basis:project-prometheus
       subjects:
       - kind: ServiceAccount
         name: prometheus
@@ -688,7 +688,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: prometheus-prometheus-db-prometheus-prometheus-0
         namespace: team-payments
@@ -722,7 +722,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: prometheus
         namespace: team-payments
@@ -749,7 +749,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-payments
         name: project
         namespace: team-payments

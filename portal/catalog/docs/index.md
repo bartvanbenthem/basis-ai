@@ -1,59 +1,61 @@
 # BASIS
 
-BASIS (Build AI Services In Sovereign infrastructure) is a platform for building generative AI
-services on Kubernetes clusters you own. Teams order the building blocks of an AI service
-themselves, through this portal or the Kubernetes API, and the platform runs them. It is built on
-[Crossplane](https://www.crossplane.io/) and [Backstage](https://backstage.io/).
-
-The target stack covers self-hosted models (vLLM, KServe, llm-d), an AI gateway, prompt and
-semantic caches, RAG, guardrails, observability and orchestration. Today the platform provides the
-context and data layer: PostgreSQL with pgvector on [CloudNativePG](https://cloudnative-pg.io/)
-(CNPG), exact and semantic caches on [Valkey](https://valkey.io/), Prometheus and Grafana, and
-object storage. See [Platform scope](scope.md) for the full
-stack and what is available now.
+BASIS (Build AI Services In Sovereign infrastructure) is the platform side of generative AI services
+and agents, on Kubernetes clusters you own. The model can be anyone's: Claude, GPT, Mistral or one
+you serve yourself. What stays with you is everything around it: your data and its retrieval, the
+caches, the gateway that holds the provider keys and knows who calls which model, and the audit
+trail. Teams order it themselves, through this portal, the Kubernetes API or an agent, and the
+platform runs it. Built on [Crossplane](https://www.crossplane.io/) and
+[Backstage](https://backstage.io/).
 
 ## What you get today
 
-- **Self-service:** one `PostgresCluster` object, or the **New cluster** form, gives you a highly
-  available cluster in a size from the platform's catalog (XS to XL), with PostgreSQL tuned to it.
-- **Context / RAG:** the **Vector & RAG** profile (PostgreSQL 18) brings pgvector, VectorChord for
-  large vector indexes and pg_search for BM25 and hybrid search. See [Vector & RAG](clusters/vector-rag.md).
-- **Caches:** one `ValkeyCache` object, or the **New cache** form, gives you an exact cache
-  (prompts, tool, SQL and search results) or a semantic cache (vector search through valkey-search,
-  e.g. for LiteLLM) in your Project's location. See [Valkey caches](caches/valkey.md).
+- **GenAI stacks:** one `GenAIStack` object, or **AI services → New stack**, gives your service a
+  RAG database, a cache and a model gateway, wired together in one Secret your app mounts. With a
+  warm standby in a second location if you want one. See [GenAI stacks](ai/genai-stacks.md).
+- **Model gateways:** one OpenAI-compatible endpoint to hosted and self-hosted models. Provider keys
+  stay in the platform; every app, agent and stack gets a key of its own. See
+  [Model gateways](ai/model-gateways.md).
+- **Agents welcome:** the platform as MCP tools and a Kubernetes API with schemas, dry runs and
+  admission rules that explain themselves. Agents work within your permissions. See
+  [Agents and MCP](ai/agents.md).
+- **Building blocks:** the parts on their own when a stack doesn't fit: highly available
+  PostgreSQL (with pgvector, VectorChord and pg_search for RAG), exact and semantic Valkey caches,
+  model gateways.
 - **Projects:** each team works in its own Project, with access control, an optional quota and
   deletion protection, and its own Prometheus and Grafana.
-- **Observability:** metrics, alerts and a dashboard for every cluster and cache, in
-  your Project's Grafana.
-- **Backups and resilience:** continuous backups to object storage, point-in-time restore into a new
-  cluster, and a replica cluster in a second location that can take over.
+- **Observability:** metrics, alerts and dashboards for every database and cache, in your Project's
+  Grafana.
+- **Resilience:** continuous backups to object storage, point-in-time restore, and a standby site
+  that can take over.
 - **Sovereign:** everything runs in your own clusters, in the data centers or regions you choose.
 
 ## How it fits together
 
-![Teams use the portal or the API on the control plane, which deploys the AI stack to every location: apps and agents send prompts through the AI gateway, which checks the cache and calls the model servers, and pull context from PostgreSQL; PostgreSQL archives WAL and backups to object storage, the recovery location replays them; metrics and traces go back to the control plane](diagrams/architecture.png){ width="784" }
+![Teams use the portal, the API or an agent on the control plane, which deploys the AI stack to every location: apps and agents send prompts through the model gateway, which calls hosted or self-hosted models, use the cache, and pull context from PostgreSQL; PostgreSQL archives WAL and backups to object storage, the recovery location replays them; metrics and traces go back to the control plane](diagrams/architecture.png){ width="784" }
 
 <!-- Source: diagrams/architecture.mmd; ../render-diagrams.sh renders it. -->
 
 - The **control plane** runs the APIs (Crossplane) and the portal, but no workloads.
 - **Locations** are the Kubernetes clusters the services run in. In a location, apps and agents
-  send prompts through the AI gateway, which applies guardrails, answers from the cache where it
-  can and otherwise calls the self-hosted models; context for RAG comes from PostgreSQL.
+  send prompts through the model gateway, look up the cache and pull context for RAG from
+  PostgreSQL.
 - Solid green boxes are available today; dashed boxes are planned (see [Platform scope](scope.md)).
 - A **Project** has a **protected** location, where its services run, and optionally a **recovery**
-  location for replica clusters. The replica is fed through the Project's backup bucket, so the two
+  location for standbys. Databases replicate through the Project's backup bucket, so the two
   locations need no network path to each other.
 
 ## Where to go next
 
 | I want to | Read |
 |---|---|
+| Run an AI service: RAG, cache, models | [Getting started](getting-started.md), [GenAI stacks](ai/genai-stacks.md) |
+| Give apps and agents access to models | [Model gateways](ai/model-gateways.md) |
+| Let an agent build on the platform | [Agents and MCP](ai/agents.md) |
 | See the full stack and what's coming | [Platform scope](scope.md) |
-| Create my first database | [Getting started](getting-started.md) |
-| Pick a size, extensions, HA or pooling | [Configure a cluster](clusters/configure.md) |
-| Store embeddings and build RAG search | [Vector & RAG](clusters/vector-rag.md) |
-| Move the primary to the other location | [Geo replication and disaster recovery](clusters/disaster-recovery.md) |
-| Cache LLM answers, exact or semantic | [Valkey caches](caches/valkey.md) |
+| A database on its own | [Create a cluster](clusters/create.md), [Configure a cluster](clusters/configure.md), [Vector & RAG](clusters/vector-rag.md) |
+| A cache on its own | [Valkey caches](caches/valkey.md) |
+| Move a service to the other location | [GenAI stacks](ai/genai-stacks.md#switching-sites), [Geo replication and disaster recovery](clusters/disaster-recovery.md) |
 | Restore to a point in time | [Backups and restore](clusters/backup-restore.md) |
 | Automate it (GitOps, CI) | [API reference](api.md) |
 | Run the platform | [Architecture](platform/architecture.md), [Install](platform/install.md), [Catalogs](platform/catalogs.md), [Upgrades](platform/upgrades.md) |

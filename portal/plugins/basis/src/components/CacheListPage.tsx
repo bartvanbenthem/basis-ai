@@ -18,13 +18,13 @@ import {
   CACHE_MODES,
   cacheMaxMemory,
   cachePods,
-  cnpgCacheCreatePermission,
+  basisCacheCreatePermission,
   type ValkeyCacheSummary,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { useMemo, useState } from 'react';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { cacheRouteRef, createCacheRouteRef } from '../routes';
 import { age, CacheHealthBadge, cacheHealth, ErrorAlert } from './common';
 
@@ -34,10 +34,10 @@ const ALL = '__all__';
 
 /** Every ValkeyCache, exact and semantic, across the projects. */
 export const CacheListPage = () => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const cacheLink = useRouteRef(cacheRouteRef);
   const createLink = useRouteRef(createCacheRouteRef);
-  const { allowed: canCreate } = usePermission({ permission: cnpgCacheCreatePermission });
+  const { allowed: canCreate } = usePermission({ permission: basisCacheCreatePermission });
   const [namespace, setNamespace] = useState<string>(ALL);
   const [search, setSearch] = useState('');
 
@@ -137,9 +137,15 @@ export const CacheListPage = () => {
         description="Exact and semantic caches provisioned through the ValkeyCache API"
         customActions={
           canCreate && createLink ? (
-            <ButtonLink href={createLink()} variant="primary">
-              Create cache
-            </ButtonLink>
+            <Flex gap="2">
+              {/* The create form with the semantic mode (valkey-search) preset. */}
+              <ButtonLink href={`${createLink()}?mode=semantic`} variant="secondary">
+                Create semantic cache
+              </ButtonLink>
+              <ButtonLink href={createLink()} variant="primary">
+                Create cache
+              </ButtonLink>
+            </Flex>
           ) : undefined
         }
       />

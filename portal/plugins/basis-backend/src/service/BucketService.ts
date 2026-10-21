@@ -17,8 +17,8 @@ import {
   BucketSummary,
   BucketUsage,
   Project,
-} from '@internal/backstage-plugin-cnpg-common';
-import { cnpgKubernetesServiceRef, kubeCall } from './CnpgKubernetesService';
+} from '@internal/backstage-plugin-basis-common';
+import { basisKubernetesServiceRef, kubeCall } from './BasisKubernetesService';
 import { ObjectStore, S3ObjectStore, StoredObject } from './objectStore';
 
 /** COSI's cluster-scoped Bucket objects, one per bucket it provisioned. */
@@ -31,7 +31,7 @@ const COUNT_LIMIT = 100_000;
 /** How long a bucket's usage (and the store's keys) are reused. */
 const CACHE_TTL_MS = 60_000;
 const NOT_CONFIGURED =
-  'No object store configured: set cnpg.buckets (endpoint and the COSI driver credentials Secret) in app-config';
+  'No object store configured: set basis.buckets (endpoint and the COSI driver credentials Secret) in app-config';
 
 export interface BucketsConfig {
   endpoint: string;
@@ -283,7 +283,7 @@ export class BucketService {
 }
 
 export function bucketsConfig(config: RootConfigService): BucketsConfig | undefined {
-  const c = config.getOptionalConfig('cnpg.buckets');
+  const c = config.getOptionalConfig('basis.buckets');
   const endpoint = c?.getOptionalString('endpoint');
   if (!c || !endpoint) return undefined;
   return {
@@ -297,14 +297,14 @@ export function bucketsConfig(config: RootConfigService): BucketsConfig | undefi
 }
 
 export const bucketServiceRef = createServiceRef<BucketService>({
-  id: 'cnpg.buckets',
+  id: 'basis.buckets',
   defaultFactory: async service =>
     createServiceFactory({
       service,
       deps: {
         config: coreServices.rootConfig,
         logger: coreServices.logger,
-        k8s: cnpgKubernetesServiceRef,
+        k8s: basisKubernetesServiceRef,
       },
       factory: ({ config, logger, k8s }) =>
         new BucketService({

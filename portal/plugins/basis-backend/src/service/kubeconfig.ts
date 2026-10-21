@@ -1,6 +1,6 @@
 import { InputError } from '@backstage/errors';
 import { dumpYaml, KubeConfig, loadYaml } from '@kubernetes/client-node';
-import type { LocationConnection } from '@internal/backstage-plugin-cnpg-common';
+import type { LocationConnection } from '@internal/backstage-plugin-basis-common';
 
 export const MAX_KUBECONFIG_BYTES = 256 * 1024;
 

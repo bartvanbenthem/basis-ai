@@ -1,7 +1,7 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { fireEvent, screen, within } from '@testing-library/react';
-import type { AuditLog, ProjectSummary } from '@internal/backstage-plugin-cnpg-common';
-import { CnpgApi, cnpgApiRef } from '../api';
+import type { AuditLog, ProjectSummary } from '@internal/backstage-plugin-basis-common';
+import { BasisApi, basisApiRef } from '../api';
 import { rootRouteRef } from '../routes';
 import { AuditLogPage } from './AuditLogPage';
 
@@ -47,15 +47,15 @@ const log: AuditLog = {
   ],
 };
 
-const apis = (api: Partial<CnpgApi>, path = '/cnpg/audit') => ({
-  apis: [[cnpgApiRef, api]] as const,
-  mountedRoutes: { '/cnpg': rootRouteRef },
+const apis = (api: Partial<BasisApi>, path = '/basis/audit') => ({
+  apis: [[basisApiRef, api]] as const,
+  mountedRoutes: { '/basis': rootRouteRef },
   initialRouteEntries: [path],
 });
 
 describe('AuditLogPage', () => {
   it("shows the first project's events and audit records", async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       listProjects: jest.fn(async () => [project('demo'), project('payments')]),
       getAuditLog: jest.fn(async () => log),
     };
@@ -66,7 +66,7 @@ describe('AuditLogPage', () => {
     expect(api.getAuditLog).toHaveBeenCalledWith('demo');
     expect(table.getByText('BackOff (×4)')).toBeInTheDocument();
     expect(table.getByText('control plane')).toBeInTheDocument();
-    expect(table.getByText('orders-db-1')).toHaveAttribute('href', '/cnpg/demo/orders-db');
+    expect(table.getByText('orders-db-1')).toHaveAttribute('href', '/basis/demo/orders-db');
     expect(screen.getByText('pgaudit is off for reports-db')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'PostgreSQL' }));
@@ -80,18 +80,18 @@ describe('AuditLogPage', () => {
   });
 
   it('opens the project from ?project=', async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       listProjects: jest.fn(async () => [project('demo'), project('payments')]),
       getAuditLog: jest.fn(async (p: string) => ({ project: p, items: [], clusters: [] })),
     };
-    await renderInTestApp(<AuditLogPage />, apis(api, '/cnpg/audit?project=payments') as any);
+    await renderInTestApp(<AuditLogPage />, apis(api, '/basis/audit?project=payments') as any);
     expect(await screen.findByText('Nothing recorded for this project yet.')).toBeInTheDocument();
     expect(api.getAuditLog).toHaveBeenCalledWith('payments');
     expect(api.getAuditLog).not.toHaveBeenCalledWith('demo');
   });
 
   it('warns about a location it could not read', async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       listProjects: jest.fn(async () => [project('demo')]),
       getAuditLog: jest.fn(async () => ({
         ...log,

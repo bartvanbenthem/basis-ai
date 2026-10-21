@@ -8,107 +8,48 @@ type Item = {
   isActive: (path: string, search: string) => boolean;
 };
 
-const CNPG = '/cnpg';
+const BASIS = '/basis';
+const STACKS = `${BASIS}/stacks`;
+const GATEWAYS = `${BASIS}/gateways`;
+const CACHES = `${BASIS}/caches`;
+/** The PostgreSQL pages live at the root: /basis, /basis/create, /basis/<project>/<name>. */
 const isClusterPath = (p: string) =>
-  p === CNPG ||
-  (p.startsWith(`${CNPG}/`) &&
-    !p.startsWith(`${CNPG}/create`) &&
-    !p.startsWith(`${CNPG}/audit`) &&
-    !p.startsWith(`${CNPG}/projects`) &&
-    !p.startsWith(`${CNPG}/locations`) &&
-    !p.startsWith(`${CNPG}/buckets`) &&
-    !p.startsWith(`${CNPG}/volumes`) &&
-    !p.startsWith(`${CNPG}/caches`));
-const isProjectPath = (p: string) =>
-  p.startsWith(`${CNPG}/projects`) && !p.startsWith(`${CNPG}/projects/create`);
-const isRagCreate = (p: string, search: string) =>
-  p.startsWith(`${CNPG}/create`) &&
-  new URLSearchParams(search).get('profile') === 'vector';
-const CACHES = `${CNPG}/caches`;
-const isCachePath = (p: string) => p.startsWith(CACHES) && !p.startsWith(`${CACHES}/create`);
-const isSemanticCreate = (p: string, search: string) =>
-  p.startsWith(`${CACHES}/create`) && new URLSearchParams(search).get('mode') === 'semantic';
-const isLocationPath = (p: string) =>
-  p.startsWith(`${CNPG}/locations`) &&
-  !p.startsWith(`${CNPG}/locations/create`);
+  p === BASIS ||
+  (p.startsWith(`${BASIS}/`) &&
+    !['audit', 'projects', 'locations', 'buckets', 'volumes', 'caches', 'stacks', 'gateways'].some(s =>
+      p.startsWith(`${BASIS}/${s}`),
+    ));
+const under = (prefix: string) => (p: string) => p.startsWith(prefix) && !p.startsWith(`${prefix}/create`);
 
-/** The portal is CNPG-only, so the nav is a fixed list rather than every installed page. */
+/**
+ * A fixed list rather than every installed page: what teams build first
+ * (AI services), then the building blocks a stack is made of, then the
+ * platform the admins run. Each list page has its own Create button.
+ */
 const sections: Array<{ title: string; items: Item[] }> = [
   {
-    title: 'Locations',
+    title: 'AI services',
     items: [
-      { label: 'Locations', to: `${CNPG}/locations`, isActive: isLocationPath },
-      {
-        label: 'Add location',
-        to: `${CNPG}/locations/create`,
-        isActive: p => p.startsWith(`${CNPG}/locations/create`),
-      },
+      { label: 'GenAI stacks', to: STACKS, isActive: under(STACKS) },
+      { label: 'New stack', to: `${STACKS}/create`, isActive: p => p.startsWith(`${STACKS}/create`) },
     ],
   },
   {
-    title: 'Projects',
+    title: 'Building blocks',
     items: [
-      { label: 'Projects', to: `${CNPG}/projects`, isActive: isProjectPath },
-      {
-        label: 'New project',
-        to: `${CNPG}/projects/create`,
-        isActive: p => p.startsWith(`${CNPG}/projects/create`),
-      },
-      {
-        label: 'Volumes',
-        to: `${CNPG}/volumes`,
-        isActive: p => p.startsWith(`${CNPG}/volumes`),
-      },
-      {
-        label: 'Buckets',
-        to: `${CNPG}/buckets`,
-        isActive: p => p.startsWith(`${CNPG}/buckets`),
-      },
+      { label: 'Model gateways', to: GATEWAYS, isActive: p => p.startsWith(GATEWAYS) },
+      { label: 'PostgreSQL', to: BASIS, isActive: isClusterPath },
+      { label: 'Valkey caches', to: CACHES, isActive: p => p.startsWith(CACHES) },
     ],
   },
   {
-    title: 'Database',
+    title: 'Platform',
     items: [
-      { label: 'PostgreSQL', to: CNPG, isActive: isClusterPath },
-      {
-        label: 'New cluster',
-        to: `${CNPG}/create`,
-        isActive: (p, search) =>
-          p.startsWith(`${CNPG}/create`) && !isRagCreate(p, search),
-      },
-      {
-        // The create form with the vector workload profile preset.
-        label: 'New RAG cluster',
-        to: `${CNPG}/create?profile=vector`,
-        isActive: isRagCreate,
-      },
-    ],
-  },
-  {
-    title: 'Cache',
-    items: [
-      { label: 'Valkey', to: CACHES, isActive: isCachePath },
-      {
-        label: 'New cache',
-        to: `${CACHES}/create`,
-        isActive: (p, search) => p.startsWith(`${CACHES}/create`) && !isSemanticCreate(p, search),
-      },
-      {
-        // The create form with the semantic mode (valkey-search) preset.
-        label: 'New semantic cache',
-        to: `${CACHES}/create?mode=semantic`,
-        isActive: isSemanticCreate,
-      },
-    ],
-  },
-  {
-    title: 'Security',
-    items: [
-      {
-        label: 'Audit logs',
-        to: `${CNPG}/audit`,
-        isActive: p => p.startsWith(`${CNPG}/audit`),
-      },
+      { label: 'Projects', to: `${BASIS}/projects`, isActive: p => p.startsWith(`${BASIS}/projects`) },
+      { label: 'Locations', to: `${BASIS}/locations`, isActive: p => p.startsWith(`${BASIS}/locations`) },
+      { label: 'Volumes', to: `${BASIS}/volumes`, isActive: p => p.startsWith(`${BASIS}/volumes`) },
+      { label: 'Buckets', to: `${BASIS}/buckets`, isActive: p => p.startsWith(`${BASIS}/buckets`) },
+      { label: 'Audit logs', to: `${BASIS}/audit`, isActive: p => p.startsWith(`${BASIS}/audit`) },
     ],
   },
   {
@@ -135,7 +76,7 @@ const BasisNav = () => {
   const { pathname, search } = useLocation();
   return (
     <nav className="tp-nav" aria-label="sidebar nav">
-      <Link to={CNPG} className="tp-nav__brand" aria-label="Home">
+      <Link to={STACKS} className="tp-nav__brand" aria-label="Home">
         <BasisLogo height={26} />
         <span className="tp-nav__product">Sovereign AI services</span>
       </Link>

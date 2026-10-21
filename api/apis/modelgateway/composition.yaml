@@ -1,0 +1,20 @@
+# The ModelGateway composition is Go code: function-basis
+# (../../function/modelgateway). See its package documentation for what gets
+# composed: the clients' API keys next to the XR, and per site Agent Router
+# (Gateway, EnvoyProxy, security and traffic policies, a route and a backend
+# per model) in the location.
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: modelgateway
+  labels:
+    ai.cndev.nl/api: modelgateway
+spec:
+  compositeTypeRef:
+    apiVersion: ai.cndev.nl/v1alpha1
+    kind: ModelGateway
+  mode: Pipeline
+  pipeline:
+    - step: compose
+      functionRef:
+        name: function-basis

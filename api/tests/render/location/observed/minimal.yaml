@@ -11,7 +11,7 @@ apiVersion: kubernetes.m.crossplane.io/v1alpha1
 kind: Object
 metadata:
   name: si-ske-demo-prometheus-role
-  namespace: cnpg-locations
+  namespace: basis-locations
   annotations:
     crossplane.io/composition-resource-name: prometheus-role
 status:
@@ -20,7 +20,7 @@ status:
       apiVersion: rbac.authorization.k8s.io/v1
       kind: ClusterRole
       metadata:
-        name: cnpg-platform:project-prometheus
+        name: basis:project-prometheus
   conditions:
     - type: Synced
       status: "True"
@@ -33,7 +33,7 @@ apiVersion: kubernetes.m.crossplane.io/v1alpha1
 kind: Object
 metadata:
   name: si-ske-demo-cnpg
-  namespace: cnpg-locations
+  namespace: basis-locations
   annotations:
     crossplane.io/composition-resource-name: cnpg
 status:
@@ -52,7 +52,7 @@ apiVersion: kubernetes.m.crossplane.io/v1alpha1
 kind: Object
 metadata:
   name: si-ske-demo-prometheus-operator
-  namespace: cnpg-locations
+  namespace: basis-locations
   annotations:
     crossplane.io/composition-resource-name: prometheus-operator
 status:

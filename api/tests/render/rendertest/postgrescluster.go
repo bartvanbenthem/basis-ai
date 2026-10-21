@@ -341,8 +341,8 @@ func assertPostgresCluster(r *render, dashboardSrc string) {
 	for _, key := range r.keys() {
 		obj := r.composed[key]
 		check(str(obj, "metadata", "namespace") == ns, "%s: not in XR namespace %s", key, ns)
-		check(str(obj, "metadata", "labels", "cnpg.cndev.nl/postgrescluster") == name,
-			"%s: missing cnpg.cndev.nl/postgrescluster label", key)
+		check(str(obj, "metadata", "labels", "postgres.cndev.nl/postgrescluster") == name,
+			"%s: missing postgres.cndev.nl/postgrescluster label", key)
 	}
 
 	// --- readiness / status
@@ -458,23 +458,23 @@ func assertPostgresCluster(r *render, dashboardSrc string) {
 		switch {
 		case strings.HasSuffix(key, "objectstore") && !strings.HasSuffix(key, "restore-objectstore"):
 			manifest := r.live(key)
-			folder := get(manifest, "metadata", "annotations", "cnpg.cndev.nl/server-name")
+			folder := get(manifest, "metadata", "annotations", "postgres.cndev.nl/server-name")
 			params := mp(r.live(strings.Replace(key, "objectstore", "cluster", 1)), "spec", "plugins", 0, "parameters")
 			archived := get(params, "serverName")
 			if archived == nil {
 				archived = name
 			}
 			check(equal(folder, archived), "%s: server-name annotation %s != the folder archived to", key, repr(folder))
-			check(str(r.composed[key], "metadata", "labels", "cnpg.cndev.nl/backup-store") == "true",
-				"%s: the Project finds backup folders by the cnpg.cndev.nl/backup-store label", key)
+			check(str(r.composed[key], "metadata", "labels", "postgres.cndev.nl/backup-store") == "true",
+				"%s: the Project finds backup folders by the postgres.cndev.nl/backup-store label", key)
 			version := "17"
 			if v := get(xr, "spec", "postgresVersion"); v != nil {
 				version = fmt.Sprint(v)
 			}
-			check(str(manifest, "metadata", "annotations", "cnpg.cndev.nl/postgres-version") == version,
+			check(str(manifest, "metadata", "annotations", "postgres.cndev.nl/postgres-version") == version,
 				"%s: postgres-version annotation", key)
 		case strings.Contains(key, "objectstore"):
-			check(!has(r.composed[key], "cnpg.cndev.nl/backup-store", "metadata", "labels"),
+			check(!has(r.composed[key], "postgres.cndev.nl/backup-store", "metadata", "labels"),
 				"%s: a restore source is not one of this cluster's backup folders", key)
 		}
 	}
@@ -490,7 +490,7 @@ func assertPostgresCluster(r *render, dashboardSrc string) {
 		if primary == protected {
 			key = "objectstore"
 		}
-		check(equal(get(status, "backup", "serverName"), get(r.live(key), "metadata", "annotations", "cnpg.cndev.nl/server-name")),
+		check(equal(get(status, "backup", "serverName"), get(r.live(key), "metadata", "annotations", "postgres.cndev.nl/server-name")),
 			"status.backup.serverName %s is the primary's folder", repr(get(status, "backup")))
 	}
 

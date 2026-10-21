@@ -37,8 +37,14 @@ run) and optionally a **recovery** location (replica clusters).
 - **The function refuses to break a running database.** When an input it needs is missing (the
   Project, the bucket, the size), it keeps what runs instead of rendering an empty or default desired
   state. `status.message` says what is missing.
-- **Project and Location** are compositions too (function-go-templating): a Project composes its
-  namespaces, RBAC, Prometheus, Grafana and bucket; a Location its provider config and checks.
+- **One function composes every API.** function-basis (Go) dispatches on the XR's kind: Project
+  (namespaces, RBAC, Prometheus, Grafana, bucket), Location (provider config, checks),
+  PostgresCluster, ValkeyCache, ModelGateway and GenAIStack. Each is a package with unit tests, and
+  every case is rendered and validated against the real CRD schemas in CI (`make -C api test`).
+- **A stack owns what it composes.** A GenAIStack composes the building blocks (PostgresCluster,
+  ValkeyCache, ModelGateway) as XRs next to it, labelled `ai.cndev.nl/genaistack`; an admission
+  policy lets only Crossplane change them. Switching the stack's site goes to its database, and
+  the rest follows its `status.primarySite`.
 
 ## Data paths
 
@@ -62,14 +68,14 @@ run) and optionally a **recovery** location (replica clusters).
 | Schema, defaults, immutable fields | The XRDs (`api/apis/*/definition.yaml`), enforced by the API server |
 | Sizes, extensions, Project defaults | EnvironmentConfigs on the control plane: see [Catalogs](catalogs.md) |
 | Cross-object rules (size in catalog, sites set, deletion protection) | ValidatingAdmissionPolicies (`api/apis/*/policies.yaml`) |
-| What gets composed, switchover/failover | function-basis (`api/function/postgrescluster`, `api/function/valkeycache`) |
-| Who may do what in the portal | Backstage permissions (`cnpg.*`) |
+| What gets composed, switchover/failover | function-basis (`api/function/<api>`, one package per API) |
+| Who may do what in the portal | Backstage permissions (`basis.*`) |
 
 ## Growing the stack
 
-`ValkeyCache` already works this way: one object per cache, composed by function-basis into a
-ValkeyCluster, a PodMonitor and a PrometheusRule in the location and a dashboard in the Project's
-Grafana. The planned layers (model API, gateway, guardrails, orchestration; see
+Every API works this way: `ValkeyCache` composes a ValkeyCluster, a PodMonitor and a
+PrometheusRule in the location and a dashboard in the Project's Grafana; `ModelGateway` Agent Router
+in each site. The planned layers (self-hosted inference, guardrails, MCP servers per Project; see
 [Platform scope](../scope.md)) follow the same pattern: a namespaced API object per service in the
 Project's namespace on the control plane, composed by Crossplane into the Project's locations, with
 its metrics in the Project's Prometheus and Grafana. The control plane stays free of workloads; GPUs

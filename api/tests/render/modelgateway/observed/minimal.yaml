@@ -1,0 +1,32 @@
+# Observed state for xr/minimal.yaml: the keys exist (one client's key is
+# kept, the other's generated), the Gateway is programmed in the location.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: llm-keys
+  namespace: ai-team
+  annotations:
+    crossplane.io/composition-resource-name: keys
+data:
+  support-bot: Ym90LWtleQ== # bot-key
+  removed-client: b2xkLWtleQ== # old-key
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: llm-protected-gateway
+  namespace: ai-team
+  annotations:
+    crossplane.io/composition-resource-name: protected-gateway
+spec:
+  forProvider:
+    manifest: {}
+status:
+  atProvider:
+    manifest:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      status:
+        conditions:
+          - type: Programmed
+            status: "True"

@@ -5,16 +5,21 @@
   <img src="portal/logos/basis-icon.svg" alt="BASIS logo" width="160">
 </p>
 
-BASIS is a Platform as a Service on Kubernetes for building generative AI services on sovereign
-infrastructure: everything runs in Kubernetes clusters you own, in your own data centers or
-regions. Teams order the building blocks of an AI service themselves, through a Kubernetes API or
-a developer portal, and the platform runs and operates them. It is built on
-[Crossplane](https://www.crossplane.io/) and [Backstage](https://backstage.io/).
+BASIS is a Platform as a Service on Kubernetes for the platform side of generative AI services and
+agents, on sovereign infrastructure: everything runs in Kubernetes clusters you own, in your own
+data centers or regions. The model can be anyone's (Claude, GPT, Mistral or one you serve
+yourself); the data and its retrieval, the caches, the gateway that holds the provider keys and
+knows who calls which model, and the audit trail stay with you. Teams, or their agents, order it
+themselves through a Kubernetes API, a developer portal or MCP tools, and the platform runs and
+operates it. It is built on [Crossplane](https://www.crossplane.io/) and
+[Backstage](https://backstage.io/).
 
-The platform currently provides these building blocks:
+The platform currently provides these building blocks, separately or wired together as one
+**GenAIStack** per service:
 
 | Layer | Component |
 |---|---|
+| Model gateway | `ModelGateway`: [Agent Router](https://github.com/theagentrouter/agent-router) (formerly Envoy AI Gateway) on [Envoy Gateway](https://gateway.envoyproxy.io) (CNCF), an internal, OpenAI-compatible endpoint that routes to hosted and self-hosted models, with provider keys kept in the platform and an API key per client; a stack's own or shared by stacks and agents |
 | Context / RAG | PostgreSQL on [CloudNativePG](https://cloudnative-pg.io/) (CNPG) with [pgvector](https://github.com/pgvector/pgvector), VectorChord and pg_search |
 | Cache | Exact and semantic caches on [Valkey](https://valkey.io/), run by the [valkey-io operator](https://github.com/valkey-io/valkey-operator), with valkey-search for vector (KNN) lookups |
 | Observability | [Prometheus](https://prometheus.io/) and [Grafana](https://grafana.com/) per Project, with metrics, alerts and dashboards for every database and cache |
@@ -22,6 +27,17 @@ The platform currently provides these building blocks:
 
 What a team gets:
 
+- **A GenAI stack in one object:** a `GenAIStack`, or a form in the portal, gives a team a RAG
+  database, a cache and a model gateway (its own or a shared one) in its Project's location, plus
+  one connection Secret with every endpoint and credential for its app. With a warm standby in the
+  recovery location, switched over through the stack (see
+  [GenAIStack](api/README.md#the-genaistack-api)). What a stack composes is the stack's: an
+  admission policy refuses changing it directly.
+- **Model gateways:** a `ModelGateway` shares one set of models and provider keys between stacks,
+  apps and agents, with a key per client (see [ModelGateway](api/README.md#the-modelgateway-api)).
+- **For agents:** the portal serves the platform as MCP tools (list projects, stacks and gateways;
+  create stacks and gateways, validated first), within the caller's permissions, and the docs
+  publish an `llms.txt`.
 - **Self-service:** one `PostgresCluster` API object, or a form in the Backstage portal, gives a
   team a highly available cluster, internal to its location by default (external access through a
   LoadBalancer is an opt-in, limited to the clients' CIDRs), with connection pooling (PgBouncer), in a size (SKU) from the
@@ -81,28 +97,28 @@ See [Locations](api/README.md#locations) for how to configure this.
 
 | Folder | What | Built with |
 |---|---|---|
-| [`deps/`](deps/) | cert-manager, Prometheus Operator, grafana-operator, ingress, the Valkey operator; the `demo` Project | Helm, kubectl |
-| [`operator/`](operator/) | CloudNativePG operator, Barman Cloud backup plugin and the PostgreSQL image catalog, installed from charts **vendored in this repo** | Helm |
-| [`api/`](api/) | `PostgresCluster` (`cnpg.cndev.nl/v1alpha1`): one namespaced API object that bundles everything a production CNPG cluster needs, including metrics, alerts and the CNPG Grafana dashboard. `Project` (`platform.cndev.nl/v1alpha1`): a namespace with its own Prometheus and Grafana, RoleBindings, an optional quota and deletion protection. Both place what runs in the locations through provider-kubernetes. `ValkeyCache` (`cache.cndev.nl/v1alpha1`): an exact or semantic Valkey cache in the Project's location. The PostgresCluster and ValkeyCache compositions are a Go composition function, function-basis ([`api/function/`](api/function/)) | Crossplane v2, Go |
-| [`portal/`](portal/) | Portal to create projects, clusters and caches and to inspect them; catalog integration and Software Templates | Backstage (new frontend + backend system) |
+| [`deps/`](deps/) | Every operator the platform builds on: cert-manager, Prometheus Operator, grafana-operator, ingress, CloudNativePG with the Barman Cloud plugin and image catalog ([`deps/cnpg/`](deps/cnpg/), charts **vendored in this repo**), the Valkey operator, Envoy Gateway + Agent Router; the `demo` Project | Helm, kubectl |
+| [`api/`](api/) | Three levels of APIs. **Product:** `GenAIStack` (`ai.cndev.nl/v1alpha1`): database, caches, gateway and wiring per site. **Building blocks:** `ModelGateway` (`ai.cndev.nl/v1alpha1`): an OpenAI-compatible gateway with a key per client; `PostgresCluster` (`postgres.cndev.nl/v1alpha1`): everything a production CNPG cluster needs, including metrics, alerts and the CNPG Grafana dashboard; `ValkeyCache` (`cache.cndev.nl/v1alpha1`): an exact or semantic Valkey cache. **Platform:** `Project` (`platform.cndev.nl/v1alpha1`): a namespace with its own Prometheus and Grafana, RoleBindings, an optional quota and deletion protection; `Location`: a cluster workloads run in. Everything in the locations is placed through provider-kubernetes; every composition is Go, in one composition function, function-basis ([`api/function/`](api/function/)) | Crossplane v2, Go |
+| [`portal/`](portal/) | Portal to create projects, GenAI stacks, model gateways, clusters and caches and to inspect them; catalog integration, Software Templates and MCP tools for agents | Backstage (new frontend + backend system) |
 
 ## Install
 
-**Every location** (where databases run): cert-manager (for the backup plugin) and the Prometheus
-Operator from [`deps/`](deps/README.md), then CloudNativePG:
+**Every location** (where workloads run): cert-manager (for the backup plugin) and the Prometheus
+Operator from [`deps/`](deps/README.md), then CloudNativePG from [`deps/cnpg/`](deps/cnpg/README.md):
 
 ```sh
-KUBECONFIG=dc-a.kubeconfig operator/install.sh   # CNPG 1.30 + barman-cloud plugin + ClusterImageCatalog
+KUBECONFIG=dc-a.kubeconfig deps/cnpg/install.sh   # CNPG 1.30 + barman-cloud plugin + ClusterImageCatalog
 ```
 
-Locations that run caches also get the Valkey operator ([`deps/`](deps/README.md#5-valkey-operator-locations-with-caches)).
+Locations that run caches also get the Valkey operator, and those that run model gateways (and so
+GenAI stacks) also Envoy Gateway + Agent Router ([`deps/`](deps/README.md)).
 
 **The control plane**: the Prometheus Operator and grafana-operator from
 [`deps/`](deps/README.md) (each Project's Grafana and the Prometheus its locations write to
 run here; switch them off per project if you don't want them), then:
 
 ```sh
-api/install/install.sh                        # Crossplane 2.4 + functions + provider + RBAC + APIs + policies
+api/install/install.sh                        # Crossplane 2.4 + function-basis + provider + RBAC + APIs + policies
 api/install/add-location.sh dc-a dc-a.kubeconfig   # each location (or add it in the portal)
 kubectl apply -f deps/control-plane/project-defaults.yaml   # platform-wide Project settings (edit the ingress domain)
 kubectl apply -f deps/demo/project.yaml                  # Project demo (edit its location)
@@ -132,8 +148,8 @@ geo replication. The portal also runs on the control plane: see
 
 | Command | Needs | Covers |
 |---|---|---|
-| `operator/verify.sh` | helm | vendored charts lint and render with the production values |
-| `make -C api test` | Go, crossplane CLI, Docker/podman | function-basis's unit tests (the switchover state machine, the guards that refuse to tear down a running database, parameter precedence); every composition renders (PostgresCluster: 22 cases incl. sizes and extensions from their catalogs, geo-replicated, switchover, failover, draining, pinned sites, no Project, the Project's COSI backup bucket, restores from the bucket and from a store of its own; Project: 6 incl. both sites, a COSI bucket with its inventory of backup folders and an unregistered location; Location: 3 incl. the optional Valkey operator; ValkeyCache: 3 incl. semantic and no Project; empty and observed); output, and the manifests inside provider-kubernetes Objects, validated against the real CRD schemas; status/readiness/dashboard/alert/project-wiring/topology assertions |
+| `deps/cnpg/verify.sh` | helm | vendored charts lint and render with the production values |
+| `make -C api test` | Go, crossplane CLI, Docker/podman | function-basis's unit tests (the switchover state machine, the guards that refuse to tear down a running database, parameter precedence); every composition renders (PostgresCluster: 22 cases incl. sizes and extensions from their catalogs, geo-replicated, switchover, failover, draining, pinned sites, no Project, the Project's COSI backup bucket, restores from the bucket and from a store of its own; Project: 6 incl. both sites, a COSI bucket with its inventory of backup folders and an unregistered location; Location: 3 incl. the optional Valkey operator; ValkeyCache: 4 incl. semantic, recovery site and no Project; ModelGateway: 2 incl. a standby that serves; GenAIStack: 2 incl. geo after a switchover; empty and observed); output, and the manifests inside provider-kubernetes Objects, validated against the real CRD schemas; status/readiness/dashboard/alert/project-wiring/topology assertions |
 | `cd portal && yarn tsc && yarn test:all` | node 22 | backend (REST API incl. caches, permissions, catalog provider, scaffolder action) and frontend (forms, list page) |
 | `hack/e2e-kind.sh` | kind, helm, Docker/podman, `fs.inotify.max_user_instances` ≥ 512 | a control plane and one location on kind, installed as documented: Project goes Ready in both, a PostgresCluster in it goes Ready in the location (no CNPG on the control plane), `psql` through PgBouncer, the location's Prometheus scrapes it and remote-writes to the project's Prometheus on the control plane, its Grafana has the dashboard, then a ValkeyCache with the Valkey operator in the location: Ready, password required, metrics on both Prometheuses, alerts, its dashboard in Grafana; deletion guardrails hold, deletes cascade |
 | `hack/e2e-locations.sh` | kind, helm, Docker/podman, `fs.inotify.max_user_instances` ≥ 512 | a control plane, a protected and a recovery location, MinIO as the shared object store: a Project with both sites, a geo-replicated PostgresCluster, a row written in the protected site shows up in the recovery site, a point-in-time restore into a new cluster stops at the target time and archives to a folder of its own, a switchover promotes it (writes work, the old primary follows), turning geo replication off switches back first and loses nothing, the policy and XRD rules reject what they should |
@@ -147,7 +163,7 @@ Next steps for the platform.
 
 | Item | What |
 |---|---|
-| Full generative AI platform | Grow BASIS into the full stack (see [Platform scope](portal/catalog/docs/scope.md)): self-hosted models with vLLM, KServe and llm-d; a router and gateway with the Gateway API Inference Extension and Envoy AI Gateway or agentgateway; llm-d prefix-cache-aware routing (the exact and semantic cache on Valkey is there: `ValkeyCache`); guardrails; OpenTelemetry traces next to Prometheus and Grafana; orchestration with LangGraph. Each as a self-service API object per Project, like `PostgresCluster` |
+| Governance for agents | Grow BASIS into the platform side of agents (see [Platform scope](portal/catalog/docs/scope.md)): token budgets, rate limits, an audit log and PII redaction per client at the `ModelGateway`; MCP servers per Project for retrieval and agent memory; OpenTelemetry traces of agent runs (tool calls, tokens, cost); self-hosted inference with vLLM on KServe for embeddings, guardrail models and air-gapped sites. Each as a self-service API object per Project |
 | Automatic major upgrades | Opt-in in-place `pg_upgrade` to the next major in a maintenance window: pre-flight checks (health, extensions, recent backup), a fresh base backup afterwards, statistics refreshed; geo-replicated clusters too |
 | Self-fencing at each site | Prevents split brain on a failover. Today the site that is cut off is not fenced: it can't receive the update, so its primary keeps taking writes. With this, the primary site keeps renewing a lease somewhere both sites can reach (the object store or a witness in a third site), and a small agent in each site sets `cnpg.io/fencedInstances` on its own cluster when the lease can't be renewed. A failover is only allowed once the lease has expired plus a safety margin, so there is never more than one primary (as in Patroni-style setups) |
 | Maintenance windows | A window per cluster or Project in which image rollouts, restarts and upgrades may run, instead of whenever the catalog or spec changes |

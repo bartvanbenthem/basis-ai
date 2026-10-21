@@ -10,7 +10,7 @@
 # it without interruption. Idempotent: existing Locations are left alone.
 set -euo pipefail
 
-LOCATIONS_NAMESPACE="${LOCATIONS_NAMESPACE:-cnpg-locations}"
+LOCATIONS_NAMESPACE="${LOCATIONS_NAMESPACE:-basis-locations}"
 
 kubectl wait xrd/locations.platform.cndev.nl --for=condition=Established --timeout=30s >/dev/null
 

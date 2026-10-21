@@ -34,7 +34,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           backstage.io/owner: team-demo
           dashboards.paas.cndev.nl/scope: demo
           platform.cndev.nl/project: demo
@@ -66,7 +66,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: demo
         name: prometheus
         namespace: demo
@@ -158,13 +158,13 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: demo
         name: platform:project:demo:prometheus
       roleRef:
         apiGroup: rbac.authorization.k8s.io
         kind: ClusterRole
-        name: cnpg-platform:project-prometheus
+        name: basis:project-prometheus
       subjects:
       - kind: ServiceAccount
         name: prometheus
@@ -192,7 +192,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: demo
         name: prometheus-prometheus-db-prometheus-prometheus-0
         namespace: demo
@@ -225,7 +225,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: demo
         name: prometheus
         namespace: demo

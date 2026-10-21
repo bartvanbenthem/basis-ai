@@ -5,7 +5,7 @@ metadata:
   title: PostgreSQL cluster (CloudNativePG)
   description: >-
     Provision a production-ready PostgreSQL cluster on CloudNativePG through the
-    cnpg.cndev.nl PostgresCluster API: HA instances, optional PgBouncer and S3
+    postgres.cndev.nl PostgresCluster API: HA instances, optional PgBouncer and S3
     backups, Prometheus metrics, alerts and a Grafana dashboard.
   tags: [postgresql, cnpg, database]
 spec:
@@ -165,7 +165,7 @@ spec:
   steps:
     - id: create
       name: Create PostgresCluster
-      action: cnpg:postgrescluster:create
+      action: basis:postgrescluster:create
       input:
         name: ${{ parameters.name }}
         # A project entity ref (resource:default/<project>); the action uses

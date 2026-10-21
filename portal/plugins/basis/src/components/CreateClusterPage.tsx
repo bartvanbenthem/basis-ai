@@ -1,23 +1,23 @@
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { usePermission } from '@backstage/plugin-permission-react';
 import { Alert, ButtonLink, Container, Flex, Grid, Header } from '@backstage/ui';
-import { cnpgProjectCreatePermission, isClusterProfile, PROFILES } from '@internal/backstage-plugin-cnpg-common';
+import { basisProjectCreatePermission, isClusterProfile, PROFILES } from '@internal/backstage-plugin-basis-common';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import useAsync from 'react-use/esm/useAsync';
 import { stringify } from 'yaml';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { clusterRouteRef, createProjectRouteRef } from '../routes';
 import { ClusterFormFields } from './ClusterFormFields';
 import { ManifestPanel } from './common';
 import { ClusterForm, defaultForm, selectProfile, selectSize, toManifest, toSpec, validate } from './form';
 
 export const CreateClusterPage = () => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const navigate = useNavigate();
   const clusterLink = useRouteRef(clusterRouteRef);
   const createProjectLink = useRouteRef(createProjectRouteRef);
-  const { allowed: canCreateProject } = usePermission({ permission: cnpgProjectCreatePermission });
+  const { allowed: canCreateProject } = usePermission({ permission: basisProjectCreatePermission });
   const [params] = useSearchParams();
 
   const { value: config } = useAsync(() => api.getConfig(), [api]);
@@ -95,7 +95,7 @@ export const CreateClusterPage = () => {
       if (dryRun) {
         setResult({ validated: true });
       } else {
-        navigate(clusterLink?.({ namespace: form.namespace, name: form.name }) ?? '/cnpg');
+        navigate(clusterLink?.({ namespace: form.namespace, name: form.name }) ?? '/basis');
       }
     } catch (e) {
       setResult({ error: e as Error });

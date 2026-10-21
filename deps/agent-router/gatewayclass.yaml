@@ -1,0 +1,8 @@
+# The GatewayClass every GenAIStack's Gateway uses (gatewayClassName:
+# basis-ai), handled by Envoy Gateway. One per location.
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: basis-ai
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller

@@ -1,5 +1,5 @@
 {
-  "name": "@internal/backstage-plugin-cnpg",
+  "name": "@internal/backstage-plugin-basis",
   "version": "0.1.0",
   "license": "UNLICENSED",
   "private": true,
@@ -10,7 +10,7 @@
   },
   "backstage": {
     "role": "frontend-plugin",
-    "pluginId": "cnpg"
+    "pluginId": "basis"
   },
   "sideEffects": false,
   "scripts": {
@@ -29,7 +29,7 @@
     "@backstage/plugin-catalog-react": "^3.2.3",
     "@backstage/plugin-permission-react": "^0.5.5",
     "@backstage/ui": "^0.18.0",
-    "@internal/backstage-plugin-cnpg-common": "workspace:^",
+    "@internal/backstage-plugin-basis-common": "workspace:^",
     "react-use": "^17.2.4",
     "yaml": "^2.9.1"
   },
@@ -54,5 +54,5 @@
   "files": [
     "dist"
   ],
-  "description": "CNPG portal: deploy and inspect CloudNativePG PostgresClusters (cnpg.cndev.nl)"
+  "description": "BASIS portal: deploy and inspect GenAI stacks, model gateways, PostgresClusters, caches, Projects and Locations"
 }

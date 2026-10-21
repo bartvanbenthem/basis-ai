@@ -6,8 +6,13 @@ import {
   PageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import { EntityContentBlueprint } from '@backstage/plugin-catalog-react/alpha';
-import { CACHE_ANNOTATION, CNPG_ANNOTATION } from '@internal/backstage-plugin-cnpg-common';
-import { cnpgApiRef, CnpgClient } from './api';
+import {
+  CACHE_ANNOTATION,
+  CLUSTER_ANNOTATION,
+  GATEWAY_ANNOTATION,
+  STACK_ANNOTATION,
+} from '@internal/backstage-plugin-basis-common';
+import { basisApiRef, BasisClient } from './api';
 import { PostgresIcon } from './components/common';
 import {
   auditRouteRef,
@@ -23,6 +28,14 @@ import {
   clusterRouteRef,
   createCacheRouteRef,
   createClusterRouteRef,
+  createStackRouteRef,
+  editStackRouteRef,
+  stackRouteRef,
+  stacksRouteRef,
+  createGatewayRouteRef,
+  editGatewayRouteRef,
+  gatewayRouteRef,
+  gatewaysRouteRef,
   createLocationRouteRef,
   createProjectRouteRef,
   editCacheRouteRef,
@@ -37,20 +50,20 @@ import {
   rootRouteRef,
 } from './routes';
 
-export const cnpgApi = ApiBlueprint.make({
+export const basisApi = ApiBlueprint.make({
   params: defineParams =>
     defineParams({
-      api: cnpgApiRef,
+      api: basisApiRef,
       deps: { discoveryApi: discoveryApiRef, fetchApi: fetchApiRef },
-      factory: deps => new CnpgClient(deps),
+      factory: deps => new BasisClient(deps),
     }),
 });
 
-/** /cnpg: list, create and inspect PostgresClusters and ValkeyCaches; shows up in the sidebar. */
-export const cnpgPage = PageBlueprint.make({
+/** /basis: list, create and inspect every BASIS API; the sidebar links into it. */
+export const basisPage = PageBlueprint.make({
   params: {
-    path: '/cnpg',
-    title: 'PostgreSQL',
+    path: '/basis',
+    title: 'BASIS',
     icon: <PostgresIcon />,
     routeRef: rootRouteRef,
     noHeader: true,
@@ -58,21 +71,21 @@ export const cnpgPage = PageBlueprint.make({
   },
 });
 
-/** "PostgreSQL" tab on the catalog Resource entities the cnpg backend creates. */
-export const cnpgEntityContent = EntityContentBlueprint.make({
+/** "PostgreSQL" tab on the catalog Resource entities the basis backend creates. */
+export const basisEntityContent = EntityContentBlueprint.make({
   name: 'postgres',
   params: {
     path: 'postgres',
     title: 'PostgreSQL',
     icon: <PostgresIcon />,
-    filter: entity => Boolean(entity.metadata.annotations?.[CNPG_ANNOTATION]),
+    filter: entity => Boolean(entity.metadata.annotations?.[CLUSTER_ANNOTATION]),
     loader: () =>
       import('./components/EntityPostgresContent').then(m => <m.EntityPostgresContent />),
   },
 });
 
 /** "Valkey" tab on the catalog Resource entities of ValkeyCaches. */
-export const cnpgCacheEntityContent = EntityContentBlueprint.make({
+export const basisCacheEntityContent = EntityContentBlueprint.make({
   name: 'valkey',
   params: {
     path: 'valkey',
@@ -83,10 +96,41 @@ export const cnpgCacheEntityContent = EntityContentBlueprint.make({
   },
 });
 
-export const cnpgPlugin = createFrontendPlugin({
-  pluginId: 'cnpg',
+/** "GenAI stack" tab on the catalog Resource entities of GenAIStacks. */
+export const basisStackEntityContent = EntityContentBlueprint.make({
+  name: 'genai-stack',
+  params: {
+    path: 'genai-stack',
+    title: 'GenAI stack',
+    icon: <PostgresIcon />,
+    filter: entity => Boolean(entity.metadata.annotations?.[STACK_ANNOTATION]),
+    loader: () => import('./components/EntityStackContent').then(m => <m.EntityStackContent />),
+  },
+});
+
+/** "Model gateway" tab on the catalog Resource entities of ModelGateways. */
+export const basisGatewayEntityContent = EntityContentBlueprint.make({
+  name: 'model-gateway',
+  params: {
+    path: 'model-gateway',
+    title: 'Model gateway',
+    icon: <PostgresIcon />,
+    filter: entity => Boolean(entity.metadata.annotations?.[GATEWAY_ANNOTATION]),
+    loader: () => import('./components/EntityGatewayContent').then(m => <m.EntityGatewayContent />),
+  },
+});
+
+export const basisPlugin = createFrontendPlugin({
+  pluginId: 'basis',
   info: { packageJson: () => import('../package.json') },
-  extensions: [cnpgApi, cnpgPage, cnpgEntityContent, cnpgCacheEntityContent],
+  extensions: [
+    basisApi,
+    basisPage,
+    basisEntityContent,
+    basisCacheEntityContent,
+    basisStackEntityContent,
+    basisGatewayEntityContent,
+  ],
   routes: {
     root: rootRouteRef,
     cluster: clusterRouteRef,
@@ -113,5 +157,13 @@ export const cnpgPlugin = createFrontendPlugin({
     cacheMonitoring: cacheMonitoringRouteRef,
     createCache: createCacheRouteRef,
     editCache: editCacheRouteRef,
+    stacks: stacksRouteRef,
+    stack: stackRouteRef,
+    createStack: createStackRouteRef,
+    editStack: editStackRouteRef,
+    gateways: gatewaysRouteRef,
+    gateway: gatewayRouteRef,
+    createGateway: createGatewayRouteRef,
+    editGateway: editGatewayRouteRef,
   },
 });

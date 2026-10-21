@@ -44,9 +44,9 @@ import {
   XR_KIND,
   XR_PLURAL,
   XR_VERSION,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 
-const FIELD_MANAGER = 'backstage-cnpg';
+const FIELD_MANAGER = 'backstage-basis';
 
 /** Credentials for a location's Kubernetes API; LocationService.kubeConfig in the plugin. */
 export type LocationKubeConfig = (location: string) => Promise<KubeConfig>;
@@ -55,9 +55,9 @@ export type LocationKubeConfig = (location: string) => Promise<KubeConfig>;
  * Talks to the Kubernetes API of the platform cluster that runs Crossplane +
  * CNPG. Credentials come from the in-cluster ServiceAccount when Backstage
  * runs inside Kubernetes, otherwise from the local kubeconfig (optionally a
- * specific context via `cnpg.kubernetes.context`).
+ * specific context via `basis.kubernetes.context`).
  */
-export class CnpgKubernetesService {
+export class BasisKubernetesService {
   readonly #custom: CustomObjectsApi;
   readonly #core: CoreV1Api;
   readonly #objects: KubernetesObjectApi;
@@ -67,20 +67,20 @@ export class CnpgKubernetesService {
 
   static fromConfig(config: RootConfigService, logger: LoggerService) {
     const kc = new KubeConfig();
-    const kubeconfigPath = config.getOptionalString('cnpg.kubernetes.kubeconfig');
+    const kubeconfigPath = config.getOptionalString('basis.kubernetes.kubeconfig');
     if (kubeconfigPath) {
       kc.loadFromFile(kubeconfigPath);
     } else {
       kc.loadFromDefault();
     }
-    const context = config.getOptionalString('cnpg.kubernetes.context');
+    const context = config.getOptionalString('basis.kubernetes.context');
     if (context) {
       kc.setCurrentContext(context);
     }
     logger.info(
       `Using Kubernetes cluster ${kc.getCurrentCluster()?.server ?? '(unknown)'} for PostgresClusters`,
     );
-    return new CnpgKubernetesService(kc, logger);
+    return new BasisKubernetesService(kc, logger);
   }
 
   constructor(kc: KubeConfig, logger: LoggerService) {
@@ -706,12 +706,12 @@ function toIso(value: unknown): string | undefined {
   return String(value);
 }
 
-export const cnpgKubernetesServiceRef = createServiceRef<CnpgKubernetesService>({
-  id: 'cnpg.kubernetes',
+export const basisKubernetesServiceRef = createServiceRef<BasisKubernetesService>({
+  id: 'basis.kubernetes',
   defaultFactory: async service =>
     createServiceFactory({
       service,
       deps: { config: coreServices.rootConfig, logger: coreServices.logger },
-      factory: ({ config, logger }) => CnpgKubernetesService.fromConfig(config, logger),
+      factory: ({ config, logger }) => BasisKubernetesService.fromConfig(config, logger),
     }),
 });

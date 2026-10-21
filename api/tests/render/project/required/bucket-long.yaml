@@ -19,7 +19,7 @@ metadata:
 spec:
   credentials:
     secretRef:
-      namespace: cnpg-locations
+      namespace: basis-locations
       name: si-ske-demo
 ---
 apiVersion: platform.cndev.nl/v1alpha1
@@ -29,7 +29,7 @@ metadata:
 spec:
   credentials:
     secretRef:
-      namespace: cnpg-locations
+      namespace: basis-locations
       name: onprem-ams
 ---
 apiVersion: v1
@@ -49,7 +49,7 @@ data:
   BucketInfo: eyJtZXRhZGF0YSI6IHsibmFtZSI6ICJiYy1vbnByZW0tYW1zIn0sICJzcGVjIjogeyJidWNrZXROYW1lIjogInRlYW0tb3JkZXJzLWJhY2t1cHMtMGYzYSIsICJhdXRoZW50aWNhdGlvblR5cGUiOiAiSUFNIiwgInNlY3JldFMzIjogeyJlbmRwb2ludCI6ICJodHRwczovL3MzLmV4YW1wbGUuY29tIiwgInJlZ2lvbiI6ICJyZWdpb24tMSIsICJhY2Nlc3NLZXlJRCI6ICJGQUtFS0VZSUQxIiwgImFjY2Vzc1NlY3JldEtleSI6ICJmYWtlLXNlY3JldC0xIn0sICJzZWNyZXRBenVyZSI6IG51bGwsICJwcm90b2NvbHMiOiBbIlMzIl19fQ==
 ---
 # The PostgresClusters' backup stores (Objects labelled
-# cnpg.cndev.nl/backup-store): orders-db and its replica cluster archive to
+# postgres.cndev.nl/backup-store): orders-db and its replica cluster archive to
 # the project's bucket, ledger-db to an object store of its own.
 apiVersion: kubernetes.m.crossplane.io/v1alpha1
 kind: Object
@@ -57,8 +57,8 @@ metadata:
   name: orders-db-objectstore
   namespace: team-orders
   labels:
-    cnpg.cndev.nl/backup-store: "true"
-    cnpg.cndev.nl/postgrescluster: orders-db
+    postgres.cndev.nl/backup-store: "true"
+    postgres.cndev.nl/postgrescluster: orders-db
   annotations:
     platform.cndev.nl/location: si-ske-demo
 status:
@@ -70,10 +70,10 @@ status:
         name: orders-db-backup
         namespace: team-orders
         annotations:
-          cnpg.cndev.nl/server-name: orders-db
-          cnpg.cndev.nl/postgres-version: "17"
-          cnpg.cndev.nl/database: orders
-          cnpg.cndev.nl/database-owner: orders
+          postgres.cndev.nl/server-name: orders-db
+          postgres.cndev.nl/postgres-version: "17"
+          postgres.cndev.nl/database: orders
+          postgres.cndev.nl/database-owner: orders
       spec:
         configuration:
           destinationPath: s3://team-orders-backups-0f3a/barman
@@ -89,8 +89,8 @@ metadata:
   name: orders-db-recovery-objectstore
   namespace: team-orders
   labels:
-    cnpg.cndev.nl/backup-store: "true"
-    cnpg.cndev.nl/postgrescluster: orders-db
+    postgres.cndev.nl/backup-store: "true"
+    postgres.cndev.nl/postgrescluster: orders-db
   annotations:
     platform.cndev.nl/location: onprem-ams
 status:
@@ -102,10 +102,10 @@ status:
         name: orders-db-backup
         namespace: team-orders
         annotations:
-          cnpg.cndev.nl/server-name: orders-db-onprem-ams
-          cnpg.cndev.nl/postgres-version: "17"
-          cnpg.cndev.nl/database: orders
-          cnpg.cndev.nl/database-owner: orders
+          postgres.cndev.nl/server-name: orders-db-onprem-ams
+          postgres.cndev.nl/postgres-version: "17"
+          postgres.cndev.nl/database: orders
+          postgres.cndev.nl/database-owner: orders
       spec:
         configuration:
           destinationPath: s3://team-orders-backups-0f3a/barman
@@ -116,8 +116,8 @@ metadata:
   name: ledger-db-objectstore
   namespace: team-orders
   labels:
-    cnpg.cndev.nl/backup-store: "true"
-    cnpg.cndev.nl/postgrescluster: ledger-db
+    postgres.cndev.nl/backup-store: "true"
+    postgres.cndev.nl/postgrescluster: ledger-db
   annotations:
     platform.cndev.nl/location: si-ske-demo
 status:
@@ -129,7 +129,7 @@ status:
         name: ledger-db-backup
         namespace: team-orders
         annotations:
-          cnpg.cndev.nl/server-name: ledger-db
+          postgres.cndev.nl/server-name: ledger-db
       spec:
         configuration:
           destinationPath: s3://elsewhere/postgres

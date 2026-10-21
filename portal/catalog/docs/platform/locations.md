@@ -1,6 +1,6 @@
 # Locations
 
-A **location** is a Kubernetes cluster the platform runs databases in. The control plane itself runs
+A **location** is a Kubernetes cluster the platform runs workloads in: databases, caches, gateways. The control plane itself runs
 none. Each Project uses one location as its protected site and optionally another as its recovery
 site.
 
@@ -9,7 +9,7 @@ site.
 1. Install the operators in it (CloudNativePG, the Barman Cloud plugin, the image catalogs):
 
     ```sh
-    KUBECONFIG=dc-a.kubeconfig operator/install.sh
+    KUBECONFIG=dc-a.kubeconfig deps/cnpg/install.sh
     ```
 
 2. Register it, in the portal (**Locations → Add location**) or on the control plane:
@@ -19,7 +19,7 @@ site.
     kubectl get locations -o wide
     ```
 
-The kubeconfig is stored as a Secret in `cnpg-locations` on the control plane. It must work from
+The kubeconfig is stored as a Secret in `basis-locations` on the control plane. It must work from
 inside the control plane (a token or client certificate, no exec plugin), and its identity needs
 cluster-admin or an equivalent role. The Location is `READY` once Crossplane reaches it and both
 operators (CloudNativePG, Prometheus Operator) are installed.
@@ -36,7 +36,7 @@ spec:
   region: Germany South 1
   schedulable: true          # false: no new databases here
   credentials:
-    secretRef: {namespace: cnpg-locations, name: dc-a}
+    secretRef: {namespace: basis-locations, name: dc-a}
 ```
 
 ## Health
@@ -51,6 +51,7 @@ again.
 | Nodes | No node is Ready (**Degraded**); some aren't (a warning) |
 | CloudNativePG | The operator isn't installed (a warning) |
 | Valkey operator | Never fails: says whether the operator is installed, which only [Valkey caches](../caches/valkey.md) need |
+| Agent Router | Never fails: says whether Agent Router (Envoy Gateway) is installed, which only [model gateways](../ai/model-gateways.md) need |
 | Image volumes | The API server drops image volumes (`ImageVolume` feature gate), or a node's runtime is older than containerd 2.1 / CRI-O 1.31 (a warning). Needed for extensions mounted from images, such as those of the [Vector & RAG](../clusters/vector-rag.md) profile |
 
 `add-location.sh` runs the same checks when it registers a location.

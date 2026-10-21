@@ -103,7 +103,7 @@ func (c *composition) member(m *member, members []*member, distributed bool) (ma
 	}
 
 	cs := ClusterSpec{
-		Description: fmt.Sprintf("PostgresCluster %s/%s (cnpg.cndev.nl)", ns, name),
+		Description: fmt.Sprintf("PostgresCluster %s/%s (postgres.cndev.nl)", ns, name),
 		Instances:   m.instances,
 		ImageCatalogRef: ImageCatalogRef{APIGroup: "postgresql.cnpg.io", Kind: "ClusterImageCatalog",
 			Name: or(spec.ImageCatalog, "postgresql-standard-trixie"), Major: version},
@@ -114,7 +114,7 @@ func (c *composition) member(m *member, members []*member, distributed bool) (ma
 		// services, secrets): lets Prometheus relabelling and the
 		// Backstage Kubernetes plugin find all of them.
 		InheritedMetadata: InheritedMetadata{Labels: map[string]string{
-			"cnpg.cndev.nl/postgrescluster": name, "backstage.io/kubernetes-id": name}},
+			"postgres.cndev.nl/postgrescluster": name, "backstage.io/kubernetes-id": name}},
 		Storage: VolumeSpec{Size: or(spec.Storage.Size, "10Gi"), StorageClass: spec.Storage.StorageClass},
 		Affinity: ClusterAffinity{EnablePodAntiAffinity: true,
 			PodAntiAffinityType: or(ha.PodAntiAffinityType, "preferred"), TopologyKey: "kubernetes.io/hostname"},
@@ -229,10 +229,10 @@ func (c *composition) member(m *member, members []*member, distributed bool) (ma
 		// What the Project's inventory of its bucket (status.backup.servers)
 		// records about this folder, and keeps after the cluster is gone.
 		os.Metadata.Annotations = map[string]string{
-			"cnpg.cndev.nl/server-name":      m.topology,
-			"cnpg.cndev.nl/postgres-version": fmt.Sprint(version),
-			"cnpg.cndev.nl/database":         db.name(),
-			"cnpg.cndev.nl/database-owner":   db.owner(),
+			"postgres.cndev.nl/server-name":      m.topology,
+			"postgres.cndev.nl/postgres-version": fmt.Sprint(version),
+			"postgres.cndev.nl/database":         db.name(),
+			"postgres.cndev.nl/database-owner":   db.owner(),
 		}
 		out["objectstore"] = emitted{manifest: os, ready: exists("objectstore"), backupStore: true}
 
@@ -289,7 +289,7 @@ func (c *composition) member(m *member, members []*member, distributed bool) (ma
 			p.Spec.Type = t
 			p.Spec.PgBouncer = PgBouncer{PoolMode: or(pooler.PoolMode, "transaction"), Parameters: map[string]string{
 				"max_client_conn": fmt.Sprint(or(pooler.MaxClientConn, 1000)), "default_pool_size": fmt.Sprint(or(pooler.DefaultPoolSize, 25))}}
-			p.Spec.Template.Metadata.Labels = map[string]string{"cnpg.cndev.nl/postgrescluster": name, "backstage.io/kubernetes-id": name}
+			p.Spec.Template.Metadata.Labels = map[string]string{"postgres.cndev.nl/postgrescluster": name, "backstage.io/kubernetes-id": name}
 			p.Spec.Template.Spec.Containers = []any{}
 			term := WeightedPodAffinityTerm{Weight: 100}
 			term.PodAffinityTerm.TopologyKey = "kubernetes.io/hostname"
@@ -405,7 +405,7 @@ func (c *composition) wrap(m *member, key string, e emitted) Composed {
 		Annotations: map[string]string{"platform.cndev.nl/location": m.location}}
 	if e.backupStore {
 		// The Project finds the backup folders in its bucket through this label.
-		labels := map[string]string{"cnpg.cndev.nl/backup-store": "true"}
+		labels := map[string]string{"postgres.cndev.nl/backup-store": "true"}
 		for k, v := range c.labels {
 			labels[k] = v
 		}

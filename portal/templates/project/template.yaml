@@ -112,7 +112,7 @@ spec:
   steps:
     - id: create
       name: Create Project
-      action: cnpg:project:create
+      action: basis:project:create
       input:
         name: ${{ parameters.name }}
         owner: ${{ parameters.owner }}

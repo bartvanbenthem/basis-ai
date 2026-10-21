@@ -1,0 +1,52 @@
+# BASIS
+
+> BASIS (Build AI Services In Sovereign infrastructure) runs the platform side of generative AI
+> services on Kubernetes clusters a team owns: RAG databases, caches, model gateways and the wiring
+> between them, for any model (hosted or self-hosted). Everything is a namespaced Kubernetes
+> resource on the control plane, in a Project's namespace; the platform runs it in the Project's
+> locations (clusters). Validate with `kubectl apply --dry-run=server`; refusals say what to fix.
+
+## Rules
+
+- Create everything in a Project's namespace (`kubectl get projects`). Workloads never run on the
+  control plane.
+- Names: lowercase letters, digits and "-", starting with a letter; GenAIStack max 28 characters,
+  the others max 40.
+- Provider API keys go in a Secret in the Project first; reference them, never inline them.
+- What a GenAIStack composes (label `ai.cndev.nl/genaistack`) only changes through the stack.
+- Switch a stack between sites with `spec.recovery.activeSite`; never edit its database directly.
+- Prefer a GenAIStack for an AI service; use the building blocks for anything a stack doesn't cover.
+
+## APIs
+
+- GenAIStack (`ai.cndev.nl/v1alpha1`, short `gstack`): RAG database + cache + model gateway +
+  wiring. Apps mount Secret `<name>-connection` (in the location): DATABASE_URL, VALKEY_URL,
+  OPENAI_BASE_URL, OPENAI_API_KEY, SITE, ACTIVE.
+  spec: retrieval {size, instances=3, storageSize=20Gi, backup, extensions=[vector]};
+  cache {enabled=true, mode=semantic|exact, memory=1Gi, cpu, evictionPolicy};
+  gateway {enabled=true, models[], replicas=2, ref (shared ModelGateway), client};
+  recovery {enabled=false, activeSite=protected|recovery, promotion=Switchover|Failover,
+  cacheMemory=512Mi, gatewayReplicas=1}; deletionProtection=true.
+- ModelGateway (`ai.cndev.nl/v1alpha1`, short `mgw`): OpenAI-compatible endpoint
+  `http://<name>.<project>.svc/v1` to hosted and self-hosted models, a key per client in Secret
+  `<name>-keys`. spec: models[] {name, endpoint, schema=OpenAI|Anthropic, upstreamModel,
+  apiKeySecretRef {name, key=apiKey}}; clients[] {name} = [apps]; replicas=2;
+  recovery {enabled, replicas=1}; activeSite.
+- PostgresCluster (`postgres.cndev.nl/v1alpha1`, short `pgc`): highly available PostgreSQL on
+  CloudNativePG. spec: size (catalog), instances, storage {size}, profile (vector = pgvector,
+  VectorChord, pg_search; needs postgresVersion 18), postgresVersion, database {extensions},
+  backup {enabled}, geoReplication {enabled, primarySite, promotion}, pooler, roles.
+- ValkeyCache (`cache.cndev.nl/v1alpha1`, short `vcache`): exact or semantic cache.
+  spec: mode=exact|semantic (fixed), site=protected|recovery (fixed), shards=1, replicas=1,
+  resources {cpu, memory}, maxMemoryPercent=75, evictionPolicy=allkeys-lru.
+- Project (`platform.cndev.nl/v1alpha1`, cluster-scoped): a team's namespace, its locations
+  {protected, recovery}, access, quota, Prometheus and Grafana. Platform admins create them.
+- Location (`platform.cndev.nl/v1alpha1`, cluster-scoped): a cluster workloads run in. Admins only.
+
+## Docs
+
+- [Getting started](getting-started.md): a Project, a GenAI stack, connecting an app
+- [GenAI stacks](ai/genai-stacks.md): settings, the connection Secret, sharing a gateway, switching sites
+- [Model gateways](ai/model-gateways.md): models, clients and keys
+- [Agents and MCP](ai/agents.md): the MCP tools and the API for agents
+- [API reference](api.md): every field, its default and rules (OpenAPI, generated from the XRDs)

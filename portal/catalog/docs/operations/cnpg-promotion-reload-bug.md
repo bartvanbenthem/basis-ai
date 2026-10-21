@@ -129,7 +129,7 @@ Any of:
 - reload before returning in the `Waiting for promotion token to be verified`
   branch, or
 - decide on a reload by comparing the on-disk config hash with
-  `current_setting('cnpg.config_sha256')` instead of a per-pass flag, or
+  `current_setting('basis.config_sha256')` instead of a per-pass flag, or
 - persist "reload pending" across passes.
 
 Remove the workaround (the `basis.last_promotion` block in `member.go`,

@@ -1,0 +1,9 @@
+# The Project (both sites) the gateway's locations come from.
+apiVersion: platform.cndev.nl/v1alpha1
+kind: Project
+metadata:
+  name: ai-team
+spec:
+  locations:
+    protected: si-ske-demo
+    recovery: onprem-ams

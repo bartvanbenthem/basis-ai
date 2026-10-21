@@ -3,20 +3,22 @@ import { mockServices, startTestBackend } from '@backstage/backend-test-utils';
 import { NotFoundError } from '@backstage/errors';
 import { AuthorizeResult } from '@backstage/plugin-permission-common';
 import request from 'supertest';
-import { cnpgPlugin } from './plugin';
+import { basisPlugin } from './plugin';
 import {
-  CnpgKubernetesService,
-  cnpgKubernetesServiceRef,
-} from './service/CnpgKubernetesService';
+  BasisKubernetesService,
+  basisKubernetesServiceRef,
+} from './service/BasisKubernetesService';
 import { BucketService, bucketServiceRef } from './service/BucketService';
 import { LocationService, locationServiceRef } from './service/LocationService';
 import { VolumeService, volumeServiceRef } from './service/VolumeService';
 import { AuditService, auditServiceRef } from './service/AuditService';
 import { ValkeyService, valkeyServiceRef } from './service/ValkeyService';
-import { PostgresCluster, Project, ValkeyCache } from '@internal/backstage-plugin-cnpg-common';
+import { StackService, stackServiceRef } from './service/StackService';
+import { GatewayService, gatewayServiceRef } from './service/GatewayService';
+import { GenAIStack, ModelGateway, PostgresCluster, Project, ValkeyCache } from '@internal/backstage-plugin-basis-common';
 
 const ordersDb: PostgresCluster = {
-  apiVersion: 'cnpg.cndev.nl/v1alpha1',
+  apiVersion: 'postgres.cndev.nl/v1alpha1',
   kind: 'PostgresCluster',
   metadata: {
     name: 'orders-db',
@@ -180,6 +182,55 @@ function fakeValkey(caches: ValkeyCache[] = []) {
   };
 }
 
+const supportBot: GenAIStack = {
+  apiVersion: 'ai.cndev.nl/v1alpha1',
+  kind: 'GenAIStack',
+  metadata: { name: 'support-bot', namespace: 'demo', labels: { 'backstage.io/owner': 'team-ai' } },
+  spec: { recovery: { enabled: true }, gateway: { models: [{ name: 'gpt-4o-mini', endpoint: 'https://api.openai.com/v1' }] } },
+  status: {
+    activeSite: 'protected',
+    sites: [
+      { site: 'protected', location: 'prod-ams', active: true },
+      { site: 'recovery', location: 'prod-rtm', active: false },
+    ],
+    conditions: [{ type: 'Ready', status: 'True' }],
+  },
+};
+
+function fakeStacks(items: GenAIStack[] = []) {
+  return {
+    list: jest.fn(async (_ns?: string) => items),
+    get: jest.fn(async () => supportBot),
+    connection: jest.fn(async (_ns: string, _name: string, _kubeConfigFor: unknown) => ({
+      site: 'protected',
+      location: 'prod-ams',
+      values: { OPENAI_BASE_URL: 'http://support-bot-gateway.demo.svc/v1' },
+    })),
+    apply: jest.fn(async (o: any) => ({ ...supportBot, metadata: { name: o.name, namespace: o.namespace } })),
+    patch: jest.fn(async () => supportBot),
+    delete: jest.fn(async () => undefined),
+  };
+}
+
+const sharedGateway: ModelGateway = {
+  apiVersion: 'ai.cndev.nl/v1alpha1',
+  kind: 'ModelGateway',
+  metadata: { name: 'llm', namespace: 'demo' },
+  spec: { clients: [{ name: 'support-bot' }], models: [{ name: 'claude', endpoint: 'https://api.anthropic.com/v1', schema: 'Anthropic' }] },
+  status: { conditions: [{ type: 'Ready', status: 'True' }] },
+};
+
+function fakeGateways(items: ModelGateway[] = []) {
+  return {
+    list: jest.fn(async (_ns?: string) => items),
+    get: jest.fn(async () => sharedGateway),
+    keys: jest.fn(async () => [{ client: 'support-bot', key: 'secret-key' }]),
+    apply: jest.fn(async (o: any) => ({ ...sharedGateway, metadata: { name: o.name, namespace: o.namespace } })),
+    patch: jest.fn(async () => sharedGateway),
+    delete: jest.fn(async () => undefined),
+  };
+}
+
 function fakeAudit() {
   return {
     list: jest.fn(async ({ project }: { project: string }) => ({ project, items: [], clusters: [] })),
@@ -194,14 +245,16 @@ async function start(
   volumes = fakeVolumes(),
   audit = fakeAudit(),
   valkey = fakeValkey(),
+  stacks = fakeStacks(),
+  gateways = fakeGateways(),
 ) {
   const { server } = await startTestBackend({
     features: [
-      cnpgPlugin,
+      basisPlugin,
       createServiceFactory({
-        service: cnpgKubernetesServiceRef,
+        service: basisKubernetesServiceRef,
         deps: {},
-        factory: () => k8s as unknown as CnpgKubernetesService,
+        factory: () => k8s as unknown as BasisKubernetesService,
       }),
       createServiceFactory({
         service: locationServiceRef,
@@ -228,6 +281,16 @@ async function start(
         deps: {},
         factory: () => valkey as unknown as ValkeyService,
       }),
+      createServiceFactory({
+        service: stackServiceRef,
+        deps: {},
+        factory: () => stacks as unknown as StackService,
+      }),
+      createServiceFactory({
+        service: gatewayServiceRef,
+        deps: {},
+        factory: () => gateways as unknown as GatewayService,
+      }),
       mockServices.permissions.factory({
         result: allow ? AuthorizeResult.ALLOW : AuthorizeResult.DENY,
       }),
@@ -236,22 +299,22 @@ async function start(
   return server;
 }
 
-describe('cnpg backend', () => {
+describe('basis backend', () => {
   it('serves the extension catalog, empty without one', async () => {
     const k8s = fakeK8s();
     const server = await start(k8s);
-    const res = await request(server).get('/api/cnpg/extensions');
+    const res = await request(server).get('/api/basis/extensions');
     expect(res.status).toBe(200);
     expect(res.body.items).toEqual([
       { name: 'vector', displayName: 'pgvector', description: 'Vector similarity search', parameters: {} },
     ]);
     k8s.extensionsCatalog.mockResolvedValueOnce(undefined);
-    expect((await request(server).get('/api/cnpg/extensions')).body.items).toEqual([]);
+    expect((await request(server).get('/api/basis/extensions')).body.items).toEqual([]);
   });
 
   it('lists clusters as summaries', async () => {
     const server = await start(fakeK8s());
-    const res = await request(server).get('/api/cnpg/clusters');
+    const res = await request(server).get('/api/basis/clusters');
     expect(res.status).toBe(200);
     expect(res.body.items).toEqual([
       expect.objectContaining({
@@ -274,7 +337,7 @@ describe('cnpg backend', () => {
     const k8s = fakeK8s();
     k8s.listProjects.mockResolvedValue([]);
     const server = await start(k8s);
-    const res = await request(server).get('/api/cnpg/clusters');
+    const res = await request(server).get('/api/basis/clusters');
     expect(res.body.items[0].project).toBeUndefined();
     expect(res.body.items[0].grafanaUrl).toBeUndefined();
   });
@@ -288,7 +351,7 @@ describe('cnpg backend', () => {
       events: [],
     });
     const server = await start(k8s);
-    const res = await request(server).get('/api/cnpg/clusters/demo/orders-db');
+    const res = await request(server).get('/api/basis/clusters/demo/orders-db');
     expect(res.status).toBe(200);
     expect(res.body.summary).toMatchObject({
       project: 'demo',
@@ -307,7 +370,7 @@ describe('cnpg backend', () => {
       kc: await kubeConfigFor('prod-ams'),
     }));
     const server = await start(k8s, true, locations);
-    const res = await request(server).get('/api/cnpg/clusters/demo/orders-db');
+    const res = await request(server).get('/api/basis/clusters/demo/orders-db');
     expect(res.status).toBe(200);
     expect(res.body.kc).toEqual({ location: 'prod-ams' });
     expect(locations.kubeConfig).toHaveBeenCalledWith('prod-ams');
@@ -316,7 +379,7 @@ describe('cnpg backend', () => {
   it('returns pod logs with defaults for the query', async () => {
     const k8s = fakeK8s();
     const server = await start(k8s);
-    const res = await request(server).get('/api/cnpg/clusters/demo/orders-db/logs?pod=orders-db-1');
+    const res = await request(server).get('/api/basis/clusters/demo/orders-db/logs?pod=orders-db-1');
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ pod: 'orders-db-1', container: 'postgres' });
     expect(k8s.logs).toHaveBeenCalledWith(
@@ -331,7 +394,7 @@ describe('cnpg backend', () => {
     const k8s = fakeK8s();
     const server = await start(k8s);
     const res = await request(server).get(
-      '/api/cnpg/clusters/demo/orders-db/logs?pod=orders-db-1&location=prod-ams',
+      '/api/basis/clusters/demo/orders-db/logs?pod=orders-db-1&location=prod-ams',
     );
     expect(res.status).toBe(200);
     expect(res.body.location).toBe('prod-ams');
@@ -347,7 +410,7 @@ describe('cnpg backend', () => {
       '?pod=orders-db-1&tailLines=100000',
       '?pod=orders-db-1&location=Not_A_Location',
     ]) {
-      const res = await request(server).get(`/api/cnpg/clusters/demo/orders-db/logs${query}`);
+      const res = await request(server).get(`/api/basis/clusters/demo/orders-db/logs${query}`);
       expect(res.status).toBe(400);
     }
     expect(k8s.logs).not.toHaveBeenCalled();
@@ -355,7 +418,7 @@ describe('cnpg backend', () => {
 
   it('denies logs without read permission', async () => {
     const server = await start(fakeK8s(), false);
-    const res = await request(server).get('/api/cnpg/clusters/demo/orders-db/logs?pod=orders-db-1');
+    const res = await request(server).get('/api/basis/clusters/demo/orders-db/logs?pod=orders-db-1');
     expect(res.status).toBe(403);
   });
 
@@ -367,7 +430,7 @@ describe('cnpg backend', () => {
         { ...demoProject, metadata: { name: 'ledger' }, spec: { locations: { protected: 'prod-ams' } } },
       ]);
       const server = await start(k8s);
-      const res = await request(server).get('/api/cnpg/locations');
+      const res = await request(server).get('/api/basis/locations');
       expect(res.status).toBe(200);
       expect(res.body.items).toEqual([
         expect.objectContaining({ name: 'prod-ams', projects: ['ledger'] }),
@@ -381,7 +444,7 @@ describe('cnpg backend', () => {
         { ...demoProject, metadata: { name: 'ledger' }, spec: { locations: { protected: 'prod-ams' } } },
       ]);
       const server = await start(k8s, true, locations);
-      const res = await request(server).delete('/api/cnpg/locations/prod-ams');
+      const res = await request(server).delete('/api/basis/locations/prod-ams');
       expect(res.status).toBe(409);
       expect(res.body.error.message).toContain('ledger');
       expect(locations.delete).not.toHaveBeenCalled();
@@ -391,7 +454,7 @@ describe('cnpg backend', () => {
       const locations = fakeLocations();
       const server = await start(fakeK8s(), true, locations);
       const res = await request(server)
-        .post('/api/cnpg/locations')
+        .post('/api/basis/locations')
         .send({ name: 'new-loc', kubeconfig: 'apiVersion: v1', dryRun: true });
       expect(res.status).toBe(200);
       expect(res.body.health.status).toBe('healthy');
@@ -407,7 +470,7 @@ describe('cnpg backend', () => {
       const locations = fakeLocations();
       const server = await start(fakeK8s(), true, locations);
       const res = await request(server)
-        .post('/api/cnpg/locations')
+        .post('/api/basis/locations')
         .send({
           name: 'new-loc',
           kubeconfig: 'apiVersion: v1',
@@ -433,7 +496,7 @@ describe('cnpg backend', () => {
         { name: 'ok', kubeconfig: '' },
         { name: 'local', kubeconfig: 'x' },
       ]) {
-        const res = await request(server).post('/api/cnpg/locations').send(body);
+        const res = await request(server).post('/api/basis/locations').send(body);
         expect(res.status).toBe(400);
       }
       expect(locations.create).not.toHaveBeenCalled();
@@ -442,28 +505,28 @@ describe('cnpg backend', () => {
     it('refreshes health on check and maps a missing location to 404', async () => {
       const locations = fakeLocations();
       const server = await start(fakeK8s(), true, locations);
-      expect((await request(server).post('/api/cnpg/locations/prod-ams/check')).status).toBe(200);
+      expect((await request(server).post('/api/basis/locations/prod-ams/check')).status).toBe(200);
       expect(locations.get).toHaveBeenCalledWith('prod-ams', { refresh: true });
-      expect((await request(server).get('/api/cnpg/locations/nope')).status).toBe(404);
+      expect((await request(server).get('/api/basis/locations/nope')).status).toBe(404);
     });
 
     it('updates and deletes', async () => {
       const locations = fakeLocations();
       const server = await start(fakeK8s(), true, locations);
       const put = await request(server)
-        .put('/api/cnpg/locations/prod-ams')
+        .put('/api/basis/locations/prod-ams')
         .send({ spec: { displayName: 'Prod AMS' } });
       expect(put.status).toBe(200);
       expect(locations.update).toHaveBeenCalledWith('prod-ams', { spec: { displayName: 'Prod AMS' } });
-      expect((await request(server).delete('/api/cnpg/locations/prod-ams')).status).toBe(200);
+      expect((await request(server).delete('/api/basis/locations/prod-ams')).status).toBe(200);
     });
 
     it('needs permission', async () => {
       const locations = fakeLocations();
       const server = await start(fakeK8s(), false, locations);
-      expect((await request(server).get('/api/cnpg/locations')).status).toBe(403);
+      expect((await request(server).get('/api/basis/locations')).status).toBe(403);
       const res = await request(server)
-        .post('/api/cnpg/locations')
+        .post('/api/basis/locations')
         .send({ name: 'x', kubeconfig: 'y' });
       expect(res.status).toBe(403);
       expect(locations.create).not.toHaveBeenCalled();
@@ -472,7 +535,7 @@ describe('cnpg backend', () => {
 
   it('lists projects as summaries', async () => {
     const server = await start(fakeK8s());
-    const res = await request(server).get('/api/cnpg/projects');
+    const res = await request(server).get('/api/basis/projects');
     expect(res.status).toBe(200);
     expect(res.body.items).toEqual([
       expect.objectContaining({
@@ -491,7 +554,7 @@ describe('cnpg backend', () => {
     const k8s = fakeK8s();
     const server = await start(k8s);
     const res = await request(server)
-      .post('/api/cnpg/projects')
+      .post('/api/basis/projects')
       .send({
         name: 'team-a',
         owner: 'team-a',
@@ -512,7 +575,7 @@ describe('cnpg backend', () => {
     const k8s = fakeK8s();
     const server = await start(k8s);
     for (const name of ['Bad_Name', 'a--b']) {
-      const res = await request(server).post('/api/cnpg/projects').send({ name });
+      const res = await request(server).post('/api/basis/projects').send({ name });
       expect(res.status).toBe(400);
     }
     expect(k8s.applyProject).not.toHaveBeenCalled();
@@ -521,7 +584,7 @@ describe('cnpg backend', () => {
   it("won't delete a project that still has clusters", async () => {
     const k8s = fakeK8s();
     const server = await start(k8s);
-    const res = await request(server).delete('/api/cnpg/projects/demo');
+    const res = await request(server).delete('/api/basis/projects/demo');
     expect(res.status).toBe(409);
     expect(res.body.error.message).toContain('orders-db');
     expect(k8s.list).toHaveBeenCalledWith('demo');
@@ -533,7 +596,7 @@ describe('cnpg backend', () => {
     k8s.list.mockResolvedValue([]);
     const valkey = fakeValkey([llmCache]);
     const server = await start(k8s, true, fakeLocations(), fakeBuckets(), fakeVolumes(), fakeAudit(), valkey);
-    const res = await request(server).delete('/api/cnpg/projects/demo');
+    const res = await request(server).delete('/api/basis/projects/demo');
     expect(res.status).toBe(409);
     expect(res.body.error.message).toContain('llm-cache');
     expect(valkey.list).toHaveBeenCalledWith('demo');
@@ -544,7 +607,7 @@ describe('cnpg backend', () => {
     const k8s = fakeK8s();
     k8s.list.mockResolvedValue([]);
     const server = await start(k8s);
-    const res = await request(server).delete('/api/cnpg/projects/demo');
+    const res = await request(server).delete('/api/basis/projects/demo');
     expect(res.status).toBe(200);
     expect(k8s.deleteProject).toHaveBeenCalledWith('demo');
   });
@@ -552,14 +615,14 @@ describe('cnpg backend', () => {
   it('denies deleting a project without permission, and 404s a missing one', async () => {
     const k8s = fakeK8s();
     k8s.list.mockResolvedValue([]);
-    expect((await request(await start(k8s, false)).delete('/api/cnpg/projects/demo')).status).toBe(403);
-    expect((await request(await start(k8s)).delete('/api/cnpg/projects/nope')).status).toBe(404);
+    expect((await request(await start(k8s, false)).delete('/api/basis/projects/demo')).status).toBe(403);
+    expect((await request(await start(k8s)).delete('/api/basis/projects/nope')).status).toBe(404);
     expect(k8s.deleteProject).not.toHaveBeenCalled();
   });
 
   it('maps a missing project to 404', async () => {
     const server = await start(fakeK8s());
-    const res = await request(server).get('/api/cnpg/projects/nope');
+    const res = await request(server).get('/api/basis/projects/nope');
     expect(res.status).toBe(404);
   });
 
@@ -567,7 +630,7 @@ describe('cnpg backend', () => {
     const k8s = fakeK8s();
     const server = await start(k8s);
     const res = await request(server)
-      .post('/api/cnpg/clusters')
+      .post('/api/basis/clusters')
       .send({ name: 'new-db', namespace: 'demo', owner: 'team-a', spec: { instances: 3 } });
     expect(res.status).toBe(201);
     expect(k8s.apply).toHaveBeenCalledWith({
@@ -583,7 +646,7 @@ describe('cnpg backend', () => {
     const k8s = fakeK8s();
     const server = await start(k8s);
     const res = await request(server)
-      .post('/api/cnpg/clusters')
+      .post('/api/basis/clusters')
       .send({ name: 'Bad_Name', namespace: 'demo', spec: {} });
     expect(res.status).toBe(400);
     expect(k8s.apply).not.toHaveBeenCalled();
@@ -591,7 +654,7 @@ describe('cnpg backend', () => {
 
   it('maps a missing cluster to 404', async () => {
     const server = await start(fakeK8s());
-    const res = await request(server).put('/api/cnpg/clusters/demo/nope').send({ spec: {} });
+    const res = await request(server).put('/api/basis/clusters/demo/nope').send({ spec: {} });
     expect(res.status).toBe(404);
   });
 
@@ -599,7 +662,7 @@ describe('cnpg backend', () => {
     const k8s = fakeK8s();
     const server = await start(k8s);
     const res = await request(server)
-      .patch('/api/cnpg/clusters/demo/orders-db')
+      .patch('/api/basis/clusters/demo/orders-db')
       .send({ spec: { instances: 5, storage: { size: '50Gi' }, pooler: null }, dryRun: true });
     expect(res.status).toBe(200);
     expect(k8s.patch).toHaveBeenCalledWith({
@@ -615,7 +678,7 @@ describe('cnpg backend', () => {
     const k8s = fakeK8s();
     const server = await start(k8s);
     await request(server)
-      .patch('/api/cnpg/clusters/demo/orders-db')
+      .patch('/api/basis/clusters/demo/orders-db')
       .send({ spec: {}, owner: 'team-b' });
     expect(k8s.patch).toHaveBeenCalledWith(
       expect.objectContaining({ labels: { 'backstage.io/owner': 'team-b' } }),
@@ -626,7 +689,7 @@ describe('cnpg backend', () => {
     const k8s = fakeK8s();
     const server = await start(k8s);
     const res = await request(server)
-      .patch('/api/cnpg/projects/demo')
+      .patch('/api/basis/projects/demo')
       .send({ spec: { owner: '', quota: null } });
     expect(res.status).toBe(200);
     expect(k8s.patchProject).toHaveBeenCalledWith({
@@ -636,7 +699,7 @@ describe('cnpg backend', () => {
       dryRun: undefined,
     });
     const bad = await request(server)
-      .patch('/api/cnpg/projects/demo')
+      .patch('/api/basis/projects/demo')
       .send({ spec: { owner: 'not a group!' } });
     expect(bad.status).toBe(400);
   });
@@ -653,7 +716,7 @@ describe('cnpg backend', () => {
       k8s.get.mockResolvedValue(geoDb);
       const server = await start(k8s);
       const res = await request(server)
-        .post('/api/cnpg/clusters/demo/orders-db/promote')
+        .post('/api/basis/clusters/demo/orders-db/promote')
         .send({ site: 'recovery', mode: 'Switchover' });
       expect(res.status).toBe(200);
       expect(k8s.patch).toHaveBeenCalledWith({
@@ -669,11 +732,11 @@ describe('cnpg backend', () => {
       const server = await start(k8s);
       // ordersDb has no replica cluster.
       const res = await request(server)
-        .post('/api/cnpg/clusters/demo/orders-db/promote')
+        .post('/api/basis/clusters/demo/orders-db/promote')
         .send({ site: 'recovery', mode: 'Failover' });
       expect(res.status).toBe(409);
       const bad = await request(server)
-        .post('/api/cnpg/clusters/demo/orders-db/promote')
+        .post('/api/basis/clusters/demo/orders-db/promote')
         .send({ site: 'elsewhere', mode: 'Switchover' });
       expect(bad.status).toBe(400);
       expect(k8s.patch).not.toHaveBeenCalled();
@@ -684,11 +747,11 @@ describe('cnpg backend', () => {
       k8s.get.mockResolvedValue(geoDb);
       const server = await start(k8s);
       const moved = await request(server)
-        .patch('/api/cnpg/clusters/demo/orders-db')
+        .patch('/api/basis/clusters/demo/orders-db')
         .send({ spec: { geoReplication: { primarySite: 'recovery' } } });
       expect(moved.status).toBe(400);
       const drained = await request(server)
-        .patch('/api/cnpg/clusters/demo/orders-db')
+        .patch('/api/basis/clusters/demo/orders-db')
         .send({ spec: { geoReplication: { enabled: false, primarySite: 'protected' } } });
       expect(drained.status).toBe(200);
       expect(k8s.patch).toHaveBeenCalledTimes(1);
@@ -699,7 +762,7 @@ describe('cnpg backend', () => {
       k8s.get.mockResolvedValue(geoDb);
       const server = await start(k8s, false);
       const res = await request(server)
-        .post('/api/cnpg/clusters/demo/orders-db/promote')
+        .post('/api/basis/clusters/demo/orders-db/promote')
         .send({ site: 'recovery', mode: 'Failover' });
       expect(res.status).toBe(403);
       expect(k8s.patch).not.toHaveBeenCalled();
@@ -739,7 +802,7 @@ describe('cnpg backend', () => {
       k8s.get.mockResolvedValue(backedUp);
       const server = await start(k8s);
       const res = await request(server)
-        .post('/api/cnpg/projects/demo/restore')
+        .post('/api/basis/projects/demo/restore')
         .send({ name: 'orders-copy', from: { cluster: 'orders-db' }, targetTime: '2026-10-07T12:00:00Z' });
       expect(res.status).toBe(201);
       expect(k8s.apply).toHaveBeenCalledWith({
@@ -764,7 +827,7 @@ describe('cnpg backend', () => {
       k8s.getProject.mockResolvedValue(withInventory);
       const server = await start(k8s);
       const res = await request(server)
-        .post('/api/cnpg/projects/demo/restore')
+        .post('/api/basis/projects/demo/restore')
         .send({ name: 'old-db', from: { serverName: 'old-db' }, storageSize: '20Gi' });
       expect(res.status).toBe(201);
       expect(k8s.apply).toHaveBeenCalledWith(
@@ -781,7 +844,7 @@ describe('cnpg backend', () => {
         }),
       );
       const missing = await request(server)
-        .post('/api/cnpg/projects/demo/restore')
+        .post('/api/basis/projects/demo/restore')
         .send({ name: 'x', from: { serverName: 'nope' } });
       expect(missing.status).toBe(404);
     });
@@ -791,12 +854,12 @@ describe('cnpg backend', () => {
       const server = await start(k8s);
       // ordersDb has no backups.
       const noBackups = await request(server)
-        .post('/api/cnpg/projects/demo/restore')
+        .post('/api/basis/projects/demo/restore')
         .send({ name: 'orders-copy', from: { cluster: 'orders-db' } });
       expect(noBackups.status).toBe(409);
       k8s.get.mockResolvedValue(backedUp);
       const tooEarly = await request(server)
-        .post('/api/cnpg/projects/demo/restore')
+        .post('/api/basis/projects/demo/restore')
         .send({ name: 'orders-copy', from: { cluster: 'orders-db' }, targetTime: '2026-09-01T00:00:00Z' });
       expect(tooEarly.status).toBe(400);
       expect(tooEarly.body.error.message).toMatch(/before the oldest recoverable moment/);
@@ -808,11 +871,11 @@ describe('cnpg backend', () => {
       k8s.get.mockResolvedValue(backedUp);
       const server = await start(k8s, false);
       const res = await request(server)
-        .post('/api/cnpg/projects/demo/restore')
+        .post('/api/basis/projects/demo/restore')
         .send({ name: 'orders-copy', from: { cluster: 'orders-db' } });
       expect(res.status).toBe(403);
       const created = await request(server)
-        .post('/api/cnpg/clusters')
+        .post('/api/basis/clusters')
         .send({ name: 'orders-copy', namespace: 'demo', spec: { restore: { source: { serverName: 'orders-db' } } } });
       expect(created.status).toBe(403);
       expect(k8s.apply).not.toHaveBeenCalled();
@@ -822,7 +885,7 @@ describe('cnpg backend', () => {
   it('deletes a cluster', async () => {
     const k8s = fakeK8s();
     const server = await start(k8s);
-    const res = await request(server).delete('/api/cnpg/clusters/demo/orders-db');
+    const res = await request(server).delete('/api/basis/clusters/demo/orders-db');
     expect(res.status).toBe(202);
     expect(k8s.delete).toHaveBeenCalledWith('demo', 'orders-db');
   });
@@ -830,20 +893,20 @@ describe('cnpg backend', () => {
   it('enforces permissions', async () => {
     const k8s = fakeK8s();
     const server = await start(k8s, false);
-    const res = await request(server).delete('/api/cnpg/clusters/demo/orders-db');
+    const res = await request(server).delete('/api/basis/clusters/demo/orders-db');
     expect(res.status).toBe(403);
     expect(k8s.delete).not.toHaveBeenCalled();
-    const created = await request(server).post('/api/cnpg/projects').send({ name: 'team-a' });
+    const created = await request(server).post('/api/basis/projects').send({ name: 'team-a' });
     expect(created.status).toBe(403);
     expect(k8s.applyProject).not.toHaveBeenCalled();
-    const patched = await request(server).patch('/api/cnpg/projects/demo').send({ spec: {} });
+    const patched = await request(server).patch('/api/basis/projects/demo').send({ spec: {} });
     expect(patched.status).toBe(403);
     expect(k8s.patchProject).not.toHaveBeenCalled();
   });
   describe('buckets', () => {
     it('lists the buckets on the account', async () => {
       const server = await start(fakeK8s());
-      const res = await request(server).get('/api/cnpg/buckets');
+      const res = await request(server).get('/api/basis/buckets');
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ configured: true, items: [orphan] });
     });
@@ -851,20 +914,20 @@ describe('cnpg backend', () => {
     it('says why the object store could not be read', async () => {
       const buckets = fakeBuckets(false);
       const server = await start(fakeK8s(), true, fakeLocations(), buckets);
-      const res = await request(server).get('/api/cnpg/buckets');
+      const res = await request(server).get('/api/basis/buckets');
       expect(res.body).toEqual({ configured: false, items: [], storeError: 'No object store configured' });
     });
 
     it('shows one bucket, 404 for an unknown one', async () => {
       const server = await start(fakeK8s());
-      expect((await request(server).get(`/api/cnpg/buckets/${orphan.name}`)).body.summary).toEqual(orphan);
-      expect((await request(server).get('/api/cnpg/buckets/nope-bucket')).status).toBe(404);
+      expect((await request(server).get(`/api/basis/buckets/${orphan.name}`)).body.summary).toEqual(orphan);
+      expect((await request(server).get('/api/basis/buckets/nope-bucket')).status).toBe(404);
     });
 
     it('deletes a bucket', async () => {
       const buckets = fakeBuckets();
       const server = await start(fakeK8s(), true, fakeLocations(), buckets);
-      const res = await request(server).delete(`/api/cnpg/buckets/${orphan.name}`);
+      const res = await request(server).delete(`/api/basis/buckets/${orphan.name}`);
       expect(res.status).toBe(200);
       expect(buckets.delete).toHaveBeenCalledWith(orphan.name);
     });
@@ -872,15 +935,15 @@ describe('cnpg backend', () => {
     it('rejects an invalid bucket name', async () => {
       const buckets = fakeBuckets();
       const server = await start(fakeK8s(), true, fakeLocations(), buckets);
-      expect((await request(server).delete('/api/cnpg/buckets/UPPER_case')).status).toBe(400);
+      expect((await request(server).delete('/api/basis/buckets/UPPER_case')).status).toBe(400);
       expect(buckets.delete).not.toHaveBeenCalled();
     });
 
     it('needs the bucket permissions', async () => {
       const buckets = fakeBuckets();
       const server = await start(fakeK8s(), false, fakeLocations(), buckets);
-      expect((await request(server).get('/api/cnpg/buckets')).status).toBe(403);
-      expect((await request(server).delete(`/api/cnpg/buckets/${orphan.name}`)).status).toBe(403);
+      expect((await request(server).get('/api/basis/buckets')).status).toBe(403);
+      expect((await request(server).delete(`/api/basis/buckets/${orphan.name}`)).status).toBe(403);
       expect(buckets.delete).not.toHaveBeenCalled();
     });
   });
@@ -889,19 +952,19 @@ describe('cnpg backend', () => {
     it("returns a project's audit log", async () => {
       const audit = fakeAudit();
       const server = await start(fakeK8s(), true, fakeLocations(), fakeBuckets(), fakeVolumes(), audit);
-      const res = await request(server).get('/api/cnpg/projects/demo/audit?tailLines=200');
+      const res = await request(server).get('/api/basis/projects/demo/audit?tailLines=200');
       expect(res.status).toBe(200);
       expect(res.headers['cache-control']).toBe('no-store');
       expect(res.body).toEqual({ project: 'demo', items: [], clusters: [] });
       expect(audit.list).toHaveBeenCalledWith({ project: 'demo', tailLines: 200 });
-      expect((await request(server).get('/api/cnpg/projects/Bad_Name/audit')).status).toBe(400);
-      expect((await request(server).get('/api/cnpg/projects/demo/audit?tailLines=0')).status).toBe(400);
+      expect((await request(server).get('/api/basis/projects/Bad_Name/audit')).status).toBe(400);
+      expect((await request(server).get('/api/basis/projects/demo/audit?tailLines=0')).status).toBe(400);
     });
 
     it('needs the audit permission', async () => {
       const audit = fakeAudit();
       const server = await start(fakeK8s(), false, fakeLocations(), fakeBuckets(), fakeVolumes(), audit);
-      expect((await request(server).get('/api/cnpg/projects/demo/audit')).status).toBe(403);
+      expect((await request(server).get('/api/basis/projects/demo/audit')).status).toBe(403);
       expect(audit.list).not.toHaveBeenCalled();
     });
   });
@@ -910,28 +973,28 @@ describe('cnpg backend', () => {
     it('lists the volumes, optionally of one project', async () => {
       const volumes = fakeVolumes();
       const server = await start(fakeK8s(), true, fakeLocations(), fakeBuckets(), volumes);
-      const res = await request(server).get('/api/cnpg/volumes?project=demo');
+      const res = await request(server).get('/api/basis/volumes?project=demo');
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ items: [orphanVolume] });
       expect(volumes.list).toHaveBeenCalledWith({ project: 'demo' });
-      expect((await request(server).get('/api/cnpg/volumes?project=Bad_Name')).status).toBe(400);
+      expect((await request(server).get('/api/basis/volumes?project=Bad_Name')).status).toBe(400);
     });
 
     it('deletes an orphaned claim or released volume', async () => {
       const volumes = fakeVolumes();
       const server = await start(fakeK8s(), true, fakeLocations(), fakeBuckets(), volumes);
-      expect((await request(server).delete('/api/cnpg/volumes/prod-ams/claims/demo/gone-db-1')).status).toBe(200);
+      expect((await request(server).delete('/api/basis/volumes/prod-ams/claims/demo/gone-db-1')).status).toBe(200);
       expect(volumes.deleteClaim).toHaveBeenCalledWith('prod-ams', 'demo', 'gone-db-1');
-      expect((await request(server).delete('/api/cnpg/volumes/prod-ams/persistentvolumes/pv-3')).status).toBe(200);
+      expect((await request(server).delete('/api/basis/volumes/prod-ams/persistentvolumes/pv-3')).status).toBe(200);
       expect(volumes.deleteVolume).toHaveBeenCalledWith('prod-ams', 'pv-3');
     });
 
     it('needs the volume permissions', async () => {
       const volumes = fakeVolumes();
       const server = await start(fakeK8s(), false, fakeLocations(), fakeBuckets(), volumes);
-      expect((await request(server).get('/api/cnpg/volumes')).status).toBe(403);
-      expect((await request(server).delete('/api/cnpg/volumes/prod-ams/claims/demo/gone-db-1')).status).toBe(403);
-      expect((await request(server).delete('/api/cnpg/volumes/prod-ams/persistentvolumes/pv-3')).status).toBe(403);
+      expect((await request(server).get('/api/basis/volumes')).status).toBe(403);
+      expect((await request(server).delete('/api/basis/volumes/prod-ams/claims/demo/gone-db-1')).status).toBe(403);
+      expect((await request(server).delete('/api/basis/volumes/prod-ams/persistentvolumes/pv-3')).status).toBe(403);
       expect(volumes.deleteClaim).not.toHaveBeenCalled();
       expect(volumes.deleteVolume).not.toHaveBeenCalled();
     });
@@ -943,7 +1006,7 @@ describe('cnpg backend', () => {
 
     it('lists caches as summaries with their project', async () => {
       const valkey = fakeValkey([llmCache]);
-      const res = await request(await startWith(valkey)).get('/api/cnpg/caches?namespace=demo');
+      const res = await request(await startWith(valkey)).get('/api/basis/caches?namespace=demo');
       expect(res.status).toBe(200);
       expect(valkey.list).toHaveBeenCalledWith('demo');
       expect(res.body.items).toEqual([
@@ -965,10 +1028,10 @@ describe('cnpg backend', () => {
     it('reads details and the connection through the location', async () => {
       const valkey = fakeValkey([llmCache]);
       const server = await startWith(valkey);
-      const details = await request(server).get('/api/cnpg/caches/demo/llm-cache');
+      const details = await request(server).get('/api/basis/caches/demo/llm-cache');
       expect(details.status).toBe(200);
       expect(details.body.summary).toMatchObject({ name: 'llm-cache', project: 'demo' });
-      const conn = await request(server).get('/api/cnpg/caches/demo/llm-cache/connection');
+      const conn = await request(server).get('/api/basis/caches/demo/llm-cache/connection');
       expect(conn.status).toBe(200);
       expect(conn.headers['cache-control']).toBe('no-store');
       expect(conn.body.uri).toContain('valkey://default:');
@@ -980,7 +1043,7 @@ describe('cnpg backend', () => {
       const valkey = fakeValkey();
       const server = await startWith(valkey);
       const res = await request(server)
-        .post('/api/cnpg/caches')
+        .post('/api/basis/caches')
         .send({ name: 'llm-cache', namespace: 'demo', owner: 'team-ai', spec: { mode: 'semantic' } });
       expect(res.status).toBe(201);
       expect(valkey.apply).toHaveBeenCalledWith({
@@ -990,7 +1053,7 @@ describe('cnpg backend', () => {
         labels: { 'backstage.io/owner': 'team-ai' },
         createOnly: true,
       });
-      const bad = await request(server).post('/api/cnpg/caches').send({ name: 'Bad', namespace: 'demo', spec: {} });
+      const bad = await request(server).post('/api/basis/caches').send({ name: 'Bad', namespace: 'demo', spec: {} });
       expect(bad.status).toBe(400);
     });
 
@@ -998,7 +1061,7 @@ describe('cnpg backend', () => {
       const valkey = fakeValkey([llmCache]);
       const server = await startWith(valkey);
       const patched = await request(server)
-        .patch('/api/cnpg/caches/demo/llm-cache')
+        .patch('/api/basis/caches/demo/llm-cache')
         .send({ spec: { shards: 2 }, dryRun: true });
       expect(patched.status).toBe(200);
       expect(valkey.patch).toHaveBeenCalledWith({
@@ -1008,20 +1071,172 @@ describe('cnpg backend', () => {
         labels: undefined,
         dryRun: true,
       });
-      expect((await request(server).delete('/api/cnpg/caches/demo/llm-cache')).status).toBe(202);
+      expect((await request(server).delete('/api/basis/caches/demo/llm-cache')).status).toBe(202);
       expect(valkey.delete).toHaveBeenCalledWith('demo', 'llm-cache');
     });
 
     it('needs the cache permissions', async () => {
       const valkey = fakeValkey([llmCache]);
       const server = await startWith(valkey, false);
-      expect((await request(server).get('/api/cnpg/caches')).status).toBe(403);
-      expect((await request(server).get('/api/cnpg/caches/demo/llm-cache/connection')).status).toBe(403);
-      expect((await request(server).post('/api/cnpg/caches').send({ name: 'x', namespace: 'demo', spec: {} })).status).toBe(403);
-      expect((await request(server).delete('/api/cnpg/caches/demo/llm-cache')).status).toBe(403);
+      expect((await request(server).get('/api/basis/caches')).status).toBe(403);
+      expect((await request(server).get('/api/basis/caches/demo/llm-cache/connection')).status).toBe(403);
+      expect((await request(server).post('/api/basis/caches').send({ name: 'x', namespace: 'demo', spec: {} })).status).toBe(403);
+      expect((await request(server).delete('/api/basis/caches/demo/llm-cache')).status).toBe(403);
       expect(valkey.connection).not.toHaveBeenCalled();
       expect(valkey.apply).not.toHaveBeenCalled();
       expect(valkey.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('stacks', () => {
+    const startWith = (stacks: ReturnType<typeof fakeStacks>, allow = true, k8s = fakeK8s(), valkey = fakeValkey()) =>
+      start(k8s, allow, fakeLocations(), fakeBuckets(), fakeVolumes(), fakeAudit(), valkey, stacks);
+
+    it('lists stacks with their sites and project', async () => {
+      const stacks = fakeStacks([supportBot]);
+      const res = await request(await startWith(stacks)).get('/api/basis/stacks');
+      expect(res.status).toBe(200);
+      expect(res.body.items).toEqual([
+        expect.objectContaining({
+          name: 'support-bot',
+          recovery: true,
+          activeSite: 'protected',
+          models: ['gpt-4o-mini'],
+          database: 'support-bot-db',
+          recoveryCacheName: 'support-bot-cache-dr',
+          ready: true,
+          project: 'demo',
+        }),
+      ]);
+    });
+
+    it('creates a stack, refusing names its children would outgrow', async () => {
+      const stacks = fakeStacks();
+      const server = await startWith(stacks);
+      const ok = await request(server).post('/api/basis/stacks').send({ name: 'support-bot', namespace: 'demo', spec: {} });
+      expect(ok.status).toBe(201);
+      expect(stacks.apply).toHaveBeenCalledWith(expect.objectContaining({ name: 'support-bot', createOnly: true }));
+      const long = await request(server)
+        .post('/api/basis/stacks')
+        .send({ name: 'a-very-long-stack-name-that-is-too-long', namespace: 'demo', spec: {} });
+      expect(long.status).toBe(400);
+    });
+
+    it('reads the active site\'s wiring with the credentials permission only', async () => {
+      const stacks = fakeStacks([supportBot]);
+      const res = await request(await startWith(stacks)).get('/api/basis/stacks/demo/support-bot/connection');
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.body.values.OPENAI_BASE_URL).toContain('support-bot-gateway');
+      const denied = fakeStacks([supportBot]);
+      expect((await request(await startWith(denied, false)).get('/api/basis/stacks/demo/support-bot/connection')).status).toBe(403);
+      expect(denied.connection).not.toHaveBeenCalled();
+    });
+
+    it('patches and deletes a stack', async () => {
+      const stacks = fakeStacks([supportBot]);
+      const server = await startWith(stacks);
+      expect((await request(server).patch('/api/basis/stacks/demo/support-bot').send({ spec: { cache: { memory: '2Gi' } } })).status).toBe(200);
+      expect((await request(server).delete('/api/basis/stacks/demo/support-bot')).status).toBe(202);
+      expect(stacks.delete).toHaveBeenCalledWith('demo', 'support-bot');
+    });
+
+    it("refuses editing or deleting a stack's database or cache on its own", async () => {
+      const k8s = fakeK8s();
+      const owned = { ...ordersDb, metadata: { ...ordersDb.metadata, labels: { 'ai.cndev.nl/genaistack': 'support-bot' } } };
+      k8s.get.mockResolvedValue(owned);
+      const valkey = fakeValkey();
+      valkey.get.mockResolvedValue({ ...llmCache, metadata: { ...llmCache.metadata, labels: { 'ai.cndev.nl/genaistack': 'support-bot' } } });
+      const server = await startWith(fakeStacks(), true, k8s, valkey);
+      const del = await request(server).delete('/api/basis/clusters/demo/orders-db');
+      expect(del.status).toBe(409);
+      expect(del.body.error.message).toContain('GenAIStack support-bot');
+      expect((await request(server).patch('/api/basis/clusters/demo/orders-db').send({ spec: { instances: 2 } })).status).toBe(409);
+      expect((await request(server).delete('/api/basis/caches/demo/llm-cache')).status).toBe(409);
+      expect(k8s.delete).not.toHaveBeenCalled();
+      expect(valkey.delete).not.toHaveBeenCalled();
+    });
+
+    it('switches a stack over through its spec, and refuses moving its database on its own', async () => {
+      const stacks = fakeStacks([supportBot]);
+      const k8s = fakeK8s();
+      k8s.get.mockResolvedValue({ ...ordersDb, metadata: { ...ordersDb.metadata, labels: { 'ai.cndev.nl/genaistack': 'support-bot' } } });
+      const server = await startWith(stacks, true, k8s);
+      const ok = await request(server).post('/api/basis/stacks/demo/support-bot/promote').send({ site: 'recovery', mode: 'Switchover' });
+      expect(ok.status).toBe(200);
+      expect(stacks.patch).toHaveBeenCalledWith(
+        expect.objectContaining({ spec: { recovery: { activeSite: 'recovery', promotion: 'Switchover' } } }),
+      );
+      const same = await request(server).post('/api/basis/stacks/demo/support-bot/promote').send({ site: 'protected', mode: 'Switchover' });
+      expect(same.status).toBe(409);
+      const db = await request(server).post('/api/basis/clusters/demo/orders-db/promote').send({ site: 'recovery', mode: 'Switchover' });
+      expect(db.status).toBe(409);
+      expect(db.body.error.message).toContain('GenAIStack support-bot');
+    });
+
+    it("won't delete a project that still has stacks", async () => {
+      const k8s = fakeK8s();
+      k8s.list.mockResolvedValue([]);
+      const res = await request(await startWith(fakeStacks([supportBot]), true, k8s)).delete('/api/basis/projects/demo');
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toContain('support-bot');
+      expect(k8s.deleteProject).not.toHaveBeenCalled();
+    });
+
+    it('needs the stack permissions', async () => {
+      const stacks = fakeStacks([supportBot]);
+      const server = await startWith(stacks, false);
+      expect((await request(server).get('/api/basis/stacks')).status).toBe(403);
+      expect((await request(server).post('/api/basis/stacks').send({ name: 'x', namespace: 'demo', spec: {} })).status).toBe(403);
+      expect((await request(server).delete('/api/basis/stacks/demo/support-bot')).status).toBe(403);
+      expect(stacks.apply).not.toHaveBeenCalled();
+      expect(stacks.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('gateways', () => {
+    const startWith = (gateways: ReturnType<typeof fakeGateways>, allow = true, stacks = fakeStacks()) =>
+      start(fakeK8s(), allow, fakeLocations(), fakeBuckets(), fakeVolumes(), fakeAudit(), fakeValkey(), stacks, gateways);
+
+    it('lists gateways with their endpoint and clients', async () => {
+      const res = await request(await startWith(fakeGateways([sharedGateway]))).get('/api/basis/gateways');
+      expect(res.status).toBe(200);
+      expect(res.body.items[0]).toMatchObject({
+        name: 'llm',
+        endpoint: 'http://llm.demo.svc/v1',
+        keysSecret: 'llm-keys',
+        clients: ['support-bot'],
+        models: ['claude'],
+      });
+    });
+
+    it('shows which stacks use a gateway', async () => {
+      const user = { ...supportBot, spec: { ...supportBot.spec, gateway: { ref: 'llm' } } };
+      const res = await request(await startWith(fakeGateways([sharedGateway]), true, fakeStacks([user]))).get('/api/basis/gateways/demo/llm');
+      expect(res.body.stacks).toEqual(['support-bot']);
+    });
+
+    it('hands out keys only with the credentials permission', async () => {
+      const ok = await request(await startWith(fakeGateways([sharedGateway]))).get('/api/basis/gateways/demo/llm/keys');
+      expect(ok.body.items).toEqual([{ client: 'support-bot', key: 'secret-key' }]);
+      expect(ok.headers['cache-control']).toBe('no-store');
+      expect((await request(await startWith(fakeGateways(), false)).get('/api/basis/gateways/demo/llm/keys')).status).toBe(403);
+    });
+
+    it("won't delete a gateway a stack shares, or change a stack's own", async () => {
+      const user = { ...supportBot, spec: { ...supportBot.spec, gateway: { ref: 'llm' } } };
+      const gateways = fakeGateways([sharedGateway]);
+      const inUse = await request(await startWith(gateways, true, fakeStacks([user]))).delete('/api/basis/gateways/demo/llm');
+      expect(inUse.status).toBe(409);
+      expect(inUse.body.error.message).toContain('support-bot');
+
+      const owned = fakeGateways();
+      owned.get.mockResolvedValue({ ...sharedGateway, metadata: { ...sharedGateway.metadata, labels: { 'ai.cndev.nl/genaistack': 'support-bot' } } });
+      const server = await startWith(owned);
+      expect((await request(server).patch('/api/basis/gateways/demo/llm').send({ spec: { replicas: 3 } })).status).toBe(409);
+      expect((await request(server).delete('/api/basis/gateways/demo/llm')).status).toBe(409);
+      expect(owned.delete).not.toHaveBeenCalled();
+      expect(gateways.delete).not.toHaveBeenCalled();
     });
   });
 });

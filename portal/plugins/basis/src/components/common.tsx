@@ -6,7 +6,9 @@ import type {
   PostgresClusterSummary,
   ProjectSummary,
   ValkeyCacheSummary,
-} from '@internal/backstage-plugin-cnpg-common';
+  GenAIStackSummary,
+  ModelGatewaySummary,
+} from '@internal/backstage-plugin-basis-common';
 import { ReactNode } from 'react';
 
 /** Database glyph used for the nav item and the entity tab. */
@@ -55,6 +57,18 @@ export function cacheHealth(c: ValkeyCacheSummary): Health {
   return 'progressing';
 }
 
+/** A stack is healthy once every component and both sites' wiring are. */
+export function stackHealth(s: GenAIStackSummary): Health {
+  if (s.deleting) return 'deleting';
+  return s.ready ? 'healthy' : 'progressing';
+}
+
+/** A gateway is healthy once Agent Router runs in every one of its sites. */
+export function gatewayHealth(g: ModelGatewaySummary): Health {
+  if (g.deleting) return 'deleting';
+  return g.ready ? 'healthy' : 'progressing';
+}
+
 /** `label` replaces the health's own word, e.g. "Reachable" for healthy. */
 export const StatusDot = ({ health: h, label }: { health: Health; label?: string }) => {
   const { color } = HEALTH[h];
@@ -75,6 +89,12 @@ export const HealthBadge = ({ cluster }: { cluster: PostgresClusterSummary }) =>
 
 export const CacheHealthBadge = ({ cache }: { cache: ValkeyCacheSummary }) => (
   <StatusDot health={cacheHealth(cache)} />
+);
+
+export const StackHealthBadge = ({ stack }: { stack: GenAIStackSummary }) => <StatusDot health={stackHealth(stack)} />;
+
+export const GatewayHealthBadge = ({ gateway }: { gateway: ModelGatewaySummary }) => (
+  <StatusDot health={gatewayHealth(gateway)} />
 );
 
 export const ProjectHealthBadge = ({ project }: { project: ProjectSummary }) => (

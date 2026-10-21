@@ -21,16 +21,16 @@ import {
   useTable,
 } from '@backstage/ui';
 import {
-  cnpgVolumeDeletePermission,
+  basisVolumeDeletePermission,
   isOrphanedVolume,
   quantityBytes,
   type VolumeSummary,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { clusterRouteRef, projectRouteRef } from '../routes';
 import { age, bytes, ErrorAlert, Mono, VolumeStateBadge } from './common';
 
@@ -68,7 +68,7 @@ const DeleteDialog = ({
   onClose: () => void;
   onDeleted: () => void;
 }) => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<Error>();
   const [pending, setPending] = useState(false);
@@ -164,11 +164,11 @@ const DeleteDialog = ({
  * The project filter lives in ?project=<name> so a project can link to it.
  */
 export const VolumeListPage = () => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const projectLink = useRouteRef(projectRouteRef);
   const clusterLink = useRouteRef(clusterRouteRef);
   const { allowed: canDelete } = usePermission({
-    permission: cnpgVolumeDeletePermission,
+    permission: basisVolumeDeletePermission,
   });
   const [params, setParams] = useSearchParams();
   const [filter, setFilter] = useState<Filter>('all');

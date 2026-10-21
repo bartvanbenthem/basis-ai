@@ -15,8 +15,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: ledger-copy
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: ledger-copy
         name: ledger-copy
         namespace: payments
       spec:
@@ -29,7 +29,7 @@ status:
             database: app
             owner: app
             source: restore-source
-        description: PostgresCluster payments/ledger-copy (cnpg.cndev.nl)
+        description: PostgresCluster payments/ledger-copy (postgres.cndev.nl)
         enableSuperuserAccess: false
         externalClusters:
         - name: restore-source
@@ -46,7 +46,7 @@ status:
         inheritedMetadata:
           labels:
             backstage.io/kubernetes-id: ledger-copy
-            cnpg.cndev.nl/postgrescluster: ledger-copy
+            postgres.cndev.nl/postgrescluster: ledger-copy
         instances: 1
         primaryUpdateMethod: switchover
         primaryUpdateStrategy: unsupervised
@@ -98,8 +98,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: ledger-copy
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: ledger-copy
         name: ledger-copy
         namespace: payments
       spec:
@@ -132,8 +132,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: ledger-copy
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: ledger-copy
         name: ledger-copy
         namespace: payments
       spec:
@@ -166,8 +166,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: ledger-copy
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: ledger-copy
         name: ledger-copy-alerts
         namespace: payments
       spec:
@@ -642,8 +642,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: ledger-copy
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: ledger-copy
         name: ledger-copy-restore
         namespace: payments
       spec:
@@ -680,8 +680,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: ledger-copy
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: ledger-copy
         name: ledger-db-s3
         namespace: payments
   conditions:

@@ -5521,9 +5521,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@internal/backstage-plugin-cnpg-backend@workspace:^, @internal/backstage-plugin-cnpg-backend@workspace:plugins/cnpg-backend":
+"@internal/backstage-plugin-basis-backend@workspace:^, @internal/backstage-plugin-basis-backend@workspace:plugins/basis-backend":
   version: 0.0.0-use.local
-  resolution: "@internal/backstage-plugin-cnpg-backend@workspace:plugins/cnpg-backend"
+  resolution: "@internal/backstage-plugin-basis-backend@workspace:plugins/basis-backend"
   dependencies:
     "@aws-sdk/client-s3": "npm:^3.350.0"
     "@backstage/backend-defaults": "npm:^0.18.0"
@@ -5536,7 +5536,7 @@ __metadata:
     "@backstage/plugin-permission-common": "npm:^0.9.11"
     "@backstage/plugin-scaffolder-node": "npm:^0.13.7"
     "@backstage/plugin-scaffolder-node-test-utils": "npm:^0.3.15"
-    "@internal/backstage-plugin-cnpg-common": "workspace:^"
+    "@internal/backstage-plugin-basis-common": "workspace:^"
     "@kubernetes/client-node": "npm:^1.4.0"
     "@types/express": "npm:^4.17.6"
     "@types/supertest": "npm:^2.0.12"
@@ -5547,18 +5547,18 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@internal/backstage-plugin-cnpg-common@workspace:^, @internal/backstage-plugin-cnpg-common@workspace:plugins/cnpg-common":
+"@internal/backstage-plugin-basis-common@workspace:^, @internal/backstage-plugin-basis-common@workspace:plugins/basis-common":
   version: 0.0.0-use.local
-  resolution: "@internal/backstage-plugin-cnpg-common@workspace:plugins/cnpg-common"
+  resolution: "@internal/backstage-plugin-basis-common@workspace:plugins/basis-common"
   dependencies:
     "@backstage/cli": "npm:^0.36.6"
     "@backstage/plugin-permission-common": "npm:^0.9.11"
   languageName: unknown
   linkType: soft
 
-"@internal/backstage-plugin-cnpg@workspace:^, @internal/backstage-plugin-cnpg@workspace:plugins/cnpg":
+"@internal/backstage-plugin-basis@workspace:^, @internal/backstage-plugin-basis@workspace:plugins/basis":
   version: 0.0.0-use.local
-  resolution: "@internal/backstage-plugin-cnpg@workspace:plugins/cnpg"
+  resolution: "@internal/backstage-plugin-basis@workspace:plugins/basis"
   dependencies:
     "@backstage/cli": "npm:^0.36.6"
     "@backstage/core-components": "npm:^0.18.14"
@@ -5571,7 +5571,7 @@ __metadata:
     "@backstage/plugin-permission-common": "npm:^0.9.11"
     "@backstage/plugin-permission-react": "npm:^0.5.5"
     "@backstage/ui": "npm:^0.18.0"
-    "@internal/backstage-plugin-cnpg-common": "workspace:^"
+    "@internal/backstage-plugin-basis-common": "workspace:^"
     "@testing-library/jest-dom": "npm:^6.0.0"
     "@testing-library/react": "npm:^14.0.0"
     "@testing-library/user-event": "npm:^14.0.0"
@@ -13817,7 +13817,7 @@ __metadata:
     "@backstage/plugin-user-settings": "npm:^0.9.7"
     "@backstage/theme": "npm:^0.7.3"
     "@backstage/ui": "npm:^0.18.0"
-    "@internal/backstage-plugin-cnpg": "workspace:^"
+    "@internal/backstage-plugin-basis": "workspace:^"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"
     "@playwright/test": "npm:^1.32.3"
@@ -14461,7 +14461,7 @@ __metadata:
     "@backstage/plugin-signals-backend": "npm:^0.3.19"
     "@backstage/plugin-techdocs-backend": "npm:^2.3.0"
     "@backstage/plugin-user-settings-backend": "npm:^0.4.7"
-    "@internal/backstage-plugin-cnpg-backend": "workspace:^"
+    "@internal/backstage-plugin-basis-backend": "workspace:^"
     app: "link:../app"
     better-sqlite3: "npm:^12.0.0"
     node-gyp: "npm:^10.0.0"

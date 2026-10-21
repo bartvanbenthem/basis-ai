@@ -1,6 +1,6 @@
 # status.sites wins over the Project: a cluster never moves, even if the
 # Project's locations were changed behind its back (or the Project is gone).
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

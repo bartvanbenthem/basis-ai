@@ -1,6 +1,6 @@
 import { mockServices } from '@backstage/backend-test-utils';
 import { ConflictError, NotFoundError } from '@backstage/errors';
-import { PostgresCluster, Project } from '@internal/backstage-plugin-cnpg-common';
+import { PostgresCluster, Project } from '@internal/backstage-plugin-basis-common';
 import { LocationCore, VolumeService } from './VolumeService';
 
 const demo: Project = {
@@ -11,7 +11,7 @@ const demo: Project = {
 };
 
 const ordersDb: PostgresCluster = {
-  apiVersion: 'cnpg.cndev.nl/v1alpha1',
+  apiVersion: 'postgres.cndev.nl/v1alpha1',
   kind: 'PostgresCluster',
   metadata: { name: 'orders-db', namespace: 'demo' },
   spec: { location: 'prod-ams' },

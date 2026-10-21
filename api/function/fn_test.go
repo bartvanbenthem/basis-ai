@@ -19,7 +19,7 @@ func runFunction(t *testing.T, req *fnv1.RunFunctionRequest) *fnv1.RunFunctionRe
 }
 
 func TestRunFunction(t *testing.T) {
-	xr := resource.MustStructJSON(`{"apiVersion":"cnpg.cndev.nl/v1alpha1","kind":"PostgresCluster",
+	xr := resource.MustStructJSON(`{"apiVersion":"postgres.cndev.nl/v1alpha1","kind":"PostgresCluster",
 		"metadata":{"name":"orders-db","namespace":"payments"},"spec":{}}`)
 	project := resource.MustStructJSON(`{"apiVersion":"platform.cndev.nl/v1alpha1","kind":"Project",
 		"metadata":{"name":"payments"},"spec":{"locations":{"protected":"si-ske-demo"}}}`)

@@ -23,20 +23,27 @@ import {
   cacheMaxMemory,
   cachePods,
   type ClusterEvent,
-  cnpgCacheCredentialsReadPermission,
-  cnpgCacheDeletePermission,
-  cnpgCacheUpdatePermission,
+  basisCacheCredentialsReadPermission,
+  basisCacheDeletePermission,
+  basisCacheUpdatePermission,
   type Condition,
   type InstancePod,
   type ValkeyCacheDetails,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import useAsync from 'react-use/esm/useAsync';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
-import { cnpgApiRef } from '../api';
-import { cacheMonitoringRouteRef, cacheRouteRef, cachesRouteRef, editCacheRouteRef, projectRouteRef } from '../routes';
+import { basisApiRef } from '../api';
+import {
+  cacheMonitoringRouteRef,
+  cacheRouteRef,
+  cachesRouteRef,
+  editCacheRouteRef,
+  projectRouteRef,
+  stackRouteRef,
+} from '../routes';
 import { ConnectionUri, StaticTable } from './ClusterDetails';
 import { age, CacheHealthBadge, cacheHealth, ErrorAlert, Fields, Mono, Panel } from './common';
 import { GrafanaDashboard } from './GrafanaDashboard';
@@ -52,7 +59,7 @@ const DeleteDialog = ({
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
 }) => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const navigate = useNavigate();
   const listLink = useRouteRef(cachesRouteRef);
   const [confirm, setConfirm] = useState('');
@@ -64,7 +71,7 @@ const DeleteDialog = ({
     try {
       await api.deleteCache(namespace, name);
       onOpenChange(false);
-      navigate(listLink?.() ?? '/cnpg/caches');
+      navigate(listLink?.() ?? '/basis/caches');
     } catch (e) {
       setError(e as Error);
     } finally {
@@ -98,9 +105,9 @@ const DeleteDialog = ({
 };
 
 export const CacheDetails = ({ details }: { details: ValkeyCacheDetails }) => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const projectLink = useRouteRef(projectRouteRef);
-  const { allowed: canReadCredentials } = usePermission({ permission: cnpgCacheCredentialsReadPermission });
+  const { allowed: canReadCredentials } = usePermission({ permission: basisCacheCredentialsReadPermission });
   const { summary, resource, pods, events, unreachable } = details;
   const status = resource.status ?? {};
   const h = cacheHealth(summary);
@@ -166,7 +173,7 @@ export const CacheDetails = ({ details }: { details: ValkeyCacheDetails }) => {
                     masked={`valkey://default:••••••@${host || `valkey-${summary.name}.${summary.namespace}.svc`}:${port || 6379}`}
                   />
                 ) : (
-                  'needs the cnpg.cache.credentials.read permission'
+                  'needs the basis.cache.credentials.read permission'
                 ),
               ],
               [
@@ -251,7 +258,7 @@ export const CacheDetails = ({ details }: { details: ValkeyCacheDetails }) => {
 
 /** Loads (and keeps polling) one cache; used by the page and the entity tab. */
 export function useCacheDetails(namespace: string, name: string) {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const state = useAsyncRetry(() => api.getCache(namespace, name), [api, namespace, name]);
   useInterval(state.retry, 10_000);
   return state;
@@ -260,12 +267,13 @@ export function useCacheDetails(namespace: string, name: string) {
 /** One ValkeyCache: health, how to connect, its settings, pods, conditions and events; and its dashboard. */
 export const CacheDetailPage = ({ tab }: { tab: 'overview' | 'monitoring' }) => {
   const { namespace = '', name = '' } = useParams();
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const overviewLink = useRouteRef(cacheRouteRef);
   const monitoringLink = useRouteRef(cacheMonitoringRouteRef);
   const editLink = useRouteRef(editCacheRouteRef);
-  const { allowed: canDelete } = usePermission({ permission: cnpgCacheDeletePermission });
-  const { allowed: canUpdate } = usePermission({ permission: cnpgCacheUpdatePermission });
+  const stackLink = useRouteRef(stackRouteRef);
+  const { allowed: canDelete } = usePermission({ permission: basisCacheDeletePermission });
+  const { allowed: canUpdate } = usePermission({ permission: basisCacheUpdatePermission });
   const [deleting, setDeleting] = useState(false);
   const { value: config } = useAsync(() => api.getConfig(), [api]);
   const { value, error } = useCacheDetails(namespace, name);
@@ -288,12 +296,17 @@ export const CacheDetailPage = ({ tab }: { tab: 'overview' | 'monitoring' }) => 
         customActions={
           <Flex gap="3" align="center">
             {value && <CacheHealthBadge cache={value.summary} />}
-            {canUpdate && editLink && value && !value.summary.deleting && (
+            {value?.summary.stack && stackLink && (
+              <ButtonLink href={stackLink({ namespace, name: value.summary.stack })} variant="secondary">
+                Part of stack {value.summary.stack}
+              </ButtonLink>
+            )}
+            {canUpdate && editLink && value && !value.summary.deleting && !value.summary.stack && (
               <ButtonLink href={editLink({ namespace, name })} variant="secondary">
                 Edit
               </ButtonLink>
             )}
-            {canDelete && (
+            {canDelete && !value?.summary.stack && (
               <Button variant="secondary" destructive onPress={() => setDeleting(true)}>
                 Delete
               </Button>

@@ -41,7 +41,7 @@
     "@backstage/plugin-user-settings": "^0.9.7",
     "@backstage/theme": "^0.7.3",
     "@backstage/ui": "^0.18.0",
-    "@internal/backstage-plugin-cnpg": "workspace:^",
+    "@internal/backstage-plugin-basis": "workspace:^",
     "@material-ui/core": "^4.12.2",
     "@material-ui/icons": "^4.9.1",
     "react": "^18.0.2",

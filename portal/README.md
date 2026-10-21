@@ -1,53 +1,57 @@
-# portal/: CNPG portal
+# portal/: BASIS portal
 
-A Backstage app (1.55, new frontend system) for creating Projects and deploying and viewing every
-`PostgresCluster` from [`api`](../api). It runs on the platform's
-control plane, next to Crossplane; the databases run in the locations, which it reads through
-their kubeconfigs. It is a CNPG-only portal in BASIS
-style: a dark theme, the BASIS logo, and a fixed sidebar with Locations, Add location, Projects, New
-project, Volumes, Buckets, Audit logs, PostgreSQL and New cluster.
+A Backstage app (1.55, new frontend system) for creating and viewing everything from
+[`api`](../api): GenAI stacks, model gateways, PostgreSQL clusters, Valkey caches, Projects and
+Locations. It runs on the platform's control plane, next to Crossplane; the workloads run in the
+locations, which it reads through their kubeconfigs. A dark theme, the BASIS logo, and a fixed
+sidebar ordered for its audiences: **AI services** (GenAI stacks, New stack), **Building blocks**
+(Model gateways, PostgreSQL, Valkey caches; each list page has its Create buttons), **Platform**
+(Projects, Locations, Volumes, Buckets, Audit logs) and **Docs**. `/` lands on the GenAI stacks. It
+also serves the platform as MCP tools for agents ([MCP](#mcp-tools-for-agents)).
 
 | Feature | Where |
 |---|---|
-| **PostgreSQL** page (the landing page): summary tiles, then all clusters across namespaces with health, version, instances and size, primary, location (and its replica cluster), pooler/backup flags; filter + search; auto-refresh | `plugins/cnpg` (`/cnpg`) |
-| **New cluster**: project, owner, a **size** from the platform's catalog (XS–XL: CPU and memory per instance plus tuned PostgreSQL settings, and suggested volumes) or custom CPU and memory, storage, HA, pooler, backups, geo replication, monitoring and audit logging (pgaudit); the panel shows the manifest, **Validate** dry-runs it. Backend: `GET /sizes` (the `postgres-sizes` catalog, empty without one: the form then offers custom resources only) | `/cnpg/create` |
-| **New RAG cluster**: the create form with the **Vector & RAG** workload profile preset (also picked in the form itself): size M, PostgreSQL 18 and pgvector, VectorChord and pg_search from the extension catalog (mounted from images); extensions that need PostgreSQL 18 can't be ticked on an older version | `/cnpg/create?profile=vector` |
-| Cluster detail: status, connection endpoints & credential Secret, size, the CPU/memory and PostgreSQL settings it runs with, storage/HA/pooler/backup/monitoring config, both sites with their location and role (primary, replica, promoting), instance pods and recent events from both, conditions, **Edit**, delete (type-to-confirm) | `/cnpg/:namespace/:name` |
-| **Edit cluster**: everything that changes in place: volume sizes (grow only), instances, size (or custom CPU/memory), HA, pooler, backups, monitoring, audit logging (switching pgaudit on or off restarts the instances one by one; only `pgaudit.log` is patched, other PostgreSQL parameters stay), owner and **geo replication**. Name, project, protected location, primary site, PostgreSQL version, database and StorageClass are read-only. The panel shows the exact change (a merge patch); **Validate** dry-runs it | `/cnpg/:namespace/:name/edit` |
-| **Disaster recovery** tab (geo-replicated clusters): both sites with their location, role (primary, replica cluster, promoting), health and instances; the WAL archive the replica cluster replays; **Switch over** (planned, demotes the primary first, loses nothing) and **Fail over** (promotes the other site right away; type-to-confirm, warns when the primary's site still looks healthy) to the other site, and back. A switchover that waits for a site that is down can be escalated to a failover. Backend: `POST /clusters/:namespace/:name/promote` with `{site, mode}`; edits can't move the primary | `/cnpg/:namespace/:name/dr` |
-| **Backups** tab: where the cluster archives (store and folder), schedule, retention, last base backup and the recoverable window; **Restore to a new cluster** up to a point in time or the latest state (new name, storage size; the target time is checked against the window). The source is never touched: restoring is creating a new cluster with `spec.restore`. Backend: `POST /projects/:name/restore` with `{name, from: {cluster} \| {serverName}, targetTime?, storageSize?}` | `/cnpg/:namespace/:name/backups` |
-| **Locations** page: the Kubernetes clusters the platform can use, with environment, provider/region, API server, Kubernetes version, Ready nodes, health (probed from the backend, cached 30s), whether Crossplane can use it and how many projects do | `/cnpg/locations` |
-| Location detail: settings, connection (server, context, auth type, TLS), what Crossplane reports (connected, operators installed) and projects, every health check, **Check now**, **Edit**, remove (type-to-confirm, refused while a project lists it) | `/cnpg/locations/:name` |
-| **Add location** / **Edit location**: upload or paste a kubeconfig (pick a context if it has several), name, environment, provider, region, owner, default StorageClass, open/closed for new databases; **Test connection** probes it before saving | `/cnpg/locations/create`, `/cnpg/locations/:name/edit` |
-| **Logs** tab: stdout of the cluster's pods in any of its locations (pick a pod, tail size, follow, previous container), shown readable or as raw JSON | `/cnpg/:namespace/:name/logs` |
-| **Monitoring** tab: the cluster's CNPG Grafana dashboard (the `GrafanaDashboard` the composition creates), embedded with a time-range picker and an "Open in Grafana" link | `/cnpg/:namespace/:name/monitoring` |
-| **Projects** page: every Project (namespace + Prometheus + Grafana) with health, owner, cluster count and a Grafana link | `/cnpg/projects` |
-| Project detail: namespace, owner, protected and recovery location (each with its readiness), backup bucket and whether each location reaches it (with the failed check's log), its **backup folders** (the Project's inventory, including clusters deleted since, each with **Restore**), access, quota, deletion protection, Grafana/Prometheus endpoints (and where the locations write their metrics), the clusters in it, **Edit**, **Create cluster here**, **Delete** (once it has no clusters left; type-to-confirm) | `/cnpg/projects/:name` |
-| **Edit project**: owner, description, adding a recovery location, access groups, quota, metrics retention, Prometheus volume size (grow only), Grafana ingress. The locations are read-only once set | `/cnpg/projects/:name/edit` |
-| **Buckets** page: every bucket on the object store account COSI provisions with (the COSI driver's keys), also those nothing uses any more: **In use** (a Project's backup bucket), **COSI claim** (a BucketClaim outside a project) or **Orphaned** (e.g. the retained bucket of a deleted project, named after it); objects, size, last write; summary tiles and a filter. Sizes come from listing the objects (up to 100,000 per bucket, cached a minute) | `/cnpg/buckets` |
-| Bucket detail: what uses it, endpoint, usage, its **folders** (per backup server under `barman/`, with the cluster from the project's inventory), **Delete** for an orphaned bucket only (type-to-confirm; empties it, all versions and unfinished uploads, then deletes it). Backend: `GET /buckets`, `GET /buckets/:name`, `DELETE /buckets/:name` (409 for one in use) | `/cnpg/buckets/:name` |
-| **Volumes** page: the disks of PostgreSQL instances: CNPG's PersistentVolumeClaims in each project's namespace, in every location the project uses (read with that location's kubeconfig), with the PersistentVolume behind each: **In use** (its PostgresCluster still runs there, or a pod mounts it), **Orphaned** (a claim of a cluster that no longer runs there) or **Released** (a volume with reclaim policy Retain whose CNPG claim is gone); cluster, instance and role (data/WAL/tablespace), size (and a resize in progress), used space from the node's kubelet (`nodes/proxy` `stats/summary`, cached a minute), storage class and reclaim policy; summary tiles, filters on state, project (`?project=`, linked from the project page) and location; an unreachable location is shown as a warning. **Delete** for orphaned and released volumes only (type-to-confirm): a Retain volume is switched to Delete first, so the disk goes too. Backend: `GET /volumes[?project=]`, `DELETE /volumes/:location/claims/:namespace/:name`, `DELETE /volumes/:location/persistentvolumes/:name` (409 for one in use; the state is re-checked server-side) | `/cnpg/volumes` |
-| **Audit logs** page, per project (`?project=`, linked from the project page): the Kubernetes events of the project's namespace on the control plane (Project, PostgresCluster XRs, Crossplane) and in every location it uses (CNPG Clusters, pods, volumes, backups), and the **pgaudit** records of its PostgreSQL clusters (who ran which statement, on which object, from where), newest first; summary tiles, filters on location, cluster, source and warnings, search, **Export JSON**. Kubernetes keeps events for about an hour; audit records come from each instance's current log (`tailLines`, default 5000), so keep a longer history in a log store. A cluster records SQL once **Audit logging (pgaudit)** is on in its create or edit form, which sets `spec.postgresql.parameters["pgaudit.log"]` (schema and permission changes, plus data changes, or every statement); the page lists the clusters without it. Backend: `GET /projects/:name/audit[?tailLines=]` | `/cnpg/audit` |
-| **Valkey caches** page: every `ValkeyCache` (exact or semantic) with its state, shards ready, replicas, memory and maxmemory, eviction policy and location; summary tiles, project filter, search | `/cnpg/caches` |
-| Cache detail: state, the operator's message (e.g. no Valkey operator in the location), endpoint, the password Secrets, the `valkey://` **connection URI** (masked; read from the copy in the location, needs `cnpg.cache.credentials.read`), which clients fit the topology, memory and eviction, pods per shard, conditions, events, **Edit**, **Delete** (type-to-confirm); a **Monitoring** tab embeds the cache's Grafana dashboard from its project's Grafana, like a cluster's. Backend: `GET /caches[?namespace=]`, `GET /caches/:namespace/:name`, `GET /caches/:namespace/:name/connection` | `/cnpg/caches/:namespace/:name`, `/cnpg/caches/:namespace/:name/monitoring` |
-| **Create cache** (and **New semantic cache**, `?mode=semantic`: one node by default, so LiteLLM's plain client works) and **Edit cache**: project, site (protected or recovery: the project's location names shown, fixed), mode (fixed), shards, replicas, CPU, memory, max memory %, eviction policy, metrics, alerts, Grafana dashboard; manifest or change preview and **Validate**. Backend: `POST /caches`, `PATCH /caches/:namespace/:name`, `DELETE /caches/:namespace/:name`. Deleting a project is refused while it has caches | `/cnpg/caches/create`, `/cnpg/caches/:namespace/:name/edit` |
-| Create-project form with the protected and (optional) recovery location picked from the registered locations, manifest preview and **Validate** | `/cnpg/projects/create` |
-| Create-cluster form with live manifest preview and **Validate** (server-side dry run against the XRD). The cluster's namespace is picked from the Projects, not typed; it runs in that project's protected location, internal by default (**External access** is an opt-in LoadBalancer that needs the allowed client CIDRs; also for the New RAG cluster form), and **Geo replication** (offered when the project has a recovery location) adds a replica cluster there. Backups go to the project's COSI bucket by default when it has one, or to a destination of your own | `/cnpg/create` |
-| Every Project in the catalog as a `Resource` of type `project` (named after the project, owner from `spec.owner`), every PostgresCluster as a `Resource` of type `postgres-cluster` (owner/system from the `backstage.io/owner` / `backstage.io/system` labels, `dependsOn` its project, a **PostgreSQL** tab), and every ValkeyCache as a `Resource` of type `valkey-cache` named `<project>--<name>.valkey` (the same labels and links, a **Valkey** tab) | `plugins/cnpg-backend` catalog module |
-| Software Templates *Project* (action `cnpg:project:create`), *PostgreSQL cluster (CloudNativePG)* (action `cnpg:postgrescluster:create`) and *Valkey cache* (action `cnpg:valkeycache:create`), the project picked with an `EntityPicker` on `spec.type: project` | `templates/` |
-| Permissions `cnpg.cluster.{read,create,update,delete,restore,switchover,failover}` (`restore` also needs `create`, and guards a plain create with `spec.restore` too), `cnpg.project.{read,create,update,delete}`, `cnpg.project.audit.read` (the audit logs, which carry SQL statements; also needs `cnpg.project.read`), `cnpg.location.{read,create,update,delete}` `cnpg.bucket.{read,delete}`, `cnpg.volume.{read,delete}`, `cnpg.cache.{read,create,update,delete}` and `cnpg.cache.credentials.read` (a cache's password; also needs `cnpg.cache.read`); the UI hides create/edit/delete when denied | `plugins/cnpg-common` |
+| **PostgreSQL** page: summary tiles, then all clusters across namespaces with health, version, instances and size, primary, location (and its replica cluster), pooler/backup flags; filter + search; auto-refresh | `plugins/basis` (`/basis`) |
+| **New cluster**: project, owner, a **size** from the platform's catalog (XS–XL: CPU and memory per instance plus tuned PostgreSQL settings, and suggested volumes) or custom CPU and memory, storage, HA, pooler, backups, geo replication, monitoring and audit logging (pgaudit); the panel shows the manifest, **Validate** dry-runs it. Backend: `GET /sizes` (the `postgres-sizes` catalog, empty without one: the form then offers custom resources only) | `/basis/create` |
+| **New RAG cluster**: the create form with the **Vector & RAG** workload profile preset (also picked in the form itself): size M, PostgreSQL 18 and pgvector, VectorChord and pg_search from the extension catalog (mounted from images); extensions that need PostgreSQL 18 can't be ticked on an older version | `/basis/create?profile=vector` |
+| Cluster detail: status, connection endpoints & credential Secret, size, the CPU/memory and PostgreSQL settings it runs with, storage/HA/pooler/backup/monitoring config, both sites with their location and role (primary, replica, promoting), instance pods and recent events from both, conditions, **Edit**, delete (type-to-confirm) | `/basis/:namespace/:name` |
+| **Edit cluster**: everything that changes in place: volume sizes (grow only), instances, size (or custom CPU/memory), HA, pooler, backups, monitoring, audit logging (switching pgaudit on or off restarts the instances one by one; only `pgaudit.log` is patched, other PostgreSQL parameters stay), owner and **geo replication**. Name, project, protected location, primary site, PostgreSQL version, database and StorageClass are read-only. The panel shows the exact change (a merge patch); **Validate** dry-runs it | `/basis/:namespace/:name/edit` |
+| **Disaster recovery** tab (geo-replicated clusters): both sites with their location, role (primary, replica cluster, promoting), health and instances; the WAL archive the replica cluster replays; **Switch over** (planned, demotes the primary first, loses nothing) and **Fail over** (promotes the other site right away; type-to-confirm, warns when the primary's site still looks healthy) to the other site, and back. A switchover that waits for a site that is down can be escalated to a failover. Backend: `POST /clusters/:namespace/:name/promote` with `{site, mode}`; edits can't move the primary | `/basis/:namespace/:name/dr` |
+| **Backups** tab: where the cluster archives (store and folder), schedule, retention, last base backup and the recoverable window; **Restore to a new cluster** up to a point in time or the latest state (new name, storage size; the target time is checked against the window). The source is never touched: restoring is creating a new cluster with `spec.restore`. Backend: `POST /projects/:name/restore` with `{name, from: {cluster} \| {serverName}, targetTime?, storageSize?}` | `/basis/:namespace/:name/backups` |
+| **Locations** page: the Kubernetes clusters the platform can use, with environment, provider/region, API server, Kubernetes version, Ready nodes, health (probed from the backend, cached 30s), whether Crossplane can use it and how many projects do | `/basis/locations` |
+| Location detail: settings, connection (server, context, auth type, TLS), what Crossplane reports (connected, operators installed) and projects, every health check, **Check now**, **Edit**, remove (type-to-confirm, refused while a project lists it) | `/basis/locations/:name` |
+| **Add location** / **Edit location**: upload or paste a kubeconfig (pick a context if it has several), name, environment, provider, region, owner, default StorageClass, open/closed for new databases; **Test connection** probes it before saving | `/basis/locations/create`, `/basis/locations/:name/edit` |
+| **Logs** tab: stdout of the cluster's pods in any of its locations (pick a pod, tail size, follow, previous container), shown readable or as raw JSON | `/basis/:namespace/:name/logs` |
+| **Monitoring** tab: the cluster's CNPG Grafana dashboard (the `GrafanaDashboard` the composition creates), embedded with a time-range picker and an "Open in Grafana" link | `/basis/:namespace/:name/monitoring` |
+| **Projects** page: every Project (namespace + Prometheus + Grafana) with health, owner, cluster count and a Grafana link | `/basis/projects` |
+| Project detail: namespace, owner, protected and recovery location (each with its readiness), backup bucket and whether each location reaches it (with the failed check's log), its **backup folders** (the Project's inventory, including clusters deleted since, each with **Restore**), access, quota, deletion protection, Grafana/Prometheus endpoints (and where the locations write their metrics), the clusters in it, **Edit**, **Create cluster here**, **Delete** (once it has no clusters left; type-to-confirm) | `/basis/projects/:name` |
+| **Edit project**: owner, description, adding a recovery location, access groups, quota, metrics retention, Prometheus volume size (grow only), Grafana ingress. The locations are read-only once set | `/basis/projects/:name/edit` |
+| **Buckets** page: every bucket on the object store account COSI provisions with (the COSI driver's keys), also those nothing uses any more: **In use** (a Project's backup bucket), **COSI claim** (a BucketClaim outside a project) or **Orphaned** (e.g. the retained bucket of a deleted project, named after it); objects, size, last write; summary tiles and a filter. Sizes come from listing the objects (up to 100,000 per bucket, cached a minute) | `/basis/buckets` |
+| Bucket detail: what uses it, endpoint, usage, its **folders** (per backup server under `barman/`, with the cluster from the project's inventory), **Delete** for an orphaned bucket only (type-to-confirm; empties it, all versions and unfinished uploads, then deletes it). Backend: `GET /buckets`, `GET /buckets/:name`, `DELETE /buckets/:name` (409 for one in use) | `/basis/buckets/:name` |
+| **Volumes** page: the disks of PostgreSQL instances: CNPG's PersistentVolumeClaims in each project's namespace, in every location the project uses (read with that location's kubeconfig), with the PersistentVolume behind each: **In use** (its PostgresCluster still runs there, or a pod mounts it), **Orphaned** (a claim of a cluster that no longer runs there) or **Released** (a volume with reclaim policy Retain whose CNPG claim is gone); cluster, instance and role (data/WAL/tablespace), size (and a resize in progress), used space from the node's kubelet (`nodes/proxy` `stats/summary`, cached a minute), storage class and reclaim policy; summary tiles, filters on state, project (`?project=`, linked from the project page) and location; an unreachable location is shown as a warning. **Delete** for orphaned and released volumes only (type-to-confirm): a Retain volume is switched to Delete first, so the disk goes too. Backend: `GET /volumes[?project=]`, `DELETE /volumes/:location/claims/:namespace/:name`, `DELETE /volumes/:location/persistentvolumes/:name` (409 for one in use; the state is re-checked server-side) | `/basis/volumes` |
+| **Audit logs** page, per project (`?project=`, linked from the project page): the Kubernetes events of the project's namespace on the control plane (Project, PostgresCluster XRs, Crossplane) and in every location it uses (CNPG Clusters, pods, volumes, backups), and the **pgaudit** records of its PostgreSQL clusters (who ran which statement, on which object, from where), newest first; summary tiles, filters on location, cluster, source and warnings, search, **Export JSON**. Kubernetes keeps events for about an hour; audit records come from each instance's current log (`tailLines`, default 5000), so keep a longer history in a log store. A cluster records SQL once **Audit logging (pgaudit)** is on in its create or edit form, which sets `spec.postgresql.parameters["pgaudit.log"]` (schema and permission changes, plus data changes, or every statement); the page lists the clusters without it. Backend: `GET /projects/:name/audit[?tailLines=]` | `/basis/audit` |
+| **Valkey caches** page: every `ValkeyCache` (exact or semantic) with its state, shards ready, replicas, memory and maxmemory, eviction policy and location; summary tiles, project filter, search | `/basis/caches` |
+| Cache detail: state, the operator's message (e.g. no Valkey operator in the location), endpoint, the password Secrets, the `valkey://` **connection URI** (masked; read from the copy in the location, needs `basis.cache.credentials.read`), which clients fit the topology, memory and eviction, pods per shard, conditions, events, **Edit**, **Delete** (type-to-confirm); a **Monitoring** tab embeds the cache's Grafana dashboard from its project's Grafana, like a cluster's. Backend: `GET /caches[?namespace=]`, `GET /caches/:namespace/:name`, `GET /caches/:namespace/:name/connection` | `/basis/caches/:namespace/:name`, `/basis/caches/:namespace/:name/monitoring` |
+| **Create cache** (and **New semantic cache**, `?mode=semantic`: one node by default, so LiteLLM's plain client works) and **Edit cache**: project, site (protected or recovery: the project's location names shown, fixed), mode (fixed), shards, replicas, CPU, memory, max memory %, eviction policy, metrics, alerts, Grafana dashboard; manifest or change preview and **Validate**. Backend: `POST /caches`, `PATCH /caches/:namespace/:name`, `DELETE /caches/:namespace/:name`. Deleting a project is refused while it has caches | `/basis/caches/create`, `/basis/caches/:namespace/:name/edit` |
+| **GenAI stacks** page and **Create / Edit stack**: one form for a stack's sites (warm standby in the recovery location when the project has one), retrieval (size, storage, extensions), cache (mode, memory) and gateway: its own with models (name, API, endpoint, upstream model, API key Secret), or a shared model gateway of the project and the stack's client name there; manifest or change preview and **Validate**. Stack page: sites (active/standby, gateway, database and cache endpoints), components linked to their cluster, cache and gateway pages, **Active site** with **Switch over** / **Fail over** (needs `basis.cluster.switchover` / `basis.cluster.failover`), models, and the wiring (the connection Secret's keys; values with `basis.stack.credentials.read`); **Delete** (type-to-confirm; turns deletion protection off). A stack's database, caches and gateway show "Part of stack X" instead of Edit/Delete, and the database's Disaster recovery tab points at the stack. Backend: `GET/POST /stacks`, `GET/PATCH/DELETE /stacks/:namespace/:name`, `GET /stacks/:namespace/:name/connection`, `POST /stacks/:namespace/:name/promote`; deleting a project is refused while it has stacks | `/basis/stacks`, `/basis/stacks/create`, `/basis/stacks/:namespace/:name[/edit]` |
+| **Model gateways** page and **Create / Edit gateway**: project, replicas, standby in the recovery site, clients (each gets a key), models; manifest or change preview and **Validate**. Gateway page: endpoint (`OPENAI_BASE_URL`), sites, models, the stacks that use it, and **Clients** with their keys (read from the copy in the location, needs `basis.gateway.credentials.read`); **Delete** (refused while a stack shares it). A stack's own gateway is read-only. Backend: `GET/POST /gateways`, `GET/PATCH/DELETE /gateways/:namespace/:name`, `GET /gateways/:namespace/:name/keys` | `/basis/gateways`, `/basis/gateways/create`, `/basis/gateways/:namespace/:name[/edit]` |
+| Create-project form with the protected and (optional) recovery location picked from the registered locations, manifest preview and **Validate** | `/basis/projects/create` |
+| Create-cluster form with live manifest preview and **Validate** (server-side dry run against the XRD). The cluster's namespace is picked from the Projects, not typed; it runs in that project's protected location, internal by default (**External access** is an opt-in LoadBalancer that needs the allowed client CIDRs; also for the New RAG cluster form), and **Geo replication** (offered when the project has a recovery location) adds a replica cluster there. Backups go to the project's COSI bucket by default when it has one, or to a destination of your own | `/basis/create` |
+| Every Project in the catalog as a `Resource` of type `project` (named after the project, owner from `spec.owner`), every PostgresCluster as a `Resource` of type `postgres-cluster` (owner/system from the `backstage.io/owner` / `backstage.io/system` labels, `dependsOn` its project, a **PostgreSQL** tab), every ValkeyCache as a `Resource` of type `valkey-cache` named `<project>--<name>.valkey` (the same labels and links, a **Valkey** tab), every ModelGateway as a `Resource` of type `model-gateway` named `<project>--<name>.gateway` (a **Model gateway** tab), and every GenAIStack as a `Resource` of type `genai-stack` named `<project>--<name>.stack`, `dependsOn` its project, database, caches and gateway, with a **GenAI stack** tab | `plugins/basis-backend` catalog module |
+| Software Templates *Project* (action `basis:project:create`), *PostgreSQL cluster (CloudNativePG)* (action `basis:postgrescluster:create`) and *Valkey cache* (action `basis:valkeycache:create`) *Model gateway* (action `basis:modelgateway:create`) and *GenAI stack* (action `basis:genaistack:create`; models with an API key Secret name, or a shared gateway), the project picked with an `EntityPicker` on `spec.type: project` | `templates/` |
+| Permissions `basis.cluster.{read,create,update,delete,restore,switchover,failover}` (`restore` also needs `create`, and guards a plain create with `spec.restore` too), `basis.project.{read,create,update,delete}`, `basis.project.audit.read` (the audit logs, which carry SQL statements; also needs `basis.project.read`), `basis.location.{read,create,update,delete}` `basis.bucket.{read,delete}`, `basis.volume.{read,delete}`, `basis.cache.{read,create,update,delete}`, `basis.cache.credentials.read` (a cache's password; also needs `basis.cache.read`), `basis.stack.{read,create,update,delete}`, `basis.stack.credentials.read` (a stack's connection values), `basis.gateway.{read,create,update,delete}` and `basis.gateway.credentials.read` (a gateway's client keys); switching a stack's site takes `basis.cluster.switchover` / `basis.cluster.failover`; the UI hides create/edit/delete when denied | `plugins/basis-common` |
 
 ```
-plugins/cnpg            frontend plugin (pages, entity tab, API client)
-plugins/cnpg-backend    REST API /api/cnpg, catalog entity provider, scaffolder action
-plugins/cnpg-common     shared types + permissions
-templates/              Software Templates (project, postgres-cluster)
+plugins/basis            frontend plugin (pages, entity tab, API client)
+plugins/basis-backend    REST API /api/basis, catalog entity provider, scaffolder actions, MCP actions
+plugins/basis-common     shared types + permissions
+templates/              Software Templates (project, postgres-cluster, valkey-cache, model-gateway, genai-stack)
 deploy/                 control-plane manifests: RBAC, Backstage's own DB (a CNPG Cluster), Deployment
 ```
 
-The backend writes **only** `PostgresCluster`, `Project` and `Location` objects with field manager `backstage-cnpg`
-(plus the locations' kubeconfig Secrets in `cnpg-locations`, see [Locations](#locations); the Buckets page
-reads the COSI driver's Secret and deletes orphaned buckets on the object store, see `cnpg.buckets` in `app-config.yaml`):
+The backend writes **only** the APIs' objects (`GenAIStack`, `ModelGateway`, `PostgresCluster`, `ValkeyCache`, `Project`, `Location`) with field manager `backstage-basis`
+(plus the locations' kubeconfig Secrets in `basis-locations`, see [Locations](#locations); the Buckets page
+reads the COSI driver's Secret and deletes orphaned buckets on the object store, see `basis.buckets` in `app-config.yaml`):
 server-side apply to create them, a JSON merge patch of just the changed fields to edit them (so settings
 made with kubectl stay). Validation stays in one place, the XRD: API server errors such as
 "synchronousReplicas must be lower than instances" or "volumes can grow but not shrink" are shown in the
@@ -60,8 +64,8 @@ yarn install
 # MkDocs for the platform docs (TechDocs), once; .techdocs-venv is git-ignored
 python3 -m venv .techdocs-venv && .techdocs-venv/bin/pip install mkdocs-techdocs-core==1.6.1
 
-PATH=$PWD/.techdocs-venv/bin:$PATH CNPG_KUBE_CONTEXT=$(kubectl config current-context) \
-  CNPG_BUCKETS_ENDPOINT=https://s3.example.com yarn start
+PATH=$PWD/.techdocs-venv/bin:$PATH BASIS_KUBE_CONTEXT=$(kubectl config current-context) \
+  BASIS_BUCKETS_ENDPOINT=https://s3.example.com yarn start
 # http://localhost:3000 → Enter as guest
 ```
 
@@ -70,10 +74,14 @@ If `python3 -m venv` complains about a missing `ensurepip` (Debian/Ubuntu withou
 `python3 -m venv --without-pip .techdocs-venv` and install pip into it with
 [`get-pip.py`](https://bootstrap.pypa.io/get-pip.py).
 
-Without `CNPG_KUBE_CONTEXT` the backend uses your **current** kubeconfig context. The **Buckets** page
-needs `CNPG_BUCKETS_ENDPOINT`, the COSI driver's S3 endpoint (`COSI_S3_ENDPOINT` in
+Without `BASIS_KUBE_CONTEXT` the backend uses your **current** kubeconfig context. The **Buckets** page
+needs `BASIS_BUCKETS_ENDPOINT`, the COSI driver's S3 endpoint (`COSI_S3_ENDPOINT` in
 [`deps/cosi/install.sh`](../deps/cosi/install.sh)); without it the page says no object store is configured. Other settings are
-under `cnpg:` in `app-config.yaml` (schema: `plugins/cnpg-backend/config.d.ts`).
+under `basis:` in `app-config.yaml` (schema: `plugins/basis-backend/config.d.ts`).
+
+> **Renamed:** these were `CNPG_KUBE_CONTEXT`, `CNPG_BUCKETS_ENDPOINT` and `CNPG_GRAFANA_URL`, and the
+> config key `cnpg:`, before function-basis v0.4.0. The old names are no longer read: with only
+> `CNPG_BUCKETS_ENDPOINT` set, the Buckets page says no object store is configured.
 
 ### Platform docs and API reference
 
@@ -106,7 +114,7 @@ the control plane), so nothing needs configuring. Its panels show the locations'
 own:
 
 ```sh
-CNPG_GRAFANA_URL=https://grafana.example.com yarn start
+BASIS_GRAFANA_URL=https://grafana.example.com yarn start
 ```
 
 - `{namespace}` in the fallback URL is replaced by the cluster's namespace, for one Grafana per
@@ -124,20 +132,20 @@ CNPG_GRAFANA_URL=https://grafana.example.com yarn start
 
 - `backend.csp.frame-src` in `app-config.yaml` allows the iframe; narrow it to your Grafana host in
   production.
-- Without `CNPG_GRAFANA_URL` the Monitoring tab explains how to connect Grafana instead.
+- Without `BASIS_GRAFANA_URL` the Monitoring tab explains how to connect Grafana instead.
 
 ### Locations
 
 A location is a Kubernetes cluster the databases run in: a `Location` object (cluster-scoped, see
 [`api`](../api/README.md#locations)) with the settings, pointing at a Secret
-in the control plane's `cnpg-locations` namespace (`cnpg.locations.namespace`, label
+in the control plane's `basis-locations` namespace (`basis.locations.namespace`, label
 `platform.cndev.nl/location=true`) that holds the kubeconfig under the `kubeconfig` key. The backend
 writes the Secret first, then the Location. The kubeconfig never leaves the backend; the API returns
 only server, context and auth type. The Location's composition creates the provider-kubernetes
 `ClusterProviderConfig` the Project and PostgresCluster compositions place objects through. Its status
 (connected, operators installed, a message) shows on the location pages next to the portal's own
 health checks. Locations created with kubectl or GitOps show up the same way, and so does their
-kubeconfig if its Secret is in `cnpg-locations`. The control plane itself is no location (`local`
+kubeconfig if its Secret is in `basis-locations`. The control plane itself is no location (`local`
 is reserved).
 
 A Project has a **protected** location, where its databases run, and optionally a **recovery**
@@ -176,7 +184,7 @@ a `ClusterUsage` on its Locations.
 
 `packages/app/src/modules/theme` holds the BASIS theme (the only theme) and the token overrides for
 Backstage UI. `packages/app/src/modules/nav` holds the logo, the sidebar, the app shell and the
-sign-in page. `app.packages.include` in `app-config.yaml` loads only the catalog and cnpg frontend
+sign-in page. `app.packages.include` in `app-config.yaml` loads only the catalog and basis frontend
 plugins; the other plugins stay in `packages/app/package.json` but are not bundled into the app.
 
 ## Test
@@ -191,8 +199,8 @@ yarn lint:all
 
 ```sh
 yarn install --immutable && yarn tsc && yarn build:backend
-docker build -t <registry>/cnpg-portal:<tag> -f packages/backend/Dockerfile .
-# set the image and CNPG_BUCKETS_ENDPOINT in deploy/backstage.yaml, then
+docker build -t <registry>/basis-portal:<tag> -f packages/backend/Dockerfile .
+# set the image and BASIS_BUCKETS_ENDPOINT in deploy/backstage.yaml, then
 kubectl apply -k deploy/
 ```
 
@@ -200,20 +208,40 @@ Deploy it on the control plane. `deploy/rbac.yaml` gives the ServiceAccount full
 `postgresclusters`, get/list/create/patch/delete on `projects` (the backend deletes only a project
 without PostgresClusters, and turns its deletion protection off for that), get/list/create/update/delete
 on `locations`, get on the `postgres-sizes` EnvironmentConfig (the size catalog), read
-access to namespaces, and access to Secrets **only** in the `cnpg-locations` namespace (the
+access to namespaces, and access to Secrets **only** in the `basis-locations` namespace (the
 locations' kubeconfigs), plus get on the COSI driver's `cloudian-cosi-secret` in `cloudian-cosi`
 for the Buckets page. Pods, pod logs, events and CNPG Clusters are read in the locations with
 their kubeconfigs. Backstage's own database is a plain CloudNativePG `Cluster`
 (`deploy/database.yaml`): no PostgresCluster can run on the control plane, so install
-[`operator`](../operator) there for it. Plugins share it per schema
+[`deps/cnpg`](../deps/cnpg) there for it. Plugins share it per schema
 (`pluginDivisionMode: schema`), because the CNPG app role can't create databases.
 
 Before production: replace the guest auth provider with your IdP
 (<https://backstage.io/docs/auth/>), and replace the allow-all permission policy with one that
-restricts `cnpg.cluster.create`/`update`/`delete`, `cnpg.project.create`/`update`/`delete` and
-`cnpg.location.create`/`update`/`delete` (a location is a kubeconfig, often cluster-admin: platform admins
+restricts `basis.cluster.create`/`update`/`delete`, `basis.project.create`/`update`/`delete` and
+`basis.location.create`/`update`/`delete` (a location is a kubeconfig, often cluster-admin: platform admins
 only).
 
 The scaffolder *frontend* isn't bundled (`app.packages.include`), so in the portal you create projects
 and clusters with its own forms. The Software Templates and actions are registered in the backend, for
 the scaffolder API, MCP actions, or a Backstage instance that does include the scaffolder UI.
+
+## MCP tools for agents
+
+`@backstage/plugin-mcp-actions-backend` serves registered actions as MCP tools; `backend.actions.pluginSources`
+in `app-config.yaml` lists `basis` next to the catalog's and the scaffolder's. The basis actions
+([`plugins/basis-backend/src/actions.ts`](plugins/basis-backend/src/actions.ts)):
+
+| Action | What |
+|---|---|
+| `basis:list-projects` | Projects and their locations |
+| `basis:list-genai-stacks` | Stacks (optionally one project's): health, active site, gateway, connection Secret |
+| `basis:list-model-gateways` | Gateways: endpoint, models, clients, keys Secret |
+| `basis:create-genai-stack` | Validates (`dryRun`, the default) or creates a stack: own models or a shared gateway |
+| `basis:create-model-gateway` | Validates (default) or creates a gateway |
+
+Each checks the caller's `basis.*` permission, like the REST API. None returns credentials: an app
+mounts its connection Secret, a person reads keys in the portal. Clients connect to
+`<backend>/api/mcp-actions/v1`; see Backstage's [MCP actions](https://backstage.io/docs/ai/mcp-actions)
+for authentication. The platform docs explain it for users (`catalog/docs/ai/agents.md`) and
+publish an `llms.txt` with the APIs' rules (`catalog/docs/llms.txt`).

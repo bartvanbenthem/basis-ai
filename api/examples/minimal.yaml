@@ -4,7 +4,7 @@
 # that location connect with the credentials in Secret demo/orders-db-app at
 # orders-db-rw.demo.svc:5432. For clients outside the location, see
 # spec.expose in production.yaml.
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

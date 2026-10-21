@@ -1,0 +1,48 @@
+# A GenAIStack in the demo Project's protected location: a RAG database
+# (pgvector), a semantic cache and a gateway of its own (ModelGateway
+# support-bot-gateway) for two models. To share a gateway with other stacks
+# and agents instead, set spec.gateway.ref (see modelgateway.yaml).
+# Needs the Valkey operator and Envoy Gateway + Agent Router in the location
+# (deps/README.md), and the provider key in a Secret first:
+#
+#   kubectl -n demo create secret generic openai --from-literal=apiKey=sk-...
+#
+# Apps in that location get everything from Secret demo/support-bot-connection:
+#
+#   envFrom:
+#     - secretRef: {name: support-bot-connection}
+#
+#   DATABASE_URL     postgresql://support_bot_stack:...@support-bot-db-rw.demo.svc:5432/app
+#   VALKEY_URL       valkey://default:...@valkey-support-bot-cache.demo.svc:6379 (VALKEY_CLUSTER=false)
+#   OPENAI_BASE_URL  http://support-bot-gateway.demo.svc/v1  (any OpenAI SDK; model: gpt-4o-mini or llama)
+#   OPENAI_API_KEY   the stack's key for its gateway
+#
+# Cache keys: tenant + model + system-prompt version + corpus version + the
+# prompt (or a TAG filter in the KNN query). Keep the corpus version in a
+# table of the RAG database and bump it in the same transaction as each
+# ingestion batch: old answers stop matching, and after a failover the
+# recovery site's version matches the data it has (see genaistack-geo.yaml).
+apiVersion: ai.cndev.nl/v1alpha1
+kind: GenAIStack
+metadata:
+  name: support-bot
+  namespace: demo
+spec:
+  retrieval:
+    size: s
+    storageSize: 20Gi
+    extensions: [vector]
+  cache:
+    mode: semantic
+    memory: 1Gi
+  gateway:
+    replicas: 2
+    models:
+      - name: gpt-4o-mini
+        endpoint: https://api.openai.com/v1
+        apiKeySecretRef:
+          name: openai
+      # A self-hosted, OpenAI-compatible server (vLLM, KServe, Ollama, ...).
+      - name: llama
+        endpoint: http://vllm.models.svc:8000/v1
+        upstreamModel: meta-llama/Llama-3.1-8B-Instruct

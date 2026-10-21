@@ -2,23 +2,28 @@ import {
   coreServices,
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
-import { cnpgPermissions } from '@internal/backstage-plugin-cnpg-common';
+import { actionsRegistryServiceRef } from '@backstage/backend-plugin-api/alpha';
+import { basisPermissions } from '@internal/backstage-plugin-basis-common';
+import { registerActions } from './actions';
 import { createRouter } from './router';
 import { auditServiceRef } from './service/AuditService';
 import { bucketServiceRef } from './service/BucketService';
-import { cnpgKubernetesServiceRef } from './service/CnpgKubernetesService';
+import { basisKubernetesServiceRef } from './service/BasisKubernetesService';
 import { locationServiceRef } from './service/LocationService';
+import { gatewayServiceRef } from './service/GatewayService';
+import { stackServiceRef } from './service/StackService';
 import { valkeyServiceRef } from './service/ValkeyService';
 import { volumeServiceRef } from './service/VolumeService';
 
 /**
- * REST API for the CNPG portal: list / inspect / create / update / delete
- * cnpg.cndev.nl PostgresClusters and cache.cndev.nl ValkeyCaches. Mounted at /api/cnpg.
+ * REST API for the BASIS portal: list / inspect / create / update / delete
+ * the BASIS APIs (GenAIStacks, ModelGateways, PostgresClusters, ValkeyCaches,
+ * Projects and Locations). Mounted at /api/basis.
  *
  * @public
  */
-export const cnpgPlugin = createBackendPlugin({
-  pluginId: 'cnpg',
+export const basisPlugin = createBackendPlugin({
+  pluginId: 'basis',
   register(env) {
     env.registerInit({
       deps: {
@@ -27,12 +32,15 @@ export const cnpgPlugin = createBackendPlugin({
         permissions: coreServices.permissions,
         permissionsRegistry: coreServices.permissionsRegistry,
         config: coreServices.rootConfig,
-        k8s: cnpgKubernetesServiceRef,
+        k8s: basisKubernetesServiceRef,
         locations: locationServiceRef,
         buckets: bucketServiceRef,
         volumes: volumeServiceRef,
         audit: auditServiceRef,
         valkey: valkeyServiceRef,
+        stacks: stackServiceRef,
+        gateways: gatewayServiceRef,
+        actionsRegistry: actionsRegistryServiceRef,
       },
       async init({
         httpAuth,
@@ -46,10 +54,15 @@ export const cnpgPlugin = createBackendPlugin({
         volumes,
         audit,
         valkey,
+        stacks,
+        gateways,
+        actionsRegistry,
       }) {
-        permissionsRegistry.addPermissions(cnpgPermissions);
-        httpRouter.use(await createRouter({ httpAuth, permissions, config, k8s, locations, buckets, volumes, audit, valkey }));
+        permissionsRegistry.addPermissions(basisPermissions);
+        httpRouter.use(await createRouter({ httpAuth, permissions, config, k8s, locations, buckets, volumes, audit, valkey, stacks, gateways }));
         httpRouter.addAuthPolicy({ path: '/health', allow: 'unauthenticated' });
+        // The same, as MCP tools for agents (plugin-mcp-actions-backend).
+        registerActions({ actionsRegistry, permissions, k8s, stacks, gateways });
       },
     });
   },

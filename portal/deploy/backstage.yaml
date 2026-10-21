@@ -1,6 +1,6 @@
 # Backstage itself. Build and push the image first:
 #   yarn install --immutable && yarn tsc && yarn build:backend
-#   docker build -t <registry>/cnpg-portal:<tag> -f packages/backend/Dockerfile .
+#   docker build -t <registry>/basis-portal:<tag> -f packages/backend/Dockerfile .
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,7 +19,7 @@ spec:
       serviceAccountName: backstage
       containers:
         - name: backstage
-          image: registry.example.com/cnpg-portal:latest # replace
+          image: registry.example.com/basis-portal:latest # replace
           ports:
             - name: http
               containerPort: 7007
@@ -31,11 +31,11 @@ spec:
             # The app role cannot CREATE DATABASE, so every plugin gets a
             # schema in the one "backstage" database (app-config.production.yaml).
             - { name: POSTGRES_DB, valueFrom: { secretKeyRef: { name: backstage-db-app, key: dbname } } }
-            - name: CNPG_GRAFANA_URL
+            - name: BASIS_GRAFANA_URL
               value: "" # e.g. https://grafana.example.com
             # The Buckets page: the COSI driver's S3 endpoint (COSI_S3_ENDPOINT
             # in deps/cosi/install.sh); empty leaves the page unconfigured.
-            - name: CNPG_BUCKETS_ENDPOINT
+            - name: BASIS_BUCKETS_ENDPOINT
               value: "" # e.g. https://s3.example.com
           readinessProbe:
             httpGet: { path: /.backstage/health/v1/readiness, port: http }

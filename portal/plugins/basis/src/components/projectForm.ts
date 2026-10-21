@@ -4,7 +4,7 @@
  * XRD defaults, and the API server has the final say.
  */
 
-import type { Project } from '@internal/backstage-plugin-cnpg-common';
+import type { Project } from '@internal/backstage-plugin-basis-common';
 import { mergePatch, toMi } from './form';
 
 export interface ProjectForm {
@@ -51,8 +51,11 @@ const RESERVED = [
   'buckets',
   'volumes',
   'caches',
+  'stacks',
+  'gateways',
   'crossplane-system',
   'cnpg-system',
+  'basis-locations',
   'cnpg-locations',
   'cert-manager',
 ];

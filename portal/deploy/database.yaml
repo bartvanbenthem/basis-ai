@@ -1,6 +1,6 @@
 # Backstage's own PostgreSQL. The control plane runs no tenant databases (no
 # PostgresCluster can live here), so this is a plain CloudNativePG Cluster:
-# install ../../operator on the control plane for it. CNPG writes
+# install ../../deps/cnpg on the control plane for it. CNPG writes
 # host/port/user/password/dbname into Secret backstage-db-app, which
 # backstage.yaml maps onto the POSTGRES_* variables.
 apiVersion: postgresql.cnpg.io/v1

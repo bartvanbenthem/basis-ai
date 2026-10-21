@@ -10,8 +10,8 @@ import {
   PostgresCluster,
   Project,
   projectLocations,
-} from '@internal/backstage-plugin-cnpg-common';
-import { cnpgKubernetesServiceRef, kubeCall } from './CnpgKubernetesService';
+} from '@internal/backstage-plugin-basis-common';
+import { basisKubernetesServiceRef, kubeCall } from './BasisKubernetesService';
 import { locationServiceRef, withTimeout } from './LocationService';
 
 /** Reading every instance's log can take a while; one slow location mustn't hang the page. */
@@ -181,12 +181,12 @@ function toEntry(e: CoreV1Event, location: string, clusters: string[]): AuditEnt
 }
 
 export const auditServiceRef = createServiceRef<AuditService>({
-  id: 'cnpg.audit',
+  id: 'basis.audit',
   defaultFactory: async service =>
     createServiceFactory({
       service,
       deps: {
-        k8s: cnpgKubernetesServiceRef,
+        k8s: basisKubernetesServiceRef,
         locations: locationServiceRef,
       },
       factory: ({ k8s, locations }) =>

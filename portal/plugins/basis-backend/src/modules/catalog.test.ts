@@ -3,7 +3,7 @@ import { PostgresClusterEntityProvider } from './catalog';
 
 describe('PostgresClusterEntityProvider', () => {
   const cluster = {
-    apiVersion: 'cnpg.cndev.nl/v1alpha1',
+    apiVersion: 'postgres.cndev.nl/v1alpha1',
     kind: 'PostgresCluster',
     metadata: {
       name: 'payments-db',
@@ -35,7 +35,7 @@ describe('PostgresClusterEntityProvider', () => {
         name: 'payments--payments-db',
         title: 'payments-db (payments)',
         annotations: {
-          'cnpg.cndev.nl/postgrescluster': 'payments/payments-db',
+          'postgres.cndev.nl/postgrescluster': 'payments/payments-db',
           'backstage.io/kubernetes-id': 'payments-db',
           'backstage.io/kubernetes-namespace': 'payments',
         },
@@ -44,8 +44,8 @@ describe('PostgresClusterEntityProvider', () => {
       spec: { type: 'postgres-cluster', owner: 'team-payments', system: 'payments' },
     });
     expect(entity.metadata.links).toContainEqual({
-      url: 'https://portal.example.com/cnpg/payments/payments-db',
-      title: 'CNPG portal',
+      url: 'https://portal.example.com/basis/payments/payments-db',
+      title: 'BASIS portal',
     });
     expect(entity.metadata.links).toContainEqual({
       url: 'https://grafana.example.com/d/cnpg-abc',
@@ -93,7 +93,7 @@ describe('PostgresClusterEntityProvider', () => {
       spec: { type: 'project', owner: 'team-payments' },
     });
     expect(entity.metadata.links).toEqual([
-      { url: 'https://portal.example.com/cnpg/projects/payments', title: 'CNPG portal' },
+      { url: 'https://portal.example.com/basis/projects/payments', title: 'BASIS portal' },
       { url: 'http://grafana-payments.example.com', title: 'Grafana' },
     ]);
   });
@@ -128,9 +128,35 @@ describe('PostgresClusterEntityProvider', () => {
     });
     expect(entity.metadata.name).not.toBe(make().toEntity(cluster).metadata.name);
     expect(entity.metadata.links).toEqual([
-      { url: 'https://portal.example.com/cnpg/caches/payments/payments-db', title: 'CNPG portal' },
+      { url: 'https://portal.example.com/basis/caches/payments/payments-db', title: 'BASIS portal' },
       { url: 'http://grafana-payments.example.com/d/valkey-abc', title: 'Grafana dashboard' },
     ]);
+  });
+
+  it('maps a GenAIStack to a genai-stack Resource that depends on its parts', () => {
+    const entity = make().toStackEntity(
+      {
+        apiVersion: 'ai.cndev.nl/v1alpha1',
+        kind: 'GenAIStack',
+        metadata: { name: 'bot', namespace: 'payments', labels: { 'backstage.io/owner': 'team-ai' } },
+        spec: { recovery: { enabled: true } },
+      },
+      { name: 'payments', ready: true, synced: true, deleting: false, deletionProtection: true, prometheus: true, grafana: true, locations: [] },
+    );
+    expect(entity).toMatchObject({
+      metadata: { name: 'payments--bot.stack', annotations: { 'ai.cndev.nl/genaistack': 'payments/bot' } },
+      spec: {
+        type: 'genai-stack',
+        owner: 'team-ai',
+        dependsOn: [
+          'resource:default/payments',
+          'resource:default/payments--bot-db',
+          'resource:default/payments--bot-cache.valkey',
+          'resource:default/payments--bot-cache-dr.valkey',
+          'resource:default/payments--bot-gateway.gateway',
+        ],
+      },
+    });
   });
 
   it('falls back to the default owner', () => {
@@ -162,7 +188,7 @@ describe('PostgresClusterEntityProvider', () => {
       'payments--payments-db',
       'payments--llm.valkey',
     ]);
-    expect(entities.every((e: any) => e.locationKey === 'cnpg-postgresclusters')).toBe(true);
+    expect(entities.every((e: any) => e.locationKey === 'basis-catalog')).toBe(true);
     expect(entities[1].entity.spec.dependsOn).toEqual(['resource:default/payments']);
   });
 });

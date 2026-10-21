@@ -1,7 +1,7 @@
 # Geo-replicated, backups in the Project's COSI bucket: no destinationPath or
 # s3Credentials of its own. Each site gets its own credentials, copied from
 # the Project's Secret for its location.
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: secrets-db

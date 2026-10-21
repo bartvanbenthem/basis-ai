@@ -22,7 +22,7 @@ func obj(t *testing.T, y string) Object {
 }
 
 const xrYAML = `
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata: {name: orders-db, namespace: payments, uid: 0f3a9c1e-1111-2222-3333-444444444444}
 spec: {}

@@ -220,7 +220,7 @@ body:not(:has(.tp-shell)) main article {
   }
 }
 
-/* ---- shared portal components (plugins/cnpg) ------------------------ */
+/* ---- shared portal components (plugins/basis) ------------------------ */
 
 .tp-stats {
   display: grid;

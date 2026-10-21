@@ -1,6 +1,6 @@
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { Alert, Skeleton } from '@backstage/ui';
-import { CACHE_ANNOTATION } from '@internal/backstage-plugin-cnpg-common';
+import { CACHE_ANNOTATION } from '@internal/backstage-plugin-basis-common';
 import { CacheDetails, useCacheDetails } from './CacheDetailPage';
 import { ErrorAlert } from './common';
 
@@ -11,7 +11,7 @@ const EntityCacheDetails = ({ namespace, name }: { namespace: string; name: stri
   return <CacheDetails details={value} />;
 };
 
-/** "Valkey" tab on catalog Resource entities of ValkeyCaches, created by the cnpg catalog provider. */
+/** "Valkey" tab on catalog Resource entities of ValkeyCaches, created by the basis catalog provider. */
 export const EntityCacheContent = () => {
   const { entity } = useEntity();
   const ref = entity.metadata.annotations?.[CACHE_ANNOTATION] ?? '';

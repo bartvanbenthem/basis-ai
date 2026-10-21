@@ -1,5 +1,5 @@
 export interface Config {
-  cnpg?: {
+  basis?: {
     kubernetes?: {
       /**
        * Path to a kubeconfig file. Defaults to the in-cluster ServiceAccount
@@ -28,7 +28,7 @@ export interface Config {
     locations?: {
       /**
        * Namespace in the platform cluster holding one Secret (with a
-       * kubeconfig) per location. Defaults to "cnpg-locations".
+       * kubeconfig) per location. Defaults to "basis-locations".
        */
       namespace?: string;
     };

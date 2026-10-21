@@ -98,7 +98,7 @@ spec:
   failurePolicy: Fail
   matchConstraints:
     resourceRules:
-      - apiGroups: [cnpg.cndev.nl]
+      - apiGroups: [postgres.cndev.nl]
         apiVersions: ["*"]
         resources: [postgresclusters]
         operations: [CREATE, UPDATE]

@@ -8,9 +8,9 @@
 
 import { createBackend } from '@backstage/backend-defaults';
 import {
-  catalogModuleCnpg,
-  scaffolderModuleCnpg,
-} from '@internal/backstage-plugin-cnpg-backend';
+  catalogModuleBasis,
+  scaffolderModuleBasis,
+} from '@internal/backstage-plugin-basis-backend';
 
 const backend = createBackend();
 
@@ -74,9 +74,9 @@ backend.add(import('@backstage/plugin-signals-backend'));
 backend.add(import('@backstage/plugin-mcp-actions-backend'));
 
 // CNPG portal: REST API, catalog provider for PostgresClusters and the
-// cnpg:postgrescluster:create scaffolder action.
-backend.add(import('@internal/backstage-plugin-cnpg-backend'));
-backend.add(catalogModuleCnpg);
-backend.add(scaffolderModuleCnpg);
+// basis:postgrescluster:create scaffolder action.
+backend.add(import('@internal/backstage-plugin-basis-backend'));
+backend.add(catalogModuleBasis);
+backend.add(scaffolderModuleBasis);
 
 backend.start();

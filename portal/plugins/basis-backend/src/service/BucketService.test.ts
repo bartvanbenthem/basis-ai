@@ -1,7 +1,7 @@
 import { mockServices } from '@backstage/backend-test-utils';
 import { ConflictError, NotFoundError, ServiceUnavailableError } from '@backstage/errors';
 import { ApiException } from '@kubernetes/client-node';
-import { Project } from '@internal/backstage-plugin-cnpg-common';
+import { Project } from '@internal/backstage-plugin-basis-common';
 import { BucketService, BucketsConfig } from './BucketService';
 import { ObjectStore, StoredObject } from './objectStore';
 

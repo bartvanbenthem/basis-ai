@@ -13,7 +13,7 @@ import {
   PostgresCluster,
   PROFILES,
   Site,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 
 export interface ClusterForm {
   name: string;
@@ -278,7 +278,7 @@ export function normalizeAuditLog(value: string): string {
 /** The manifest the form produces, for the preview pane. */
 export function toManifest(f: ClusterForm) {
   return {
-    apiVersion: 'cnpg.cndev.nl/v1alpha1',
+    apiVersion: 'postgres.cndev.nl/v1alpha1',
     kind: 'PostgresCluster',
     metadata: {
       name: f.name || '<name>',

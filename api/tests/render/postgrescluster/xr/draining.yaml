@@ -1,7 +1,7 @@
 # geoReplication switched off while the primary is in the recovery site: the
 # replica cluster stays and the primary is switched back to the protected
 # site first (it would otherwise be deleted with the replica cluster).
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

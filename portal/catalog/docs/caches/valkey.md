@@ -7,9 +7,12 @@ before (a hash of the normalised prompt plus its context, tool, SQL and search r
 in one of your Project's locations, with a generated password, metrics, alerts and a Grafana
 dashboard, like a [PostgresCluster](../getting-started.md).
 
+A [GenAI stack](../ai/genai-stacks.md) composes caches of its own (`<stack>-cache`); those change
+through the stack. This page is about caches on their own, and what every cache shares.
+
 ## Create a cache
 
-In the portal: **Cache → New cache**, or **New semantic cache** for one with vector search. Pick the
+In the portal: **Building blocks → Valkey caches**, then **Create cache**, or **Create semantic cache** for one with vector search. Pick the
 Project, the site and the size. Or with `kubectl`:
 
 ```yaml
@@ -30,7 +33,7 @@ kubectl apply -f llm-cache.yaml
 kubectl get valkeycaches -n demo       # MODE, SHARDS, REPLICAS, STATE, SITE, LOCATION, READY
 ```
 
-The **Valkey** page under **Cache** lists every cache you can see; a cache's page shows its state,
+The **Valkey caches** page lists every cache you can see; a cache's page shows its state,
 how to connect, memory, pods, conditions and events, and its Grafana dashboard on the
 **Monitoring** tab.
 

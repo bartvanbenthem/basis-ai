@@ -120,7 +120,7 @@ spec:
   steps:
     - id: create
       name: Create ValkeyCache
-      action: cnpg:valkeycache:create
+      action: basis:valkeycache:create
       input:
         name: ${{ parameters.name }}
         # A project entity ref (resource:default/<project>); the action uses

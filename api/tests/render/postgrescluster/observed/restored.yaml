@@ -15,8 +15,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r
         namespace: vault
       spec:
@@ -31,7 +31,7 @@ status:
             recoveryTarget:
               targetTime: '2026-10-08T09:30:00Z'
             source: restore-source
-        description: PostgresCluster vault/secrets-db-r (cnpg.cndev.nl)
+        description: PostgresCluster vault/secrets-db-r (postgres.cndev.nl)
         enableSuperuserAccess: false
         externalClusters:
         - name: secrets-db-r-3f2a9c1e
@@ -60,7 +60,7 @@ status:
         inheritedMetadata:
           labels:
             backstage.io/kubernetes-id: secrets-db-r
-            cnpg.cndev.nl/postgrescluster: secrets-db-r
+            postgres.cndev.nl/postgrescluster: secrets-db-r
         instances: 2
         plugins:
         - isWALArchiver: true
@@ -129,14 +129,14 @@ status:
       kind: ObjectStore
       metadata:
         annotations:
-          cnpg.cndev.nl/database: vault
-          cnpg.cndev.nl/database-owner: vault
-          cnpg.cndev.nl/postgres-version: '17'
-          cnpg.cndev.nl/server-name: secrets-db-r-3f2a9c1e
+          postgres.cndev.nl/database: vault
+          postgres.cndev.nl/database-owner: vault
+          postgres.cndev.nl/postgres-version: '17'
+          postgres.cndev.nl/server-name: secrets-db-r-3f2a9c1e
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r-backup
         namespace: vault
       spec:
@@ -183,8 +183,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r
         namespace: vault
       spec:
@@ -217,8 +217,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r
         namespace: vault
       spec:
@@ -251,8 +251,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r-alerts
         namespace: vault
       spec:
@@ -725,8 +725,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r
         namespace: vault
       spec:
@@ -737,7 +737,7 @@ status:
         bootstrap:
           recovery:
             source: secrets-db-r-3f2a9c1e
-        description: PostgresCluster vault/secrets-db-r (cnpg.cndev.nl)
+        description: PostgresCluster vault/secrets-db-r (postgres.cndev.nl)
         enableSuperuserAccess: false
         externalClusters:
         - name: secrets-db-r-3f2a9c1e
@@ -760,7 +760,7 @@ status:
         inheritedMetadata:
           labels:
             backstage.io/kubernetes-id: secrets-db-r
-            cnpg.cndev.nl/postgrescluster: secrets-db-r
+            postgres.cndev.nl/postgrescluster: secrets-db-r
         instances: 2
         plugins:
         - isWALArchiver: true
@@ -821,14 +821,14 @@ status:
       kind: ObjectStore
       metadata:
         annotations:
-          cnpg.cndev.nl/database: vault
-          cnpg.cndev.nl/database-owner: vault
-          cnpg.cndev.nl/postgres-version: '17'
-          cnpg.cndev.nl/server-name: secrets-db-r-3f2a9c1e-onprem-ams
+          postgres.cndev.nl/database: vault
+          postgres.cndev.nl/database-owner: vault
+          postgres.cndev.nl/postgres-version: '17'
+          postgres.cndev.nl/server-name: secrets-db-r-3f2a9c1e-onprem-ams
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r-backup
         namespace: vault
       spec:
@@ -875,8 +875,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r
         namespace: vault
       spec:
@@ -909,8 +909,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r
         namespace: vault
       spec:
@@ -943,8 +943,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r-alerts
         namespace: vault
       spec:
@@ -1417,8 +1417,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r-scheduled
         namespace: vault
       spec:
@@ -1453,8 +1453,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r-backup-s3
         namespace: vault
   conditions:
@@ -1480,8 +1480,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r-restore
         namespace: vault
       spec:
@@ -1521,8 +1521,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r-scheduled
         namespace: vault
       spec:
@@ -1557,8 +1557,8 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
-          cnpg.cndev.nl/postgrescluster: secrets-db-r
+          app.kubernetes.io/part-of: basis
+          postgres.cndev.nl/postgrescluster: secrets-db-r
         name: secrets-db-r-backup-s3
         namespace: vault
   conditions:

@@ -14,23 +14,23 @@ import {
   useTable,
 } from '@backstage/ui';
 import {
-  cnpgProjectCreatePermission,
+  basisProjectCreatePermission,
   type ProjectSummary,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { useMemo } from 'react';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { createProjectRouteRef, projectRouteRef } from '../routes';
 import { age, ErrorAlert, ProjectHealthBadge } from './common';
 
 type Row = ProjectSummary & { id: string; clusters: number };
 
 export const ProjectListPage = () => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const projectLink = useRouteRef(projectRouteRef);
   const createLink = useRouteRef(createProjectRouteRef);
-  const { allowed: canCreate } = usePermission({ permission: cnpgProjectCreatePermission });
+  const { allowed: canCreate } = usePermission({ permission: basisProjectCreatePermission });
 
   const { value, loading, error, retry } = useAsyncRetry(
     async () => {

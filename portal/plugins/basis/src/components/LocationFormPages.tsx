@@ -12,11 +12,11 @@ import {
   Skeleton,
   Text,
 } from '@backstage/ui';
-import type { LocationHealth } from '@internal/backstage-plugin-cnpg-common';
+import type { LocationHealth } from '@internal/backstage-plugin-basis-common';
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import useAsync from 'react-use/esm/useAsync';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { locationRouteRef } from '../routes';
 import { ErrorAlert } from './common';
 import { LocationFormFields } from './LocationFormFields';
@@ -159,7 +159,7 @@ const FormLayout = ({ fields, panel }: { fields: React.ReactNode; panel: React.R
 );
 
 export const CreateLocationPage = () => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const navigate = useNavigate();
   const locationLink = useRouteRef(locationRouteRef);
 
@@ -175,7 +175,7 @@ export const CreateLocationPage = () => {
       };
       if (test) return api.testLocation(request);
       await api.createLocation(request);
-      navigate(locationLink?.({ name: f.name }) ?? '/cnpg/locations');
+      navigate(locationLink?.({ name: f.name }) ?? '/basis/locations');
       return undefined;
     },
   );
@@ -203,7 +203,7 @@ export const CreateLocationPage = () => {
 };
 
 const EditLocationForm = ({ initial }: { initial: LocationForm }) => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const navigate = useNavigate();
   const locationLink = useRouteRef(locationRouteRef);
   const name = initial.name;
@@ -215,7 +215,7 @@ const EditLocationForm = ({ initial }: { initial: LocationForm }) => {
     };
     if (test) return api.testLocationUpdate(name, request);
     await api.updateLocation(name, request);
-    navigate(locationLink?.({ name }) ?? '/cnpg/locations');
+    navigate(locationLink?.({ name }) ?? '/basis/locations');
     return undefined;
   });
 
@@ -235,7 +235,7 @@ const EditLocationForm = ({ initial }: { initial: LocationForm }) => {
 
 export const EditLocationPage = () => {
   const { name = '' } = useParams();
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const { value, error } = useAsync(() => api.getLocation(name), [api, name]);
 
   return (

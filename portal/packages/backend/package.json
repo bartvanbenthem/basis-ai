@@ -45,7 +45,7 @@
     "@backstage/plugin-signals-backend": "^0.3.19",
     "@backstage/plugin-techdocs-backend": "^2.3.0",
     "@backstage/plugin-user-settings-backend": "^0.4.7",
-    "@internal/backstage-plugin-cnpg-backend": "workspace:^",
+    "@internal/backstage-plugin-basis-backend": "workspace:^",
     "app": "link:../app",
     "better-sqlite3": "^12.0.0",
     "node-gyp": "^10.0.0",

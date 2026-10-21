@@ -1,8 +1,8 @@
 import { renderInTestApp, mockApis } from '@backstage/frontend-test-utils';
 import { permissionApiRef } from '@backstage/plugin-permission-react';
 import { screen, within } from '@testing-library/react';
-import type { PostgresClusterSummary } from '@internal/backstage-plugin-cnpg-common';
-import { CnpgApi, cnpgApiRef } from '../api';
+import type { PostgresClusterSummary } from '@internal/backstage-plugin-basis-common';
+import { BasisApi, basisApiRef } from '../api';
 import { rootRouteRef } from '../routes';
 import { ClusterListPage } from './ClusterListPage';
 
@@ -30,7 +30,7 @@ const cluster = (over: Partial<PostgresClusterSummary>): PostgresClusterSummary 
 
 describe('ClusterListPage', () => {
   it('lists clusters with their health', async () => {
-    const api: Partial<CnpgApi> = {
+    const api: Partial<BasisApi> = {
       listClusters: jest.fn(async () => [
         cluster({}),
         cluster({
@@ -45,10 +45,10 @@ describe('ClusterListPage', () => {
     };
     await renderInTestApp(<ClusterListPage />, {
       apis: [
-        [cnpgApiRef, api],
+        [basisApiRef, api],
         [permissionApiRef, mockApis.permission()],
       ],
-      mountedRoutes: { '/cnpg': rootRouteRef },
+      mountedRoutes: { '/basis': rootRouteRef },
     });
 
     expect(await screen.findByText('orders-db')).toBeInTheDocument();

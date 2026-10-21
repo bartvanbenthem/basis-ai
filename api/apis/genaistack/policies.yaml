@@ -1,0 +1,153 @@
+# Guardrails for GenAIStacks and what they compose (ValidatingAdmissionPolicy,
+# Kubernetes >= 1.30).
+#
+# 1. A stack with spec.deletionProtection (the default) can't be deleted: it
+#    takes its database with it. Set it to false first.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: ai.cndev.nl-genaistack-deletion-protection
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [ai.cndev.nl]
+        apiVersions: ["*"]
+        resources: [genaistacks]
+        operations: [DELETE]
+  validations:
+    - expression: "!has(oldObject.spec.deletionProtection) || !oldObject.spec.deletionProtection"
+      messageExpression: >-
+        'GenAIStack ' + oldObject.metadata.name + ' has deletionProtection: deleting it deletes its database; '
+        + 'set spec.deletionProtection to false first'
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: ai.cndev.nl-genaistack-deletion-protection
+spec:
+  policyName: ai.cndev.nl-genaistack-deletion-protection
+  validationActions: [Deny]
+---
+# 2. Stacks run in their Project's locations: a new one needs a Project with a
+#    protected location, and turning recovery on needs a recovery location
+#    (namespace annotations set by the Project composition), both open to new
+#    workloads.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: ai.cndev.nl-genaistack-locations
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [ai.cndev.nl]
+        apiVersions: ["*"]
+        resources: [genaistacks]
+        operations: [CREATE, UPDATE]
+  variables:
+    - name: annotations
+      expression: "has(namespaceObject.metadata.annotations) ? namespaceObject.metadata.annotations : {}"
+    - name: protected
+      expression: "'platform.cndev.nl/protected-location' in variables.annotations ? variables.annotations['platform.cndev.nl/protected-location'] : ''"
+    - name: recovery
+      expression: "'platform.cndev.nl/recovery-location' in variables.annotations ? variables.annotations['platform.cndev.nl/recovery-location'] : ''"
+    - name: closed
+      expression: >-
+        'platform.cndev.nl/unschedulable-locations' in variables.annotations
+        ? variables.annotations['platform.cndev.nl/unschedulable-locations'].split(',')
+        : []
+    - name: wantsRecovery
+      expression: "has(object.spec.recovery) && has(object.spec.recovery.enabled) && object.spec.recovery.enabled"
+    - name: recoveryAdded
+      expression: >-
+        variables.wantsRecovery && (oldObject == null || !has(oldObject.spec.recovery)
+        || !has(oldObject.spec.recovery.enabled) || !oldObject.spec.recovery.enabled)
+  validations:
+    - expression: "oldObject != null || variables.protected != ''"
+      messageExpression: >-
+        'namespace ' + namespaceObject.metadata.name + ' is not a Project with a protected location; '
+        + 'GenAIStacks run in a Project\'s locations, never on the control plane'
+      reason: Forbidden
+    - expression: "oldObject != null || !(variables.protected in variables.closed)"
+      messageExpression: "'location ' + variables.protected + ' (protected) is closed to new workloads'"
+      reason: Forbidden
+    - expression: "!variables.recoveryAdded || variables.recovery != ''"
+      messageExpression: >-
+        'recovery needs a recovery location; set spec.locations.recovery on Project '
+        + namespaceObject.metadata.name + ' first'
+      reason: Forbidden
+    - expression: "!variables.recoveryAdded || !(variables.recovery in variables.closed)"
+      messageExpression: "'location ' + variables.recovery + ' (recovery) is closed to new workloads'"
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: ai.cndev.nl-genaistack-locations
+spec:
+  policyName: ai.cndev.nl-genaistack-locations
+  validationActions: [Deny]
+---
+# 3. What a stack composes next to it is the stack's: its PostgresCluster,
+#    ValkeyCaches and ModelGateway (label ai.cndev.nl/genaistack) only change
+#    through the stack. Edits would be overwritten on the stack's next
+#    reconcile, or, for what the stack doesn't set, silently drift from it.
+#    Crossplane composes them, and the garbage collector removes them with
+#    the stack.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: ai.cndev.nl-genaistack-owned
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [postgres.cndev.nl]
+        apiVersions: ["*"]
+        resources: [postgresclusters]
+        operations: [CREATE, UPDATE, DELETE]
+      - apiGroups: [cache.cndev.nl]
+        apiVersions: ["*"]
+        resources: [valkeycaches]
+        operations: [CREATE, UPDATE, DELETE]
+      - apiGroups: [ai.cndev.nl]
+        apiVersions: ["*"]
+        resources: [modelgateways]
+        operations: [CREATE, UPDATE, DELETE]
+  variables:
+    - name: obj
+      expression: "request.operation == 'DELETE' ? oldObject : object"
+    - name: stack
+      expression: >-
+        has(variables.obj.metadata.labels) && 'ai.cndev.nl/genaistack' in variables.obj.metadata.labels
+        ? variables.obj.metadata.labels['ai.cndev.nl/genaistack']
+        : oldObject.metadata.labels['ai.cndev.nl/genaistack']
+  validations:
+    - expression: >-
+        request.userInfo.username in [
+          'system:serviceaccount:crossplane-system:crossplane',
+          'system:serviceaccount:kube-system:generic-garbage-collector',
+          'system:serviceaccount:kube-system:namespace-controller'
+        ]
+      messageExpression: >-
+        request.kind.kind + ' ' + request.name + ' belongs to GenAIStack ' + variables.stack
+        + '; change the stack instead (kubectl edit genaistack ' + variables.stack + ' -n ' + request.namespace
+        + '), or use one of your own'
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: ai.cndev.nl-genaistack-owned
+spec:
+  policyName: ai.cndev.nl-genaistack-owned
+  validationActions: [Deny]
+  matchResources:
+    # On UPDATE either the old or the new object carrying the label matches,
+    # so removing it is refused too.
+    objectSelector:
+      matchExpressions:
+        - key: ai.cndev.nl/genaistack
+          operator: Exists

@@ -2,7 +2,7 @@
 # the image extensions VectorChord and pg_search from the postgres-extensions
 # catalog, mounted as image volumes and preloaded. Both require pgvector,
 # which the Database gets first although the spec leaves it out.
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: rag-db

@@ -27,6 +27,8 @@ spec:
     kind: Location
     plural: locations
     shortNames: [loc]
+    # spec.names is immutable on an existing XRD: this keeps the category it
+    # was installed with (`kubectl get cnpg`), from before the basis rename.
     categories: [crossplane, cnpg]
   defaultCompositionRef:
     name: location
@@ -143,3 +145,6 @@ spec:
                     valkey:
                       type: boolean
                       description: The Valkey operator, which ValkeyCaches need (optional).
+                    agentRouter:
+                      type: boolean
+                      description: Agent Router on Envoy Gateway, which GenAIStacks' gateways need (optional).

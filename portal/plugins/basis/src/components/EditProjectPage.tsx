@@ -1,12 +1,12 @@
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { usePermission } from '@backstage/plugin-permission-react';
 import { Alert, Container, Flex, Grid, Header, Skeleton } from '@backstage/ui';
-import { cnpgProjectUpdatePermission } from '@internal/backstage-plugin-cnpg-common';
+import { basisProjectUpdatePermission } from '@internal/backstage-plugin-basis-common';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import useAsync from 'react-use/esm/useAsync';
 import { stringify } from 'yaml';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { projectRouteRef } from '../routes';
 import { ErrorAlert, ManifestPanel } from './common';
 import { ProjectFormFields } from './ProjectFormFields';
@@ -21,11 +21,11 @@ import {
 /** Changes a project's owner, access, quota and observability settings. */
 export const EditProjectPage = () => {
   const { name = '' } = useParams();
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const navigate = useNavigate();
   const projectLink = useRouteRef(projectRouteRef);
   const { allowed: canUpdate, loading: permissionLoading } = usePermission({
-    permission: cnpgProjectUpdatePermission,
+    permission: basisProjectUpdatePermission,
   });
 
   const { value: project, error: loadError } = useAsync(() => api.getProject(name), [api, name]);
@@ -60,7 +60,7 @@ export const EditProjectPage = () => {
   const unchanged = Object.keys(spec).length === 0;
   const preview = useMemo(() => stringify({ spec }), [spec]);
 
-  const back = projectLink?.({ name }) ?? '/cnpg/projects';
+  const back = projectLink?.({ name }) ?? '/basis/projects';
 
   const submit = async (dryRun: boolean) => {
     setTouched(true);

@@ -1,0 +1,161 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: genai-stack
+  title: GenAI stack
+  description: >-
+    Wire up the platform side of a generative AI service in a project, in one go:
+    a RAG database (PostgreSQL + pgvector), a Valkey cache, a model gateway (its own,
+    or a shared ModelGateway) for your models, and one connection Secret per site with
+    every endpoint and credential. Optionally with a warm standby in the project's
+    recovery location.
+  tags: [genai, rag, llm, gateway]
+spec:
+  owner: group:default/guests
+  type: resource
+
+  parameters:
+    - title: Stack
+      required: [name, project, owner]
+      properties:
+        name:
+          title: Name
+          type: string
+          description: Lowercase letters, digits and "-", max 28 characters.
+          pattern: '^[a-z]([-a-z0-9]{0,26}[a-z0-9])?$'
+          ui:autofocus: true
+        project:
+          title: Project
+          type: string
+          description: The project the stack lives in; it runs in the project's locations.
+          ui:field: EntityPicker
+          ui:options:
+            allowArbitraryValues: false
+            defaultKind: Resource
+            catalogFilter:
+              kind: Resource
+              spec.type: project
+        owner:
+          title: Owner
+          type: string
+          ui:field: OwnerPicker
+          ui:options:
+            catalogFilter:
+              kind: Group
+        system:
+          title: System
+          type: string
+          ui:field: EntityPicker
+          ui:options:
+            catalogFilter:
+              kind: System
+        recovery:
+          title: Warm standby in the recovery site
+          type: boolean
+          description: >-
+            A database replica, a small cache and a minimal gateway in the project's recovery
+            location (the project needs one, and a backup bucket). Switching the stack over (its
+            page in the portal) makes it the active site.
+          default: false
+
+    - title: Retrieval and cache
+      properties:
+        size:
+          title: Database size
+          type: string
+          description: From the postgres-sizes catalog (api/apis/postgrescluster/sizes.yaml).
+          enum: [xs, s, m, l, xl]
+          default: s
+        storageSize:
+          title: Database storage
+          type: string
+          default: 20Gi
+          pattern: '^[0-9]+(Mi|Gi|Ti)$'
+        cacheMode:
+          title: Cache
+          type: string
+          enum: [semantic, exact, none]
+          enumNames:
+            - Semantic (vector search on prompts)
+            - Exact (key/value)
+            - No cache
+          default: semantic
+        cacheMemory:
+          title: Cache memory
+          type: string
+          default: 1Gi
+          pattern: '^[0-9]+(Mi|Gi)$'
+
+    - title: Gateway
+      properties:
+        sharedGateway:
+          title: Shared gateway (optional)
+          type: string
+          description: >-
+            A ModelGateway in the project to use instead of one of the stack's own; it needs a
+            client named after the stack. Leave empty and list the models below for the stack's own.
+        models:
+          title: Models
+          description: >-
+            What the gateway routes to. Put a provider's API key in a Secret in the project
+            first (kubectl -n <project> create secret generic openai --from-literal=apiKey=...).
+          type: array
+          items:
+            type: object
+            required: [name, endpoint]
+            properties:
+              name:
+                title: Model name (what apps send)
+                type: string
+              endpoint:
+                title: Endpoint
+                type: string
+                description: e.g. https://api.openai.com/v1 or http://vllm.models.svc:8000/v1
+              schema:
+                title: API
+                type: string
+                enum: [OpenAI, Anthropic]
+                default: OpenAI
+              upstreamModel:
+                title: Model at the provider (if different)
+                type: string
+              secretName:
+                title: API key Secret (empty for none)
+                type: string
+
+  steps:
+    - id: create
+      name: Create GenAIStack
+      action: basis:genaistack:create
+      input:
+        name: ${{ parameters.name }}
+        namespace: ${{ parameters.project }}
+        owner: ${{ parameters.owner }}
+        system: ${{ parameters.system }}
+        spec:
+          recovery:
+            enabled: ${{ parameters.recovery }}
+          retrieval:
+            size: ${{ parameters.size }}
+            storageSize: ${{ parameters.storageSize }}
+          cache:
+            enabled: ${{ parameters.cacheMode != 'none' }}
+            mode: ${{ parameters.cacheMode if parameters.cacheMode != 'none' }}
+            memory: ${{ parameters.cacheMemory }}
+          gateway:
+            ref: ${{ parameters.sharedGateway }}
+            # The action turns each model's secretName into apiKeySecretRef.
+            models: ${{ parameters.models if not parameters.sharedGateway }}
+
+  output:
+    links:
+      - title: Open in the portal
+        url: ${{ steps['create'].output.portalPath }}
+      - title: Catalog entity (appears within ~30s)
+        icon: catalog
+        entityRef: ${{ steps['create'].output.entityRef }}
+    text:
+      - title: Wiring
+        content: |
+          Mount Secret `${{ parameters.name }}-connection` in your app (`envFrom: [{secretRef: {name: ${{ parameters.name }}-connection}}]`)
+          in the project's location: DATABASE_URL, VALKEY_URL, OPENAI_BASE_URL and OPENAI_API_KEY.

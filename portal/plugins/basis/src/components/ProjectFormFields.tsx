@@ -1,5 +1,5 @@
 import { Select, Switch, Text, TextField } from '@backstage/ui';
-import type { LocationSummary, Project } from '@internal/backstage-plugin-cnpg-common';
+import type { LocationSummary, Project } from '@internal/backstage-plugin-basis-common';
 import { Section } from './common';
 import { ProjectForm } from './projectForm';
 

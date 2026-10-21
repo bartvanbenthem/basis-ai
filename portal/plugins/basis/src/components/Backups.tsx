@@ -20,16 +20,16 @@ import {
 import {
   type BackupServer,
   clusterRestoreSource,
-  cnpgClusterCreatePermission,
-  cnpgClusterRestorePermission,
+  basisClusterCreatePermission,
+  basisClusterRestorePermission,
   type PostgresClusterDetails,
   type RestoreSource,
   serverRestoreSource,
   targetTimeError,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { cnpgApiRef, type RestoreRequest } from '../api';
+import { basisApiRef, type RestoreRequest } from '../api';
 import { clusterRouteRef } from '../routes';
 import { age, ErrorAlert, Fields, Mono, Panel, StatusDot } from './common';
 
@@ -60,7 +60,7 @@ const RestoreDialog = ({
   storageSize: string;
   onClose: () => void;
 }) => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const navigate = useNavigate();
   const clusterLink = useRouteRef(clusterRouteRef);
   const [name, setName] = useState(copyName(source.cluster ?? source.serverName));
@@ -80,7 +80,7 @@ const RestoreDialog = ({
     try {
       await api.restoreCluster(project, { name, from, targetTime: target, storageSize: size });
       onClose();
-      navigate(clusterLink?.({ namespace: project, name }) ?? `/cnpg/${project}/${name}`);
+      navigate(clusterLink?.({ namespace: project, name }) ?? `/basis/${project}/${name}`);
     } catch (e) {
       setError(e as Error);
     } finally {
@@ -164,8 +164,8 @@ const RestoreDialog = ({
 };
 
 function useCanRestore() {
-  const { allowed: canCreate } = usePermission({ permission: cnpgClusterCreatePermission });
-  const { allowed: canRestore } = usePermission({ permission: cnpgClusterRestorePermission });
+  const { allowed: canCreate } = usePermission({ permission: basisClusterCreatePermission });
+  const { allowed: canRestore } = usePermission({ permission: basisClusterRestorePermission });
   return canCreate && canRestore;
 }
 

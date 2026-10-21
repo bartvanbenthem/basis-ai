@@ -1,6 +1,6 @@
 # A running cluster whose size was retired from the catalog: it keeps what
 # status.sizing says it runs with, and that's no problem.
-apiVersion: cnpg.cndev.nl/v1alpha1
+apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db

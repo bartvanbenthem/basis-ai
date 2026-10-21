@@ -26,8 +26,8 @@ import {
   LocationSpec,
   LocationStatus,
   LocationSummary,
-} from '@internal/backstage-plugin-cnpg-common';
-import { apiMessage, cnpgKubernetesServiceRef, kubeCall } from './CnpgKubernetesService';
+} from '@internal/backstage-plugin-basis-common';
+import { apiMessage, basisKubernetesServiceRef, kubeCall } from './BasisKubernetesService';
 import { parseKubeconfig } from './kubeconfig';
 
 const KUBECONFIG_KEY = 'kubeconfig';
@@ -253,6 +253,12 @@ export async function probe(kubeconfig: string): Promise<LocationHealth> {
       valkey
         ? { name: 'Valkey operator', status: 'ok', message: 'operator API (valkey.io) installed' }
         : { name: 'Valkey operator', status: 'ok', message: 'not installed; only needed for Valkey caches (deps/README.md)' },
+    );
+    const agentRouter = groups.value.groups.some(g => g.name === 'aigateway.envoyproxy.io');
+    checks.push(
+      agentRouter
+        ? { name: 'Agent Router', status: 'ok', message: 'AI gateway API (aigateway.envoyproxy.io) installed' }
+        : { name: 'Agent Router', status: 'ok', message: 'not installed; only needed for model gateways and GenAI stacks (deps/README.md)' },
     );
   }
 
@@ -595,19 +601,19 @@ function clean(spec: LocationSpec): LocationSpec {
 }
 
 export const locationServiceRef = createServiceRef<LocationService>({
-  id: 'cnpg.locations',
+  id: 'basis.locations',
   defaultFactory: async service =>
     createServiceFactory({
       service,
       deps: {
         config: coreServices.rootConfig,
         logger: coreServices.logger,
-        k8s: cnpgKubernetesServiceRef,
+        k8s: basisKubernetesServiceRef,
       },
       factory: ({ config, logger, k8s }) =>
         new LocationService({
           kubeConfig: k8s.kubeConfig,
-          namespace: config.getOptionalString('cnpg.locations.namespace') ?? 'cnpg-locations',
+          namespace: config.getOptionalString('basis.locations.namespace') ?? 'basis-locations',
           logger,
         }),
     }),

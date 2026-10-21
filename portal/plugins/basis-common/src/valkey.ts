@@ -127,6 +127,8 @@ export interface ValkeyCacheSummary {
   project?: string;
   /** That project's Grafana (status.grafana.url); filled in by the backend. */
   grafanaUrl?: string;
+  /** The GenAIStack that composes this cache, if any: it's changed through the stack. */
+  stack?: string;
 }
 
 /** The detail page: the cache plus its pods and events in the location. */
@@ -177,6 +179,7 @@ export function summarizeCache(cache: ValkeyCache, project?: Project): ValkeyCac
     endpoint: status?.endpoint || undefined,
     secret: status?.secret || undefined,
     createdAt: metadata.creationTimestamp,
+    stack: metadata.labels?.['ai.cndev.nl/genaistack'] || undefined,
   };
 }
 

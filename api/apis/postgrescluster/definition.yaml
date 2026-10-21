@@ -24,15 +24,15 @@
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
-  name: postgresclusters.cnpg.cndev.nl
+  name: postgresclusters.postgres.cndev.nl
 spec:
-  group: cnpg.cndev.nl
+  group: postgres.cndev.nl
   scope: Namespaced
   names:
     kind: PostgresCluster
     plural: postgresclusters
     shortNames: [pgc]
-    categories: [crossplane, cnpg]
+    categories: [crossplane, basis]
   defaultCompositionRef:
     name: postgrescluster
   versions:

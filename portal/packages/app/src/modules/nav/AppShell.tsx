@@ -34,12 +34,12 @@ export const AppShell = createExtension({
   ],
 });
 
-/** "/" lands on the PostgreSQL clusters page. */
+/** "/" lands on the GenAI stacks: AI services first. */
 export const RootRedirect = PageBlueprint.make({
   name: 'root',
   params: {
     path: '/',
     noHeader: true,
-    loader: async () => <Navigate to="/cnpg" replace />,
+    loader: async () => <Navigate to="/basis/stacks" replace />,
   },
 });

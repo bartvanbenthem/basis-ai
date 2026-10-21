@@ -12,7 +12,7 @@ import {
   type EvictionPolicy,
   type Site,
   type ValkeyCache,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { mergePatch } from './form';
 
 export interface CacheForm {

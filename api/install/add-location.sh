@@ -13,7 +13,7 @@
 # Location: `kubectl edit location <name>`, or the portal.
 #
 # The location needs operator (CNPG, Barman Cloud plugin, image catalogs)
-# and the Prometheus Operator CRDs: run ../../operator/install.sh with
+# and the Prometheus Operator CRDs: run ../../deps/cnpg/install.sh with
 # KUBECONFIG pointing at it first. The kubeconfig is used from inside the
 # control plane, so its server must be reachable from there and its
 # credentials must not need a local exec plugin (use a token or client
@@ -23,11 +23,11 @@
 #
 # Re-running updates the kubeconfig. Remove a location with
 #   kubectl delete location <name>
-#   kubectl -n cnpg-locations delete secret <name>
+#   kubectl -n basis-locations delete secret <name>
 # The API server refuses the first while a Project uses the location.
 set -euo pipefail
 
-LOCATIONS_NAMESPACE="${LOCATIONS_NAMESPACE:-cnpg-locations}"
+LOCATIONS_NAMESPACE="${LOCATIONS_NAMESPACE:-basis-locations}"
 
 if [[ $# -lt 2 ]]; then
   sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
@@ -59,7 +59,7 @@ LOCATION=(kubectl --kubeconfig "${KUBECONFIG_FILE}")
 echo "==> ${NAME}: $("${LOCATION[@]}" config view -o jsonpath='{.clusters[0].cluster.server}')"
 "${LOCATION[@]}" version >/dev/null
 if ! "${LOCATION[@]}" api-resources --api-group=postgresql.cnpg.io -o name | grep -q '^clusters\.'; then
-  echo "WARNING: CloudNativePG is not installed in ${NAME}; run operator/install.sh against it before placing databases there" >&2
+  echo "WARNING: CloudNativePG is not installed in ${NAME}; run deps/cnpg/install.sh against it before placing databases there" >&2
 fi
 # Image volumes (CNPG extension images, PostgreSQL 18+): the API server keeps
 # an image volume (ImageVolume feature gate) and every node runs containerd

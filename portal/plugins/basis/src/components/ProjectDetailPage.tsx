@@ -24,17 +24,17 @@ import {
 } from '@backstage/ui';
 import {
   type BackupReachability,
-  cnpgClusterCreatePermission,
-  cnpgProjectDeletePermission,
-  cnpgProjectUpdatePermission,
+  basisClusterCreatePermission,
+  basisProjectDeletePermission,
+  basisProjectUpdatePermission,
   type PostgresClusterSummary,
   type ProjectSummary,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { ReactNode, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import {
   auditRouteRef,
   clusterRouteRef,
@@ -217,7 +217,7 @@ const DeleteDialog = ({
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
 }) => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const navigate = useNavigate();
   const listLink = useRouteRef(projectsRouteRef);
   const [confirm, setConfirm] = useState('');
@@ -230,7 +230,7 @@ const DeleteDialog = ({
     try {
       await api.deleteProject(name);
       onOpenChange(false);
-      navigate(listLink?.() ?? '/cnpg/projects');
+      navigate(listLink?.() ?? '/basis/projects');
     } catch (e) {
       setError(e as Error);
     } finally {
@@ -288,14 +288,14 @@ const DeleteDialog = ({
 /** One project: its observability endpoints, settings and the clusters in it. */
 export const ProjectDetailPage = () => {
   const { name = '' } = useParams();
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const createClusterLink = useRouteRef(createClusterRouteRef);
   const editLink = useRouteRef(editProjectRouteRef);
   const volumesLink = useRouteRef(volumesRouteRef);
   const auditLink = useRouteRef(auditRouteRef);
-  const { allowed: canCreateCluster } = usePermission({ permission: cnpgClusterCreatePermission });
-  const { allowed: canUpdate } = usePermission({ permission: cnpgProjectUpdatePermission });
-  const { allowed: canDelete } = usePermission({ permission: cnpgProjectDeletePermission });
+  const { allowed: canCreateCluster } = usePermission({ permission: basisClusterCreatePermission });
+  const { allowed: canUpdate } = usePermission({ permission: basisProjectUpdatePermission });
+  const { allowed: canDelete } = usePermission({ permission: basisProjectDeletePermission });
   const [deleting, setDeleting] = useState(false);
 
   const { value, error, retry } = useAsyncRetry(async () => {

@@ -24,9 +24,9 @@ import {
   pgauditLog,
   type PostgresClusterDetails,
   PROFILES,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { ReactNode, useState } from 'react';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { age, Fields, health, Mono } from './common';
 
 export const StaticTable = <T extends { id: string }>({
@@ -162,7 +162,7 @@ export const ConnectionUri = ({
  * portal detail page and the catalog entity tab.
  */
 export const ClusterDetails = ({ details }: { details: PostgresClusterDetails }) => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const { summary, resource, pods, events, cnpgStatus } = details;
   const spec = resource.spec;
   const status = resource.status ?? {};

@@ -13,13 +13,13 @@ import {
   useTable,
 } from '@backstage/ui';
 import {
-  cnpgLocationCreatePermission,
+  basisLocationCreatePermission,
   type LocationSummary,
-} from '@internal/backstage-plugin-cnpg-common';
+} from '@internal/backstage-plugin-basis-common';
 import { useMemo } from 'react';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
-import { cnpgApiRef } from '../api';
+import { basisApiRef } from '../api';
 import { createLocationRouteRef, locationRouteRef } from '../routes';
 import { age, ErrorAlert, Mono } from './common';
 import { ENVIRONMENT_LABELS, PROVIDER_LABELS } from './locationForm';
@@ -28,10 +28,10 @@ import { LocationHealthBadge } from './LocationHealth';
 type Row = LocationSummary & { id: string };
 
 export const LocationListPage = () => {
-  const api = useApi(cnpgApiRef);
+  const api = useApi(basisApiRef);
   const locationLink = useRouteRef(locationRouteRef);
   const createLink = useRouteRef(createLocationRouteRef);
-  const { allowed: canCreate } = usePermission({ permission: cnpgLocationCreatePermission });
+  const { allowed: canCreate } = usePermission({ permission: basisLocationCreatePermission });
 
   const { value, loading, error, retry } = useAsyncRetry(() => api.listLocations(), [api]);
   // The backend caches health for 30s; polling faster wouldn't show anything new.

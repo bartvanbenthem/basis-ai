@@ -52,7 +52,7 @@ status:
           platform.cndev.nl/group: ledger-devs
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-ledger
         name: project-edit-b0951c34
         namespace: team-ledger
@@ -87,7 +87,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-ledger
         name: project-defaults
         namespace: team-ledger
@@ -122,7 +122,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           backstage.io/owner: team-ledger
           dashboards.paas.cndev.nl/scope: team-ledger
           platform.cndev.nl/project: team-ledger
@@ -154,7 +154,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-ledger
         name: prometheus
         namespace: team-ledger
@@ -248,13 +248,13 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-ledger
         name: platform:project:team-ledger:prometheus
       roleRef:
         apiGroup: rbac.authorization.k8s.io
         kind: ClusterRole
-        name: cnpg-platform:project-prometheus
+        name: basis:project-prometheus
       subjects:
       - kind: ServiceAccount
         name: prometheus
@@ -282,7 +282,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-ledger
         name: prometheus-prometheus-db-prometheus-prometheus-0
         namespace: team-ledger
@@ -315,7 +315,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-ledger
         name: prometheus
         namespace: team-ledger
@@ -342,7 +342,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-ledger
         name: project
         namespace: team-ledger
@@ -374,7 +374,7 @@ status:
           platform.cndev.nl/group: ledger-devs
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-ledger
         name: project-edit-b0951c34
         namespace: team-ledger
@@ -409,7 +409,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-ledger
         name: project-defaults
         namespace: team-ledger
@@ -444,7 +444,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           backstage.io/owner: team-ledger
           dashboards.paas.cndev.nl/scope: team-ledger
           platform.cndev.nl/project: team-ledger
@@ -476,7 +476,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-ledger
         name: prometheus
         namespace: team-ledger
@@ -570,13 +570,13 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-ledger
         name: platform:project:team-ledger:prometheus
       roleRef:
         apiGroup: rbac.authorization.k8s.io
         kind: ClusterRole
-        name: cnpg-platform:project-prometheus
+        name: basis:project-prometheus
       subjects:
       - kind: ServiceAccount
         name: prometheus
@@ -604,7 +604,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-ledger
         name: prometheus-prometheus-db-prometheus-prometheus-0
         namespace: team-ledger
@@ -637,7 +637,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-ledger
         name: prometheus
         namespace: team-ledger
@@ -664,7 +664,7 @@ status:
       metadata:
         labels:
           app.kubernetes.io/managed-by: crossplane
-          app.kubernetes.io/part-of: cnpg-platform
+          app.kubernetes.io/part-of: basis
           platform.cndev.nl/project: team-ledger
         name: project
         namespace: team-ledger
