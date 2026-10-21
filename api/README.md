@@ -784,23 +784,37 @@ the checkout (the e2e scripts load it into kind and seed Crossplane's package ca
 
 ## Connect from outside the cluster
 
-The database runs in the Project's protected location, so connect there (`kubectl` against that
-cluster). The applications run on other clusters, so every PostgresCluster is exposed: `spec.expose`
-defaults to `{type: LoadBalancer}`, and the primary is reachable through the LoadBalancer Service
-`<name>-external`. Set `expose.loadBalancerSourceRanges` to the application clusters' egress IPs;
-without it the Service accepts connections from anywhere.
+A PostgresCluster is **internal by default**: applications in its location connect in-cluster to
+`<name>-rw.<namespace>.svc:5432` (or the pooler, `<name>-pooler-rw`), with the `uri` in Secret
+`<name>-app`. That's the intended path for the app tier of an AI service (gateway, RAG retrieval,
+orchestration): retrieval sits on every request's path, so it runs next to its data, and `-rw`
+follows the primary after a switchover.
+
+For clients outside the location (admin and BI tools, migrations), opt in with `spec.expose`. The
+primary then gets the LoadBalancer Service `<name>-external`, reachable only from
+`loadBalancerSourceRanges`, which the API requires:
+
+```yaml
+spec:
+  expose:
+    enabled: true
+    loadBalancerSourceRanges: [203.0.113.10/32]
+```
 
 ```sh
 export KUBECONFIG=dc-a.kubeconfig     # the protected location
 LB_IP=$(kubectl -n demo get svc orders-db-external -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 PGPASS=$(kubectl -n demo get secret orders-db-app -o jsonpath='{.data.password}' | base64 -d)
+kubectl -n demo get secret orders-db-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > orders-db-ca.crt
 
-psql "postgresql://app:${PGPASS}@${LB_IP}:5432/app?sslmode=require"
+# verify-full checks the server certificate; it names the in-cluster services, so tell libpq
+# which name to verify while connecting to the LB IP.
+psql "postgresql://app:${PGPASS}@orders-db-rw.demo.svc:5432/app?hostaddr=${LB_IP}&sslmode=verify-full&sslrootcert=orders-db-ca.crt"
 ```
 
-The `uri`/`jdbc-uri` keys in the `<name>-app` Secret point at the in-cluster host
-`<name>-rw.<namespace>.svc`, so don't use them from outside. After a switchover to the recovery
-site, connect to that location instead.
+The `uri`/`jdbc-uri` keys in the `<name>-app` Secret point at the in-cluster host, so don't use
+them from outside as they are. After a switchover to the recovery site, the external address is
+that location's.
 
 ## Develop
 

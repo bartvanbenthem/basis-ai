@@ -23,7 +23,8 @@ The platform currently provides these building blocks:
 What a team gets:
 
 - **Self-service:** one `PostgresCluster` API object, or a form in the Backstage portal, gives a
-  team a highly available cluster with connection pooling (PgBouncer), in a size (SKU) from the
+  team a highly available cluster, internal to its location by default (external access through a
+  LoadBalancer is an opt-in, limited to the clients' CIDRs), with connection pooling (PgBouncer), in a size (SKU) from the
   platform's catalog (XS to XL) with PostgreSQL tuned to it, or with custom CPU and memory (see
   [Sizes](api/README.md#sizes)).
 - **Vector & RAG:** a `vector` workload profile (PostgreSQL 18) with pgvector, VectorChord for large

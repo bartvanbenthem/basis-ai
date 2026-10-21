@@ -401,6 +401,31 @@ export const ClusterFormFields = ({
         )}
       </Section>
 
+      <Section
+        title="External access"
+        description="Internal by default: applications in the cluster's location connect to the -rw service (or the pooler), which follows the primary after a switchover. Expose it only for clients outside the location, such as admin tools or migrations."
+      >
+        <Switch
+          label="Expose through a LoadBalancer"
+          isSelected={form.exposeEnabled}
+          onChange={set('exposeEnabled')}
+        />
+        {form.exposeEnabled && (
+          <TextField
+            label="Allowed client CIDRs"
+            isRequired
+            value={form.exposeSourceRanges}
+            onChange={set('exposeSourceRanges')}
+            placeholder="203.0.113.10/32, 10.0.0.0/8"
+            description={
+              err('exposeSourceRanges') ??
+              'Only these reach port 5432 on <name>-external. Connect with sslmode=verify-full and the CA in Secret <name>-ca.'
+            }
+            isInvalid={Boolean(err('exposeSourceRanges'))}
+          />
+        )}
+      </Section>
+
       <Section title="Connection pooling" description="PgBouncer in front of the cluster.">
         <Switch
           label="Enable PgBouncer"

@@ -1,9 +1,9 @@
 # Smallest useful PostgresCluster: 3 instances of PostgreSQL 17 with
 # metrics, alerts and a Grafana dashboard (all defaults), in the demo
-# Project's protected location. Connect, in that cluster, with the
-# credentials in Secret demo/orders-db-app at orders-db-rw.demo.svc:5432,
-# or from outside it via the public IP of Service demo/orders-db-external
-# (STACKIT Network Load Balancer).
+# Project's protected location, internal only (the default). Applications in
+# that location connect with the credentials in Secret demo/orders-db-app at
+# orders-db-rw.demo.svc:5432. For clients outside the location, see
+# spec.expose in production.yaml.
 apiVersion: cnpg.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
@@ -12,14 +12,3 @@ metadata:
 spec:
   storage:
     size: 10Gi
-  expose:
-    type: LoadBalancer
-    # On SKE a LoadBalancer Service gets an ephemeral public IP by default.
-    # To keep the IP stable, reserve a public IP in the STACKIT project and
-    # uncomment the annotation below.
-    # annotations:
-    #   lb.stackit.cloud/external-address: 192.0.2.10
-    # Only these CIDRs can reach 5432. Replace with your client IPs; to also
-    # connect via the LB from inside the cluster, add the SKE podCIDR.
-    loadBalancerSourceRanges:
-      - 62.45.37.7/32

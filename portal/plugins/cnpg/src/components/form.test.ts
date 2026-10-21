@@ -26,6 +26,29 @@ describe('create form', () => {
     });
   });
 
+  it('is internal by default and exposes only with client CIDRs', () => {
+    const internal = toSpec({ ...defaultForm('demo'), name: 'orders-db' });
+    expect(internal.expose).toBeUndefined();
+    const f = { ...defaultForm('demo'), name: 'orders-db', exposeEnabled: true };
+    expect(validate(f).exposeSourceRanges).toMatch(/CIDRs/);
+    expect(validate({ ...f, exposeSourceRanges: '10.0.0.0/8, nope' }).exposeSourceRanges).toMatch(/CIDRs like/);
+    const exposed = { ...f, exposeSourceRanges: '10.0.0.0/8,\n203.0.113.10/32' };
+    expect(validate(exposed).exposeSourceRanges).toBeUndefined();
+    expect(toSpec(exposed).expose).toEqual({ enabled: true, loadBalancerSourceRanges: ['10.0.0.0/8', '203.0.113.10/32'] });
+  });
+
+  it('round-trips expose, and an edit can turn it off', () => {
+    const cluster: PostgresCluster = {
+      apiVersion: 'cnpg.cndev.nl/v1alpha1',
+      kind: 'PostgresCluster',
+      metadata: { name: 'orders-db', namespace: 'demo' },
+      spec: { expose: { enabled: true, loadBalancerSourceRanges: ['10.0.0.0/8'] } },
+    };
+    const original = fromCluster(cluster);
+    expect(original).toMatchObject({ exposeEnabled: true, exposeSourceRanges: '10.0.0.0/8' });
+    expect(toEditPatch(original, { ...original, exposeEnabled: false })).toEqual({ expose: { enabled: false } });
+  });
+
   it('adds pooler, backup and WAL sections only when enabled', () => {
     const spec = toSpec({
       ...defaultForm('demo'),
@@ -369,6 +392,9 @@ describe('workload profile', () => {
   it('presets a new vector cluster: PostgreSQL 18 and the extensions the catalog offers, in catalog order', () => {
     const f = selectProfile({ ...defaultForm('demo'), extensions: ['pg_trgm'] }, 'vector', catalog, { preset: true });
     expect(f.profile).toBe('vector');
+    // A RAG cluster serves the app tier in its location: internal, like every cluster by default.
+    expect(f.exposeEnabled).toBe(false);
+    expect(toSpec(f).expose).toBeUndefined();
     expect(f.postgresVersion).toBe(18);
     expect(f.extensions).toEqual(['vector', 'vchord', 'pg_trgm', 'pg_search']);
     expect(toSpec(f)).toMatchObject({ profile: 'vector', postgresVersion: 18 });

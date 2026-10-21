@@ -74,9 +74,12 @@ const onOff = (v: unknown) => (v ? 'enabled' : 'disabled');
 export const ConnectionUri = ({
   load: fetchConnection,
   masked,
+  inClusterNote = 'The load balancer has no address yet: this is the in-cluster host.',
 }: {
   load: () => Promise<Pick<ClusterConnection, 'uri'> & { external?: boolean }>;
   masked: string;
+  /** Shown when the URI has the in-cluster host (`external: false`). */
+  inClusterNote?: string;
 }) => {
   const [conn, setConn] = useState<Pick<ClusterConnection, 'uri'> & { external?: boolean }>();
   const [shown, setShown] = useState(false);
@@ -141,7 +144,7 @@ export const ConnectionUri = ({
       </Flex>
       {conn && conn.external === false && (
         <Text variant="body-small" color="secondary">
-          The load balancer has no address yet: this is the in-cluster host.
+          {inClusterNote}
         </Text>
       )}
       {error && (
@@ -177,6 +180,17 @@ export const ClusterDetails = ({ details }: { details: PostgresClusterDetails })
   ].filter(d => Array.isArray(d.names) && d.names.length);
   const ns = summary.namespace;
   const h = health(summary);
+  const exposed = Boolean(spec.expose?.enabled);
+  let externalAccess: ReactNode = `internal only: reachable from workloads in ${summary.primaryLocation || 'its location'}`;
+  if (exposed) {
+    externalAccess = details.externalHost ? (
+      <Mono>
+        {details.externalHost}:5432 (sslmode=verify-full, CA in Secret {ns}/{summary.name}-ca)
+      </Mono>
+    ) : (
+      'exposed; waiting for the load balancer address'
+    );
+  }
 
   // Every location's pods have the same names (orders-db-1, ...).
   const podRows = pods.map(p => ({ ...p, id: `${p.location}/${p.name}` }));
@@ -257,14 +271,17 @@ export const ClusterDetails = ({ details }: { details: PostgresClusterDetails })
                   'none'
                 ),
               ],
-              ...(details.externalHost
-                ? [['External (rw)', <Mono>{details.externalHost}:5432</Mono>] as [string, ReactNode]]
-                : []),
+              ['External access', externalAccess],
               ['Credentials', <Mono>Secret {ns}/{status.secrets?.app}</Mono>],
               [
                 'Connection URI',
                 <ConnectionUri
                   load={() => api.getConnection(ns, summary.name)}
+                  inClusterNote={
+                    exposed
+                      ? undefined
+                      : 'Internal only: use it from workloads in the same location (spec.expose is off).'
+                  }
                   masked={`postgresql://${spec.database?.owner ?? 'app'}:••••••@${details.externalHost ?? status.endpoints?.readWrite}:5432/${spec.database?.name ?? 'app'}`}
                 />,
               ],

@@ -238,18 +238,26 @@ components:
               description: Create the <name>-superuser Secret and allow postgres-user logins. Keep off unless needed.
               type: boolean
             expose:
-              default:
-                type: LoadBalancer
-              description: 'Expose the read-write service outside the cluster as <name>-external. Always on: the applications run on other clusters.'
+              default: {}
+              description: |-
+                External access to the primary (read-write) as <name>-external, a LoadBalancer Service. Off by default: applications in the cluster's location connect in-cluster to <name>-rw (or the pooler), which also follows the primary after a switchover. Turn it on only for clients outside the location (admin and BI tools, migrations); it then needs loadBalancerSourceRanges.
+
+                Rules:
+                - expose.enabled needs loadBalancerSourceRanges (the clients' CIDRs); a database is never open to everyone
               properties:
                 annotations:
                   additionalProperties:
                     type: string
                   type: object
+                enabled:
+                  default: false
+                  type: boolean
                 loadBalancerSourceRanges:
-                  description: CIDRs allowed to connect. Strongly recommended.
+                  description: CIDRs allowed to connect, e.g. [203.0.113.10/32]. Required when enabled.
                   items:
+                    pattern: ^[0-9a-fA-F:.]+/[0-9]{1,3}$
                     type: string
+                  maxItems: 50
                   type: array
                 type:
                   default: LoadBalancer

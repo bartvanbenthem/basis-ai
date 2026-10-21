@@ -166,6 +166,7 @@ type Monitoring struct {
 }
 
 type Expose struct {
+	Enabled                  bool              `json:"enabled"`
 	Type                     string            `json:"type"`
 	Annotations              map[string]string `json:"annotations"`
 	LoadBalancerSourceRanges []string          `json:"loadBalancerSourceRanges"`

@@ -180,7 +180,8 @@ func (c *composition) member(m *member, members []*member, distributed bool) (ma
 		cs.ExternalClusters = append(cs.ExternalClusters, ExternalCluster{Name: restoreSource, Plugin: PluginConfig{
 			Name: barmanPlugin, Parameters: map[string]string{"barmanObjectName": name + "-restore", "serverName": r.serverName}}})
 	}
-	if len(spec.Roles) > 0 || spec.Expose != nil {
+	exposed := spec.Expose != nil && spec.Expose.Enabled
+	if len(spec.Roles) > 0 || exposed {
 		cs.Managed = &Managed{}
 		for _, r := range spec.Roles {
 			role := ManagedRole{Name: r.Name, Ensure: "present", Login: orTrue(r.Login), CreateDB: r.CreateDB,
@@ -193,7 +194,7 @@ func (c *composition) member(m *member, members []*member, distributed bool) (ma
 			}
 			cs.Managed.Roles = append(cs.Managed.Roles, role)
 		}
-		if e := spec.Expose; e != nil {
+		if e := spec.Expose; exposed {
 			svc := ManagedService{SelectorType: "rw"}
 			svc.ServiceTemplate.Metadata.Name = name + "-external"
 			svc.ServiceTemplate.Metadata.Annotations = e.Annotations

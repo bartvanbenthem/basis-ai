@@ -65,6 +65,10 @@ export interface ClusterForm {
   auditEnabled: boolean;
   /** pgaudit.log, e.g. "ddl, role". */
   auditLog: string;
+  /** spec.expose: a LoadBalancer for clients outside the location; off by default (internal). */
+  exposeEnabled: boolean;
+  /** CIDRs allowed through it, comma or newline separated; required when exposed. */
+  exposeSourceRanges: string;
 }
 
 export const defaultForm = (namespace = ''): ClusterForm => ({
@@ -107,7 +111,19 @@ export const defaultForm = (namespace = ''): ClusterForm => ({
   dashboardEnabled: true,
   auditEnabled: false,
   auditLog: 'ddl, role',
+  exposeEnabled: false,
+  exposeSourceRanges: '',
 });
+
+const CIDR = /^[0-9a-fA-F:.]+\/[0-9]{1,3}$/;
+
+/** "10.0.0.0/8, 203.0.113.10/32" (or one per line) -> the list. */
+export function sourceRanges(value: string): string[] {
+  return value
+    .split(/[\s,]+/)
+    .map(c => c.trim())
+    .filter(Boolean);
+}
 
 const NAME = /^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$/;
 const QUANTITY = /^[0-9]+(Mi|Gi|Ti)$/;
@@ -149,6 +165,11 @@ export function validate(f: ClusterForm): Partial<Record<keyof ClusterForm, stri
   }
   if (f.auditEnabled && !AUDIT_LOG.test(f.auditLog)) {
     e.auditLog = 'Classes separated by commas, e.g. ddl, role; prefix "-" to leave one out.';
+  }
+  if (f.exposeEnabled) {
+    const ranges = sourceRanges(f.exposeSourceRanges);
+    if (!ranges.length) e.exposeSourceRanges = 'The client CIDRs that may connect, e.g. 203.0.113.10/32.';
+    else if (ranges.some(r => !CIDR.test(r))) e.exposeSourceRanges = 'CIDRs like 10.0.0.0/8, separated by commas.';
   }
   if (f.backupEnabled) {
     if (!/^[1-9][0-9]*[dwm]$/.test(f.backupRetention)) e.backupRetention = 'e.g. 30d, 4w';
@@ -222,6 +243,15 @@ export function toSpec(f: ClusterForm, { explicit = false } = {}): Record<string
     retentionPolicy: f.backupRetention,
     schedule: f.backupSchedule,
   };
+  // Internal is the XRD default: only sent when exposed (or explicitly, in an edit).
+  if (f.exposeEnabled || explicit) {
+    spec.expose = {
+      enabled: f.exposeEnabled,
+      ...(f.exposeEnabled || sourceRanges(f.exposeSourceRanges).length
+        ? { loadBalancerSourceRanges: sourceRanges(f.exposeSourceRanges) }
+        : {}),
+    };
+  }
   if (f.poolerEnabled || explicit) spec.pooler = pooler;
   if (f.backupEnabled || explicit) spec.backup = backup;
   if (f.geoReplication || explicit) {
@@ -316,6 +346,8 @@ export function fromCluster(cluster: PostgresCluster): ClusterForm {
     dashboardEnabled: monitoring.grafanaDashboard?.enabled ?? d.dashboardEnabled,
     auditEnabled,
     auditLog: auditEnabled ? auditLog : d.auditLog,
+    exposeEnabled: Boolean(spec.expose?.enabled),
+    exposeSourceRanges: (spec.expose?.loadBalancerSourceRanges ?? []).join(', '),
   };
 }
 

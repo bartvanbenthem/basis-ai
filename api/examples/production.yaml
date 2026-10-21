@@ -65,6 +65,15 @@ spec:
       excludeRules: [CNPGClusterZoneSpreadWarning]
     grafanaDashboard:
       enabled: true
+  # External access for clients outside the location (off by default):
+  # Service <name>-external. Connect with sslmode=verify-full and the CA in
+  # Secret <name>-ca.
   expose:
+    enabled: true
     type: LoadBalancer
+    # On SKE a LoadBalancer Service gets an ephemeral public IP by default.
+    # To keep the IP stable, reserve a public IP in the STACKIT project:
+    # annotations:
+    #   lb.stackit.cloud/external-address: 192.0.2.10
+    # Required: only these CIDRs reach 5432.
     loadBalancerSourceRanges: [10.0.0.0/8]

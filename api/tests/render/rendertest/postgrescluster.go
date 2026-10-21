@@ -572,6 +572,23 @@ func assertPostgresCluster(r *render, dashboardSrc string) {
 		assertDashboard(r, dash, dashboardSrc)
 	}
 
+	// --- external access: <name>-external only with expose.enabled (internal by default)
+	if _, ok := r.composed["cluster"]; ok {
+		exposed := equal(get(r.xr, "spec", "expose", "enabled"), true)
+		var external M
+		for _, svc := range list(r.live("cluster"), "spec", "managed", "services", "additional") {
+			if str(svc, "serviceTemplate", "metadata", "name") == name+"-external" {
+				external = mp(svc)
+			}
+		}
+		check((external != nil) == exposed, "expose.enabled %v but external Service present: %v", exposed, external != nil)
+		if external != nil {
+			check(str(external, "selectorType") == "rw" && str(external, "serviceTemplate", "spec", "type") == "LoadBalancer",
+				"external Service %s", repr(external))
+			check(len(list(external, "serviceTemplate", "spec", "loadBalancerSourceRanges")) > 0, "external Service without source ranges")
+		}
+	}
+
 	// --- custom exporter queries: the Cluster reads them from the ConfigMap next to it
 	if _, ok := r.composed["monitoring-queries"]; ok {
 		cm := r.live("monitoring-queries")
