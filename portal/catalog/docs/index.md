@@ -8,7 +8,8 @@ themselves, through this portal or the Kubernetes API, and the platform runs the
 The target stack covers self-hosted models (vLLM, KServe, llm-d), an AI gateway, prompt and
 semantic caches, RAG, guardrails, observability and orchestration. Today the platform provides the
 context and data layer: PostgreSQL with pgvector on [CloudNativePG](https://cloudnative-pg.io/)
-(CNPG), Prometheus and Grafana, and object storage. See [Platform scope](scope.md) for the full
+(CNPG), exact and semantic caches on [Valkey](https://valkey.io/), Prometheus and Grafana, and
+object storage. See [Platform scope](scope.md) for the full
 stack and what is available now.
 
 ## What you get today
@@ -17,10 +18,13 @@ stack and what is available now.
   available cluster in a size from the platform's catalog (XS to XL), with PostgreSQL tuned to it.
 - **Context / RAG:** the **Vector & RAG** profile (PostgreSQL 18) brings pgvector, VectorChord for
   large vector indexes and pg_search for BM25 and hybrid search. See [Vector & RAG](clusters/vector-rag.md).
+- **Caches:** one `ValkeyCache` object, or the **New cache** form, gives you an exact cache
+  (prompts, tool, SQL and search results) or a semantic cache (vector search through valkey-search,
+  e.g. for LiteLLM) in your Project's location. See [Valkey caches](caches/valkey.md).
 - **Projects:** each team works in its own Project, with access control, an optional quota and
   deletion protection, and its own Prometheus and Grafana.
-- **Observability:** metrics, alerts and a CloudNativePG dashboard for every cluster, in your
-  Project's Grafana.
+- **Observability:** metrics, alerts and a dashboard for every cluster and cache, in
+  your Project's Grafana.
 - **Backups and resilience:** continuous backups to object storage, point-in-time restore into a new
   cluster, and a replica cluster in a second location that can take over.
 - **Sovereign:** everything runs in your own clusters, in the data centers or regions you choose.
@@ -49,6 +53,7 @@ stack and what is available now.
 | Pick a size, extensions, HA or pooling | [Configure a cluster](clusters/configure.md) |
 | Store embeddings and build RAG search | [Vector & RAG](clusters/vector-rag.md) |
 | Move the primary to the other location | [Geo replication and disaster recovery](clusters/disaster-recovery.md) |
+| Cache LLM answers, exact or semantic | [Valkey caches](caches/valkey.md) |
 | Restore to a point in time | [Backups and restore](clusters/backup-restore.md) |
 | Automate it (GitOps, CI) | [API reference](api.md) |
 | Run the platform | [Architecture](platform/architecture.md), [Install](platform/install.md), [Catalogs](platform/catalogs.md), [Upgrades](platform/upgrades.md) |

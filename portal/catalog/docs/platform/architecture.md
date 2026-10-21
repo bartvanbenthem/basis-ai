@@ -4,10 +4,10 @@
 
 | | Control plane | Location |
 |---|---|---|
-| Purpose | APIs, portal, each Project's observability | Runs the databases |
-| Runs | Crossplane 2.4 + function-basis + provider-kubernetes, the portal (Backstage), per Project a Prometheus and Grafana, the COSI controller and driver | CloudNativePG 1.30 + Barman Cloud plugin, image catalogs, per Project a Prometheus |
+| Purpose | APIs, portal, each Project's observability | Runs the databases and caches |
+| Runs | Crossplane 2.4 + function-basis + provider-kubernetes, the portal (Backstage), per Project a Prometheus and Grafana, the COSI controller and driver | CloudNativePG 1.30 + Barman Cloud plugin, image catalogs, the Valkey operator (where caches run), per Project a Prometheus |
 | Needs | Prometheus Operator, grafana-operator, an ingress controller | cert-manager, Prometheus Operator (kube-prometheus-stack without Prometheus) |
-| Databases | none (the admission policy refuses them) | the CNPG Clusters |
+| Databases, caches | none (the admission policies refuse them) | the CNPG Clusters, the ValkeyClusters |
 
 There can be any number of locations. A Project picks a **protected** location (where its databases
 run) and optionally a **recovery** location (replica clusters).
@@ -67,7 +67,9 @@ run) and optionally a **recovery** location (replica clusters).
 
 ## Growing the stack
 
-The planned layers (model API, gateway, caches, guardrails, orchestration; see
+`ValkeyCache` already works this way: one object per cache, composed by function-basis into a
+ValkeyCluster, a PodMonitor and a PrometheusRule in the location and a dashboard in the Project's
+Grafana. The planned layers (model API, gateway, guardrails, orchestration; see
 [Platform scope](../scope.md)) follow the same pattern: a namespaced API object per service in the
 Project's namespace on the control plane, composed by Crossplane into the Project's locations, with
 its metrics in the Project's Prometheus and Grafana. The control plane stays free of workloads; GPUs

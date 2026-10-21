@@ -11,6 +11,7 @@ order; each says where it runs.
 | Prometheus Operator (kube-prometheus-stack, its own Prometheus off) | yes | yes |
 | grafana-operator | yes | – |
 | Ingress controller (e.g. HAProxy) | yes: Grafana and the remote-write endpoint | – |
+| Valkey operator | – | only where caches run |
 
 The exact commands are in `deps/README.md`.
 
@@ -77,6 +78,8 @@ limits `cnpg.location.*` to platform admins (a location holds a cluster-admin ku
 kubectl apply -f deps/demo/project.yaml        # a Project (edit its location)
 kubectl apply -f api/examples/minimal.yaml     # a PostgresCluster in it
 kubectl get project,postgrescluster -A         # both READY
+kubectl apply -f api/examples/valkeycache.yaml # a semantic cache (needs the Valkey operator there)
+kubectl get valkeycache -A                     # STATE Ready
 ```
 
 `hack/e2e-kind.sh` and `hack/e2e-locations.sh` run the whole install on kind, including replication,

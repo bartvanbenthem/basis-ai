@@ -13,6 +13,8 @@ nav:
       - Vector & RAG: clusters/vector-rag.md
       - Geo replication and disaster recovery: clusters/disaster-recovery.md
       - Backups and restore: clusters/backup-restore.md
+  - Cache (Valkey):
+      - Valkey caches: caches/valkey.md
   - API reference: api.md
   - Platform:
       - Architecture: platform/architecture.md

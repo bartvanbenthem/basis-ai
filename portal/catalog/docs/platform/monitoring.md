@@ -24,6 +24,16 @@ evaluate the alerts, but Grafana sees none.
 The replication-lag alerts skip replica clusters: their lag follows WAL archiving, so watch
 `cnpg_wal_archive_*` for the recovery site instead.
 
+## Per cache
+
+| What | Where |
+|---|---|
+| redis_exporter sidecar, labelled with `cluster` (the cache), `shard` and `node` | `PodMonitor` |
+| Nine cache alerts (node down, cluster state, slots, replica link, restarts, rejected writes, connections, eviction, hit ratio) | `PrometheusRule` (`monitoring.prometheusRule.excludeRules` drops some) |
+| Valkey cache dashboard | `GrafanaDashboard` in the Project's Grafana, embedded on the cache's Monitoring tab |
+
+See [Valkey caches](../caches/valkey.md#monitoring) for the alerts.
+
 ## Platform health
 
 | What | Where |
@@ -31,5 +41,6 @@ The replication-lag alerts skip replica clusters: their lag follows WAL archivin
 | Can the control plane reach a location? | `kubectl get locations -o wide` (`CONNECTED`, `READY`), the portal's location health |
 | Can a location reach its Project's bucket? | Project `status.backup.reachability` (a check every five minutes from each location), the project page |
 | Is a cluster healthy? | `kubectl get postgrescluster -A`: `READY`, and `status.message` / the `PostgresReady` condition |
+| Is a cache healthy? | `kubectl get valkeycache -A`: `STATE` and `READY`, and `status.message` |
 | Is the function healthy? | `kubectl get function function-basis` |
 | The operator | its PodMonitor in `cnpg-system` in every location |

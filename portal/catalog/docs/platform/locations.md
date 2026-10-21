@@ -50,6 +50,7 @@ again.
 | Readiness | `/readyz` reports not ready |
 | Nodes | No node is Ready (**Degraded**); some aren't (a warning) |
 | CloudNativePG | The operator isn't installed (a warning) |
+| Valkey operator | Never fails: says whether the operator is installed, which only [Valkey caches](../caches/valkey.md) need |
 | Image volumes | The API server drops image volumes (`ImageVolume` feature gate), or a node's runtime is older than containerd 2.1 / CRI-O 1.31 (a warning). Needed for extensions mounted from images, such as those of the [Vector & RAG](../clusters/vector-rag.md) profile |
 
 `add-location.sh` runs the same checks when it registers a location.

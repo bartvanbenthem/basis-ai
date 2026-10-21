@@ -15,7 +15,7 @@ This page describes the target stack. Layers marked **Available** can be used to
 | Model API (self-hosted) | [vLLM](https://docs.vllm.ai/), [KServe](https://kserve.github.io/website/), [llm-d](https://llm-d.ai/) | Planned |
 | Router / gateway | [Gateway API Inference Extension](https://gateway-api-inference-extension.sigs.k8s.io/), [Envoy AI Gateway](https://aigateway.envoyproxy.io/) or [agentgateway](https://agentgateway.dev/) | Planned |
 | Prompt / KV cache | llm-d prefix-cache-aware routing | Planned |
-| Exact / semantic cache | [Valkey](https://valkey.io/) | Planned |
+| Exact / semantic cache | [Valkey](https://valkey.io/) | **Available** |
 | Context / RAG | PostgreSQL on [CloudNativePG](https://cloudnative-pg.io/) with pgvector, VectorChord and pg_search | **Available** |
 | Guardrails | To be decided | Planned |
 | Observability | [Prometheus](https://prometheus.io/) and [Grafana](https://grafana.com/) per Project; [OpenTelemetry](https://opentelemetry.io/) | **Available** (Prometheus, Grafana); OpenTelemetry planned |
@@ -65,7 +65,9 @@ GPU work.
 ### Exact / semantic cache
 
 Valkey stores answers to prompts seen before. An exact match is answered without calling a model;
-a semantic match uses embeddings to find prompts that mean the same thing.
+a semantic match uses embeddings (the valkey-search module) to find prompts that mean the same
+thing. A `ValkeyCache` per service, in the Project's location, with metrics, alerts and a
+dashboard. See [Valkey caches](caches/valkey.md).
 
 ### Context / RAG
 

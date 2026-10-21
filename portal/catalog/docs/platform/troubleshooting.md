@@ -17,6 +17,11 @@ portal shows the same, plus events and pod logs from the location.
 | A pod fails to mount an extension image | The location doesn't support image volumes | The location's **Image volumes** health check |
 | `Synced=False`, e.g. `... has composed resources but no site` | The function refuses to render a desired state that would tear down a running database (an input went missing) | Restore the input it names (the Project, `status.sites`, the size catalog); `kubectl get function function-basis` |
 
+## Caches
+
+`kubectl describe valkeycache <name> -n <project>`, or the cache's page in the portal. See
+[Valkey caches](../caches/valkey.md#troubleshooting) for the common causes.
+
 ## Geo replication
 
 | Symptom | Cause | Fix |
@@ -31,6 +36,7 @@ portal shows the same, plus events and pod logs from the location.
 |---|---|---|
 | Function `Installed=False`, `UNAUTHORIZED` | The package on ghcr.io is private | Make it public or add a pull secret ([Upgrades](upgrades.md)) |
 | Location `CONNECTED=False` | Kubeconfig wrong, expired, or an exec plugin | Update it in the portal (Locations → Edit) |
+| A cache stays without a state | No Valkey operator in its location | `deps/README.md` (Valkey operator) in that location |
 | Location `READY=False`, connected | CloudNativePG or the Prometheus Operator missing there | `operator/install.sh` and `deps/` in that location |
 | XR briefly `Responsive=False (WatchCircuitOpen)` | Crossplane rate-limits the watch on CNPG's frequent status updates | Harmless |
 | Grafana shows no data | No `prometheus.remoteWrite` in `project-defaults`, or the ingress isn't reachable from the locations | Check `project-defaults` and the remote-write ingress |
