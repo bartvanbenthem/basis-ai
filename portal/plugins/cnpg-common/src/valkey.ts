@@ -4,7 +4,7 @@
  * what the portal reads or sends.
  */
 
-import type { ClusterEvent, Condition, InstancePod, Project } from './types';
+import type { ClusterEvent, Condition, InstancePod, Project, Site } from './types';
 
 export const CACHE_GROUP = 'cache.cndev.nl';
 export const CACHE_VERSION = 'v1alpha1';
@@ -44,6 +44,8 @@ export const EVICTION_POLICIES = [
 export type EvictionPolicy = (typeof EVICTION_POLICIES)[number];
 
 export interface ValkeyCacheSpec {
+  /** Which of the Project's locations the cache runs in; fixed after creation. */
+  site?: Site;
   mode?: CacheMode;
   shards?: number;
   replicas?: number;
@@ -64,6 +66,7 @@ export interface ValkeyCacheStatus {
   message?: string;
   shards?: number;
   readyShards?: number;
+  site?: Site;
   location?: string;
   endpoint?: string;
   secret?: string;
@@ -107,7 +110,9 @@ export interface ValkeyCacheSummary {
   deleting: boolean;
   message?: string;
   owner?: string;
-  /** The location the cache runs in; the Project's protected location until the composition pins it. */
+  /** spec.site: the Project's protected (default) or recovery location. */
+  site: Site;
+  /** The location the cache runs in; the Project's location for its site until the composition pins it. */
   location: string;
   /** host:port of the cluster's Service in the location. */
   endpoint?: string;
@@ -167,7 +172,8 @@ export function summarizeCache(cache: ValkeyCache, project?: Project): ValkeyCac
     deleting: Boolean(metadata.deletionTimestamp),
     message: status?.message,
     owner: metadata.labels?.['backstage.io/owner'],
-    location: status?.location || project?.spec.locations?.protected || '',
+    site: spec.site ?? 'protected',
+    location: status?.location || project?.spec.locations?.[spec.site ?? 'protected'] || '',
     endpoint: status?.endpoint || undefined,
     secret: status?.secret || undefined,
     createdAt: metadata.creationTimestamp,

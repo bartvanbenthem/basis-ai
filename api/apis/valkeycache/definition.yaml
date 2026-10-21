@@ -2,8 +2,8 @@
 # layer of an AI service -- an exact cache (normalised prompt + context hash ->
 # response, tool/SQL/search results) or a semantic cache (embedding -> response,
 # KNN through the valkey-search module) -- on Valkey, run by the official
-# valkey-io operator (ValkeyCluster, valkey.io/v1alpha1) in the Project's
-# protected location.
+# valkey-io operator (ValkeyCluster, valkey.io/v1alpha1) in one of the
+# Project's locations (spec.site: protected, the default, or recovery).
 #
 # Like PostgresCluster, the XR lives in its Project's namespace on the
 # control plane, which runs no caches, and is composed by function-basis. The
@@ -50,6 +50,9 @@ spec:
         - name: State
           type: string
           jsonPath: .status.state
+        - name: Site
+          type: string
+          jsonPath: .spec.site
         - name: Location
           type: string
           jsonPath: .status.location
@@ -73,7 +76,17 @@ spec:
               x-kubernetes-validations:
                 - rule: "self.mode == oldSelf.mode"
                   message: mode can't change; create a new cache
+                - rule: "self.site == oldSelf.site"
+                  message: site can't change; create a new cache in the other site
               properties:
+                site:
+                  type: string
+                  description: >-
+                    Which of the Project's locations the cache runs in: protected (default) or
+                    recovery (the Project needs one). Caches don't replicate between sites: for a
+                    cache next to workloads in both, create one per site. Fixed after creation.
+                  enum: [protected, recovery]
+                  default: protected
                 mode:
                   type: string
                   description: >-
@@ -199,9 +212,12 @@ spec:
                   type: integer
                 readyShards:
                   type: integer
+                site:
+                  type: string
+                  description: The site (spec.site) the cache runs in.
                 location:
                   type: string
-                  description: The Project's location the cache runs in, pinned on first use.
+                  description: The Project's location for spec.site, pinned on first use.
                 endpoint:
                   type: string
                   description: host:port of the cluster's Service in the location (any node; cluster-mode clients follow redirects).

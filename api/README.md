@@ -260,8 +260,8 @@ cluster-scoped, so the namespace roles don't cover creating them: bind
 ## The ValkeyCache API
 
 The cache layer of an AI service, on [Valkey](https://valkey.io/) (BSD-licensed, Linux Foundation),
-run by the official [valkey-io operator](https://github.com/valkey-io/valkey-operator) in the
-Project's protected location ([`deps/`](../deps/README.md#5-valkey-operator-locations-with-caches)):
+run by the official [valkey-io operator](https://github.com/valkey-io/valkey-operator) in one of the
+Project's locations ([`deps/`](../deps/README.md#5-valkey-operator-locations-with-caches)):
 
 ```yaml
 apiVersion: cache.cndev.nl/v1alpha1
@@ -270,6 +270,7 @@ metadata:
   name: llm-cache
   namespace: demo            # a Project
 spec:
+  site: protected            # protected (default) | recovery: which of the Project's locations
   mode: semantic             # exact (default) | semantic: also loads valkey-search
   shards: 1                  # cluster mode; 1..16
   replicas: 0                # per shard; a replica keeps the shard warm on failover
@@ -314,10 +315,14 @@ prepares as the function's embedded assets.
 | `PodMonitor <name>-valkey` | location (Object) | `monitoring.enabled` (default) |
 | `PrometheusRule <name>-alerts` | location (Object) | `monitoring.prometheusRule.enabled` (default): [`src/alerts/valkey-cache-rules.yaml`](src/alerts/valkey-cache-rules.yaml), based on the redis-mixin alerts (MIT), scoped to this cache: node down, cluster state, failing slots, replica link down, restarts, writes rejected at maxmemory, connections near maxclients, continuous eviction and a low hit ratio (info). Being at maxmemory alone is normal for a cache and doesn't alert |
 
-The cache runs in the Project's protected location, pinned in `status.location` on first use. A
-ValidatingAdmissionPolicy ([`apis/valkeycache/policies.yaml`](apis/valkeycache/policies.yaml))
-refuses a new one outside a Project or in a location closed to new workloads. `mode` is fixed after
-creation. Project members manage caches through the built-in `admin`/`edit`/`view` roles, like
+The cache runs in the Project's location for `spec.site`: `protected` (the default) or `recovery`
+(the Project needs one), pinned in `status.location` on first use. A Valkey cluster can't span
+locations (its nodes need a flat network, and the operator manages one Kubernetes cluster), and
+caches don't replicate: for a cache next to workloads in both sites, create one per site; after a
+failover, the recovery site's cache warms up from traffic. A ValidatingAdmissionPolicy
+([`apis/valkeycache/policies.yaml`](apis/valkeycache/policies.yaml)) refuses a new one outside a
+Project, on a site the Project has no location for, or in a location closed to new workloads.
+`site` and `mode` are fixed after creation. Project members manage caches through the built-in `admin`/`edit`/`view` roles, like
 PostgresClusters.
 
 Design points for the clients that matter more than the engine: put the tenant, user or role scope
@@ -593,7 +598,7 @@ function/valkeycache/                      the ValkeyCache composition in Go: pa
 function/valkeycache/assets/               what it embeds: GENERATED dashboard and alerts
 src/dashboards/valkey-cache.json           the Valkey cache Grafana dashboard
 src/alerts/valkey-cache-rules.yaml         the Valkey cache alerts
-apis/valkeycache/policies.yaml             ValkeyCaches only in a Project's open protected location
+apis/valkeycache/policies.yaml             ValkeyCaches only in an open location of their Project (spec.site)
 hack/generate/                             prepares src/ as the function's assets, and the APIs' OpenAPI documents for the portal (../portal/catalog)
 hack/xpkgcache/                            seeds Crossplane's package cache (e2e on kind, no registry)
 hack/observe/                              generates tests/render observed-state fixtures

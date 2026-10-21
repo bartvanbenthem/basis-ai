@@ -46,6 +46,30 @@ func TestCompose(t *testing.T) {
 		}
 	})
 
+	t.Run("site recovery runs in the Project's recovery location", func(t *testing.T) {
+		both := map[string][]Object{RequiredProject: {{"spec": map[string]any{"locations": map[string]any{
+			"protected": "si-ske-demo", "recovery": "onprem-ams"}}}}}
+		out, err := Compose(Input{XR: xr(t, `{"site":"recovery"}`, `{}`), Required: both})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out.Status.Location != "onprem-ams" || out.Status.Site != "recovery" {
+			t.Errorf("status %+v", out.Status)
+		}
+		if pc := dig(out.Composed["cluster"].Object, "spec", "providerConfigRef", "name"); pc != "onprem-ams" {
+			t.Errorf("providerConfigRef %v", pc)
+		}
+		// A Project without a recovery location places nothing.
+		out, err = Compose(Input{XR: xr(t, `{"site":"recovery"}`, `{}`), Required: demo})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out.Status.Location != "" || out.Condition.Reason != "NoLocation" || out.Composed["cluster"].Object != nil ||
+			!strings.Contains(out.Status.Message, "recovery location") {
+			t.Errorf("status %+v condition %+v", out.Status, out.Condition)
+		}
+	})
+
 	t.Run("keeps an existing password", func(t *testing.T) {
 		observed := map[string]Object{"auth-secret": {"data": map[string]any{
 			"password": base64.StdEncoding.EncodeToString([]byte("kept"))}}}

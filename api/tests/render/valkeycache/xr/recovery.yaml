@@ -1,0 +1,8 @@
+# A cache in the Project's recovery location (spec.site), next to workloads there.
+apiVersion: cache.cndev.nl/v1alpha1
+kind: ValkeyCache
+metadata:
+  name: dr-cache
+  namespace: payments
+spec:
+  site: recovery

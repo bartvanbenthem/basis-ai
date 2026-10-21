@@ -1,10 +1,11 @@
 # Guardrails for ValkeyCaches (ValidatingAdmissionPolicy, Kubernetes >= 1.30),
-# the same as PostgresClusters': caches run in their Project's protected
-# location, never on the control plane. A new one needs a namespace whose
-# Project has a protected location (namespace annotation
-# platform.cndev.nl/protected-location, set by the Project composition) that
-# is open to new workloads (not in platform.cndev.nl/unschedulable-locations).
-# Existing caches there stay editable.
+# the same as PostgresClusters': caches run in one of their Project's
+# locations, never on the control plane. A new one needs a namespace whose
+# Project has a location for its spec.site (namespace annotation
+# platform.cndev.nl/protected-location or platform.cndev.nl/recovery-location,
+# set by the Project composition) that is open to new workloads (not in
+# platform.cndev.nl/unschedulable-locations). Existing caches there stay
+# editable; spec.site itself is immutable (the XRD).
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -20,22 +21,27 @@ spec:
   variables:
     - name: annotations
       expression: "has(namespaceObject.metadata.annotations) ? namespaceObject.metadata.annotations : {}"
-    - name: protected
-      expression: "'platform.cndev.nl/protected-location' in variables.annotations ? variables.annotations['platform.cndev.nl/protected-location'] : ''"
+    - name: site
+      expression: "has(object.spec.site) ? object.spec.site : 'protected'"
+    - name: location
+      expression: >-
+        'platform.cndev.nl/' + variables.site + '-location' in variables.annotations
+        ? variables.annotations['platform.cndev.nl/' + variables.site + '-location'] : ''
     - name: closed
       expression: >-
         'platform.cndev.nl/unschedulable-locations' in variables.annotations
         ? variables.annotations['platform.cndev.nl/unschedulable-locations'].split(',')
         : []
   validations:
-    - expression: "variables.protected != ''"
+    - expression: "variables.location != ''"
       messageExpression: >-
-        'namespace ' + namespaceObject.metadata.name + ' is not a Project with a protected location; '
-        + 'ValkeyCaches run in a Project\'s location, never on the control plane'
+        'namespace ' + namespaceObject.metadata.name + ' is not a Project with a ' + variables.site
+        + ' location; ValkeyCaches run in a Project\'s location, never on the control plane'
+        + (variables.site == 'recovery' ? ' (set spec.locations.recovery on the Project, or use site protected)' : '')
       reason: Forbidden
-    - expression: "!(variables.protected in variables.closed)"
+    - expression: "!(variables.location in variables.closed)"
       messageExpression: >-
-        'location ' + variables.protected + ' (protected) is closed to new workloads (Location spec.schedulable: false)'
+        'location ' + variables.location + ' (' + variables.site + ') is closed to new workloads (Location spec.schedulable: false)'
       reason: Forbidden
 ---
 apiVersion: admissionregistration.k8s.io/v1

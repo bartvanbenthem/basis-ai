@@ -32,7 +32,12 @@ describe('cacheForm', () => {
     };
     const original = fromCache(cache);
     expect(original).toMatchObject({ owner: 'team-ai', memory: '2Gi', maxMemoryPercent: 75, evictionPolicy: 'allkeys-lru' });
-    expect(toCacheSpec(original)).toMatchObject({ mode: 'semantic', resources: { cpu: '1', memory: '2Gi' } });
+    expect(toCacheSpec(original)).toMatchObject({
+      site: 'protected',
+      mode: 'semantic',
+      resources: { cpu: '1', memory: '2Gi' },
+    });
+    expect(fromCache({ ...cache, spec: { ...cache.spec, site: 'recovery' } }).site).toBe('recovery');
     expect(toCacheEditPatch(original, original)).toEqual({});
     expect(toCacheEditPatch(original, { ...original, replicas: 1, memory: '4Gi' })).toEqual({
       replicas: 1,

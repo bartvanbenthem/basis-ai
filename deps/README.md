@@ -99,8 +99,8 @@ kubectl get svc -n haproxy-ingress   # EXTERNAL-IP is where ingress hosts must r
 ## 5. Valkey operator (locations with caches)
 
 The official [valkey-io operator](https://github.com/valkey-io/valkey-operator)
-runs the `ValkeyCluster`s that `ValkeyCache` places in a Project's protected
-location ([`api`](../api/README.md#the-valkeycache-api)). Install it with its
+runs the `ValkeyCluster`s that `ValkeyCache` places in one of a Project's
+locations (its protected or recovery site) ([`api`](../api/README.md#the-valkeycache-api)). Install it with its
 default chart values in every location caches run in; the control plane
 doesn't need it.
 

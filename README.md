@@ -31,7 +31,7 @@ What a team gets:
   tuned for building vector indexes and metrics on them (see [Profiles](api/README.md#profiles)).
 - **Caches:** one `ValkeyCache` API object, or a form in the portal, gives a team an exact cache
   (prompt hash, tool, SQL and search results) or a semantic cache (embedding lookups through
-  valkey-search, e.g. for LiteLLM) in its Project's location, with a generated password, metrics,
+  valkey-search, e.g. for LiteLLM) in its Project's protected or recovery location, with a generated password, metrics,
   alerts and a Grafana dashboard in the Project's Grafana, like a PostgresCluster's (see
   [ValkeyCache](api/README.md#the-valkeycache-api)).
 - **Extensions:** pgvector for vector search (embeddings, RAG) and other extensions from the

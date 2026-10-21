@@ -23,6 +23,7 @@ import {
   EVICTION_POLICIES,
   type EvictionPolicy,
   type ProjectSummary,
+  type Site,
 } from '@internal/backstage-plugin-cnpg-common';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -64,6 +65,7 @@ const CacheFormFields = ({
   const set = <K extends keyof CacheForm>(key: K) => (value: CacheForm[K]) =>
     setForm(f => ({ ...f, [key]: value }));
   const project = projects?.find(p => p.name === form.namespace);
+  const siteLocation = form.site === 'recovery' ? project?.recoveryLocation : project?.protectedLocation;
   const maxmemory = cacheMaxMemory(form.memory, form.maxMemoryPercent);
   const plainClient = form.shards === 1 && form.replicas === 0;
 
@@ -88,18 +90,49 @@ const CacheFormFields = ({
             value={form.namespace || null}
             onChange={k => {
               const name = String(k ?? '');
-              const owner = projects?.find(p => p.name === name)?.owner;
-              setForm(f => ({ ...f, namespace: name, owner: f.owner || owner || '' }));
+              const picked = projects?.find(p => p.name === name);
+              setForm(f => ({
+                ...f,
+                namespace: name,
+                owner: f.owner || picked?.owner || '',
+                // The new project may have no recovery location.
+                site: f.site === 'recovery' && !picked?.recoveryLocation ? 'protected' : f.site,
+              }));
             }}
             options={(projects ?? []).map(p => ({ id: p.name, label: p.name, disabled: !p.protectedLocation }))}
             placeholder="Pick a project"
-            description={
-              err('namespace') ??
-              (project?.protectedLocation
-                ? `Runs in location ${project.protectedLocation} (the project's protected location).`
-                : 'The cache runs in the project\'s protected location.')
-            }
+            description={err('namespace') ?? 'The cache runs in one of the project\'s locations (Site).'}
             isInvalid={Boolean(err('namespace'))}
+          />
+        )}
+        {editing ? (
+          <TextField
+            label="Site"
+            isDisabled
+            value={`${form.site}${siteLocation ? ` (${siteLocation})` : ''}`}
+            description={FIXED}
+          />
+        ) : (
+          <Select
+            label="Site"
+            value={form.site}
+            onChange={k => set('site')((k as Site) ?? 'protected')}
+            options={[
+              {
+                id: 'protected',
+                label: `Protected${project?.protectedLocation ? ` — ${project.protectedLocation}` : ''}`,
+              },
+              {
+                id: 'recovery',
+                label: `Recovery${project?.recoveryLocation ? ` — ${project.recoveryLocation}` : ' (the project has none)'}`,
+                disabled: !project?.recoveryLocation,
+              },
+            ]}
+            description={
+              err('site') ??
+              'Which of the project\'s locations runs the cache. Caches don\'t replicate between sites; create one per site for workloads in both.'
+            }
+            isInvalid={Boolean(err('site'))}
           />
         )}
         <TextField
@@ -222,6 +255,11 @@ export const CreateCachePage = () => {
 
   const { value: projects, loading: projectsLoading } = useAsync(() => api.listProjects(), [api]);
   const [form, setForm] = useState<CacheForm>(() => defaultCacheForm(presetMode));
+  const selected = projects?.find(p => p.name === form.namespace);
+  const siteError =
+    form.site === 'recovery' && selected && !selected.recoveryLocation
+      ? 'This project has no recovery location.'
+      : undefined;
   const [touched, setTouched] = useState(false);
   const [submitting, setSubmitting] = useState<'validate' | 'create'>();
   const [result, setResult] = useState<{ error?: Error; validated?: boolean }>({});
@@ -236,7 +274,10 @@ export const CreateCachePage = () => {
     setResult({});
   };
 
-  const errors = useMemo(() => validateCache(form), [form]);
+  const errors = useMemo(
+    () => ({ ...validateCache(form), ...(siteError ? { site: siteError } : {}) }),
+    [form, siteError],
+  );
   const err = (key: keyof CacheForm) => (touched ? errors[key] : undefined);
   const manifest = useMemo(() => stringify(toCacheManifest(form)), [form]);
 
@@ -320,6 +361,7 @@ export const EditCachePage = () => {
   });
 
   const { value: details, error: loadError } = useAsync(() => api.getCache(namespace, name), [api, namespace, name]);
+  const { value: projects } = useAsync(() => api.listProjects().catch(() => []), [api]);
   const original = useMemo(() => details && fromCache(details.resource), [details]);
   const [form, setForm] = useState<CacheForm>();
   const [touched, setTouched] = useState(false);
@@ -389,7 +431,7 @@ export const EditCachePage = () => {
                   title="How changes apply"
                   description="Max memory and the eviction policy apply live. CPU and memory roll the pods one by one, replicas first, failing primaries over before they restart; a shard without a replica loses its keys then. A shard change moves hash slots between primaries."
                 />
-                <CacheFormFields form={form} setForm={update} err={err} original={original} />
+                <CacheFormFields form={form} setForm={update} err={err} original={original} projects={projects} />
               </Flex>
             </Grid.Item>
             <Grid.Item>

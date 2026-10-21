@@ -18,6 +18,7 @@ type XR struct {
 }
 
 type Spec struct {
+	Site      string `json:"site"`
 	Mode      string `json:"mode"`
 	Shards    int    `json:"shards"`
 	Replicas  *int   `json:"replicas"`
@@ -46,6 +47,12 @@ type Monitoring struct {
 	} `json:"grafanaDashboard"`
 }
 
+// Sites (spec.site): which of the Project's locations the cache runs in.
+const (
+	SiteProtected = "protected"
+	SiteRecovery  = "recovery"
+)
+
 // Modes (spec.mode).
 const (
 	ModeExact    = "exact"
@@ -62,6 +69,7 @@ func or[T comparable](v, def T) T {
 
 func orTrue(b *bool) bool { return b == nil || *b }
 
+func (s *Spec) site() string      { return or(s.Site, SiteProtected) }
 func (s *Spec) mode() string      { return or(s.Mode, ModeExact) }
 func (s *Spec) semantic() bool    { return s.mode() == ModeSemantic }
 func (s *Spec) shards() int       { return or(s.Shards, 1) }

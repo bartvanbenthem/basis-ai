@@ -2150,6 +2150,7 @@ spec:
               description: |-
                 Rules:
                 - mode can't change; create a new cache
+                - site can't change; create a new cache in the other site
               properties:
                 crossplane:
                   description: 'Set by Crossplane: how it composes this resource. Leave it out; the platform''s composition (valkeycache) is the only one, and Crossplane fills in the rest.'
@@ -2318,6 +2319,13 @@ spec:
                   maximum: 16
                   minimum: 1
                   type: integer
+                site:
+                  default: protected
+                  description: 'Which of the Project''s locations the cache runs in: protected (default) or recovery (the Project needs one). Caches don''t replicate between sites: for a cache next to workloads in both, create one per site. Fixed after creation.'
+                  enum:
+                    - protected
+                    - recovery
+                  type: string
               type: object
             status:
               properties:
@@ -2357,7 +2365,7 @@ spec:
                   description: host:port of the cluster's Service in the location (any node; cluster-mode clients follow redirects).
                   type: string
                 location:
-                  description: The Project's location the cache runs in, pinned on first use.
+                  description: The Project's location for spec.site, pinned on first use.
                   type: string
                 message:
                   type: string
@@ -2381,6 +2389,9 @@ spec:
                   type: string
                 shards:
                   type: integer
+                site:
+                  description: The site (spec.site) the cache runs in.
+                  type: string
                 state:
                   description: The ValkeyCluster's state (Initializing, Reconciling, Ready, Degraded, Failed).
                   type: string

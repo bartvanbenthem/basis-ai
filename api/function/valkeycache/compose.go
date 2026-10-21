@@ -22,10 +22,10 @@
 //	dashboard       GrafanaDashboard <name>-valkey: src/dashboards/valkey-cache.json
 //	                with its own title and uid, preselected on this cache
 //
-// Location: the Project's protected location (Project spec.locations.protected,
-// a required resource named after the namespace), pinned in status.location on
-// first use, so a cache never moves and a missing Project never empties the
-// composition.
+// Location: the Project's location for spec.site, protected (default) or
+// recovery (Project spec.locations.<site>, a required resource named after the
+// namespace), pinned in status.location on first use, so a cache never moves
+// and a missing Project never empties the composition.
 package valkeycache
 
 import (
@@ -93,6 +93,7 @@ type Status struct {
 	Message     string            `json:"message"`
 	Shards      int               `json:"shards"`
 	ReadyShards int               `json:"readyShards"`
+	Site        string            `json:"site"`
 	Location    string            `json:"location,omitempty"`
 	Endpoint    string            `json:"endpoint"`
 	Secret      string            `json:"secret"`
@@ -150,7 +151,8 @@ func Compose(in Input) (*Output, error) {
 	if projects := in.Required[RequiredProject]; len(projects) > 0 {
 		project = projects[0]
 	}
-	projectLocation, _ := dig(project, "spec", "locations", "protected").(string)
+	site := c.spec.site()
+	projectLocation, _ := dig(project, "spec", "locations", site).(string)
 	location := or(c.xr.Status.Location, projectLocation)
 	if _, resolved := in.Required[RequiredProject]; location == "" && resolved && c.running() {
 		return nil, fmt.Errorf("ValkeyCache %s/%s has composed resources but no location: neither status.location nor Project %s says where it runs", c.ns, c.name, c.ns)
@@ -190,12 +192,12 @@ func Compose(in Input) (*Output, error) {
 	if spec.semantic() {
 		modules = []string{"search"}
 	}
-	status := Status{State: "Pending", Endpoint: fmt.Sprintf("%s:%d", host, Port), Secret: secretName, Modules: modules}
+	status := Status{Site: site, State: "Pending", Endpoint: fmt.Sprintf("%s:%d", host, Port), Secret: secretName, Modules: modules}
 	if mon.dashboard() {
 		status.Monitoring = &MonitoringStatus{DashboardUID: dashUID}
 	}
 	if location == "" {
-		status.Message = fmt.Sprintf("Namespace %s is not a Project with a protected location (Project spec.locations.protected)", c.ns)
+		status.Message = fmt.Sprintf("Namespace %s is not a Project with a %s location (Project spec.locations.%s)", c.ns, site, site)
 		out.Status, out.Condition = status, Condition{Reason: "NoLocation", Message: status.Message}
 		return out, nil
 	}

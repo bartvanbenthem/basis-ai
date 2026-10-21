@@ -10,6 +10,7 @@ import {
   CACHE_VERSION,
   type CacheMode,
   type EvictionPolicy,
+  type Site,
   type ValkeyCache,
 } from '@internal/backstage-plugin-cnpg-common';
 import { mergePatch } from './form';
@@ -18,6 +19,8 @@ export interface CacheForm {
   name: string;
   namespace: string;
   owner: string;
+  /** Which of the project's locations; fixed after creation. */
+  site: Site;
   /** Fixed after creation. */
   mode: CacheMode;
   shards: number;
@@ -37,6 +40,7 @@ export const defaultCacheForm = (mode: CacheMode = 'exact'): CacheForm => ({
   name: '',
   namespace: '',
   owner: '',
+  site: 'protected',
   mode,
   // A semantic cache is usually fed to a client without cluster support
   // (LiteLLM's valkey-semantic): one node keeps the Service on the primary.
@@ -57,6 +61,7 @@ export function fromCache(cache: ValkeyCache): CacheForm {
     name: metadata.name,
     namespace: metadata.namespace,
     owner: metadata.labels?.['backstage.io/owner'] ?? '',
+    site: spec.site ?? 'protected',
     mode: spec.mode ?? 'exact',
     shards: spec.shards ?? 1,
     replicas: spec.replicas ?? 1,
@@ -90,6 +95,7 @@ export function validateCache(f: CacheForm): Partial<Record<keyof CacheForm, str
 
 export function toCacheSpec(f: CacheForm): Record<string, unknown> {
   return {
+    site: f.site,
     mode: f.mode,
     shards: f.shards,
     replicas: f.replicas,

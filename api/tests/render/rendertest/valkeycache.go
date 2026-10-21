@@ -14,7 +14,10 @@ func assertValkeyCache(r *render) {
 	kase, state, status, name, ns, composed := r.kase, r.state, r.status, r.name, r.ns, r.composed
 	check := r.check
 
-	location := map[string]string{"minimal": "si-ske-demo", "semantic": "onprem-ams", "noproject": ""}[kase]
+	// semantic is pinned (status.location); recovery picks the Project's recovery location.
+	location := map[string]string{"minimal": "si-ske-demo", "semantic": "onprem-ams", "recovery": "onprem-ams", "noproject": ""}[kase]
+	site := map[bool]string{true: "recovery", false: "protected"}[kase == "recovery"]
+	check(str(status, "site") == site, "status.site %q, want %q", str(status, "site"), site)
 	want := set("auth-secret", "dashboard")
 	if location != "" {
 		want = union(want, set("auth", "cluster"))
@@ -115,7 +118,8 @@ func assertValkeyCache(r *render) {
 		args                     L
 	}
 	e := map[string]expect{
-		"minimal": {image: "valkey/valkey:9.1.2", maxmemory: "768mb", policy: "allkeys-lru", shards: 1, replicas: 1, exporter: true},
+		"minimal":  {image: "valkey/valkey:9.1.2", maxmemory: "768mb", policy: "allkeys-lru", shards: 1, replicas: 1, exporter: true},
+		"recovery": {image: "valkey/valkey:9.1.2", maxmemory: "768mb", policy: "allkeys-lru", shards: 1, replicas: 1, exporter: true},
 		"semantic": {image: "valkey/valkey-bundle:9.1.2", maxmemory: "1228mb", policy: "allkeys-lfu", shards: 3, replicas: 2,
 			args: L{"--loadmodule", "/usr/lib/valkey/libsearch.so --reader-threads 2 --writer-threads 2"}},
 		// semantic with monitoring on would add the exporter's --include-modules-metrics (unit tests).

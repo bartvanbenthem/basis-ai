@@ -6,7 +6,7 @@ metadata:
   description: >-
     Provision an exact or semantic cache on Valkey through the cache.cndev.nl
     ValkeyCache API, in the project's location: a generated password, Prometheus
-    metrics, alerts and a Grafana dashboard.
+    metrics, alerts and a Grafana dashboard. It runs in the project's protected or recovery location.
   tags: [valkey, cache, llm]
 spec:
   owner: group:default/guests
@@ -51,6 +51,17 @@ spec:
           ui:options:
             catalogFilter:
               kind: System
+        site:
+          title: Site
+          type: string
+          description: >-
+            Which of the project's locations runs the cache; recovery needs a project with a
+            recovery location. Caches don't replicate between sites. Fixed after creation.
+          enum: [protected, recovery]
+          enumNames:
+            - Protected location (default)
+            - Recovery location
+          default: protected
         mode:
           title: Mode
           type: string
@@ -118,6 +129,7 @@ spec:
         owner: ${{ parameters.owner }}
         system: ${{ parameters.system }}
         spec:
+          site: ${{ parameters.site }}
           mode: ${{ parameters.mode }}
           shards: ${{ parameters.shards }}
           replicas: ${{ parameters.replicas }}
@@ -141,7 +153,7 @@ spec:
     text:
       - title: Connecting
         content: |
-          Applications in the project's location connect to
+          Applications in the project's ${{ parameters.site }} location connect to
           `valkey-${{ parameters.name }}.${{ steps['create'].output.namespace }}.svc:6379`
           with the password in Secret `${{ steps['create'].output.namespace }}/${{ parameters.name }}-valkey-auth`
           (key `uri` holds a full `valkey://` connection string).

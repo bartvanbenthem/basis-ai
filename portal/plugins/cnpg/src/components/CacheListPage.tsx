@@ -96,7 +96,11 @@ export const CacheListPage = () => {
       label: 'Memory',
       cell: c => <CellText title={c.memory} description={`maxmemory ${cacheMaxMemory(c.memory, c.maxMemoryPercent) ?? '-'}, ${c.evictionPolicy}`} />,
     },
-    { id: 'location', label: 'Location', cell: c => <CellText title={c.location || '-'} /> },
+    {
+      id: 'location',
+      label: 'Location',
+      cell: c => <CellText title={c.location || '-'} description={`${c.site} site`} />,
+    },
     { id: 'age', label: 'Age', cell: c => <CellText title={age(c.createdAt)} /> },
   ];
 

@@ -136,7 +136,7 @@ export const CacheDetails = ({ details }: { details: ValkeyCacheDetails }) => {
               ['State', summary.state],
               ['Shards ready', `${summary.readyShards} / ${summary.shards}`],
               ['Pods', `${cachePods(summary)} (${summary.replicas} replica${summary.replicas === 1 ? '' : 's'} per shard)`],
-              ['Location', summary.location || 'not placed yet'],
+              ['Location', `${summary.location || 'not placed yet'} (${summary.site} site)`],
               [
                 'Project',
                 summary.project ? (
