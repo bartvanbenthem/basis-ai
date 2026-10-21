@@ -1,0 +1,8 @@
+# No Project for the namespace: nothing is placed anywhere.
+apiVersion: platform.cndev.nl/v1alpha1
+kind: Project
+metadata:
+  name: some-other-project
+spec:
+  locations:
+    protected: si-ske-demo

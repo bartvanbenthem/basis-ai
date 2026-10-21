@@ -1,5 +1,5 @@
 # What the portal's backend may do on the control plane: manage
-# PostgresClusters, create and change Projects, list namespaces, register
+# PostgresClusters and ValkeyCaches, create and change Projects, list namespaces, register
 # locations: Location objects plus their kubeconfigs (bottom), and read the
 # COSI driver's keys for the Buckets page (bottom). It never
 # touches CNPG objects directly -- every write goes through the
@@ -25,6 +25,11 @@ metadata:
 rules:
   - apiGroups: [cnpg.cndev.nl]
     resources: [postgresclusters]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # Valkey caches: the same, through the ValkeyCache API. Their password is
+  # read from the copy in the location, with that location's kubeconfig.
+  - apiGroups: [cache.cndev.nl]
+    resources: [valkeycaches]
     verbs: [get, list, watch, create, update, patch, delete]
   # Projects (namespace + Prometheus + Grafana): list them for the project
   # picker, create new ones, change their settings, and delete them once they

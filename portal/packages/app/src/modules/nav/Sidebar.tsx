@@ -17,12 +17,17 @@ const isClusterPath = (p: string) =>
     !p.startsWith(`${CNPG}/projects`) &&
     !p.startsWith(`${CNPG}/locations`) &&
     !p.startsWith(`${CNPG}/buckets`) &&
-    !p.startsWith(`${CNPG}/volumes`));
+    !p.startsWith(`${CNPG}/volumes`) &&
+    !p.startsWith(`${CNPG}/caches`));
 const isProjectPath = (p: string) =>
   p.startsWith(`${CNPG}/projects`) && !p.startsWith(`${CNPG}/projects/create`);
 const isRagCreate = (p: string, search: string) =>
   p.startsWith(`${CNPG}/create`) &&
   new URLSearchParams(search).get('profile') === 'vector';
+const CACHES = `${CNPG}/caches`;
+const isCachePath = (p: string) => p.startsWith(CACHES) && !p.startsWith(`${CACHES}/create`);
+const isSemanticCreate = (p: string, search: string) =>
+  p.startsWith(`${CACHES}/create`) && new URLSearchParams(search).get('mode') === 'semantic';
 const isLocationPath = (p: string) =>
   p.startsWith(`${CNPG}/locations`) &&
   !p.startsWith(`${CNPG}/locations/create`);
@@ -76,6 +81,23 @@ const sections: Array<{ title: string; items: Item[] }> = [
         label: 'New RAG cluster',
         to: `${CNPG}/create?profile=vector`,
         isActive: isRagCreate,
+      },
+    ],
+  },
+  {
+    title: 'Cache',
+    items: [
+      { label: 'Valkey', to: CACHES, isActive: isCachePath },
+      {
+        label: 'New cache',
+        to: `${CACHES}/create`,
+        isActive: (p, search) => p.startsWith(`${CACHES}/create`) && !isSemanticCreate(p, search),
+      },
+      {
+        // The create form with the semantic mode (valkey-search) preset.
+        label: 'New semantic cache',
+        to: `${CACHES}/create?mode=semantic`,
+        isActive: isSemanticCreate,
       },
     ],
   },

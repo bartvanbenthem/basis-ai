@@ -10,7 +10,8 @@
 # the provider-kubernetes ClusterProviderConfig the Project and
 # PostgresCluster compositions place objects through, the ClusterRole every
 # project's Prometheus binds to in that cluster, and read-only checks for the
-# operators databases there need (CloudNativePG, Prometheus Operator).
+# operators databases there need (CloudNativePG, Prometheus Operator) and the
+# optional Valkey operator ValkeyCaches need.
 #
 # Projects name Locations (Project spec.locations); the Project
 # composition reads them and adds a ClusterUsage per location, so the API
@@ -139,3 +140,6 @@ spec:
                       type: boolean
                     prometheusOperator:
                       type: boolean
+                    valkey:
+                      type: boolean
+                      description: The Valkey operator, which ValkeyCaches need (optional).

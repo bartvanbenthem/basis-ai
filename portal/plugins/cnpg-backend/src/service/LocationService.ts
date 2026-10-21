@@ -171,8 +171,8 @@ export function imageVolumeCheck(api: PromiseSettledResult<V1Pod>, nodes: V1Node
 
 /**
  * Probes a location's API server: reachable and authenticated (/version),
- * ready (/readyz), nodes Ready, whether CloudNativePG is installed and
- * whether it can mount extension images (image volumes).
+ * ready (/readyz), nodes Ready, whether CloudNativePG (and the optional Valkey
+ * operator) is installed and whether it can mount extension images (image volumes).
  * Unreachable when /version fails; degraded when any check is an error.
  */
 export async function probe(kubeconfig: string): Promise<LocationHealth> {
@@ -245,6 +245,15 @@ export async function probe(kubeconfig: string): Promise<LocationHealth> {
     );
   } else {
     checks.push({ name: 'CloudNativePG', status: 'warning', message: describe(groups.reason) });
+  }
+  if (groups.status === 'fulfilled') {
+    // Optional: only ValkeyCaches need it, so its absence is no warning.
+    const valkey = groups.value.groups.some(g => g.name === 'valkey.io');
+    checks.push(
+      valkey
+        ? { name: 'Valkey operator', status: 'ok', message: 'operator API (valkey.io) installed' }
+        : { name: 'Valkey operator', status: 'ok', message: 'not installed; only needed for Valkey caches (deps/README.md)' },
+    );
   }
 
   checks.push(imageVolumeCheck(imageVolume, nodes.status === 'fulfilled' ? nodes.value.items : undefined));

@@ -1,0 +1,147 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: valkey-cache
+  title: Valkey cache
+  description: >-
+    Provision an exact or semantic cache on Valkey through the cache.cndev.nl
+    ValkeyCache API, in the project's location: a generated password, Prometheus
+    metrics, alerts and a Grafana dashboard.
+  tags: [valkey, cache, llm]
+spec:
+  owner: group:default/guests
+  type: resource
+
+  parameters:
+    - title: Cache
+      required: [name, project, owner, mode]
+      properties:
+        name:
+          title: Name
+          type: string
+          description: Lowercase letters, digits and "-", max 40 characters.
+          pattern: '^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$'
+          ui:autofocus: true
+        project:
+          title: Project
+          type: string
+          description: >-
+            The project the cache lives in; it runs in the project's protected location, and
+            the project's Prometheus and Grafana pick up its metrics, alerts and dashboard.
+          ui:field: EntityPicker
+          ui:options:
+            allowArbitraryValues: false
+            defaultKind: Resource
+            catalogFilter:
+              kind: Resource
+              spec.type: project
+        owner:
+          title: Owner
+          type: string
+          description: Group that owns this cache.
+          ui:field: OwnerPicker
+          ui:options:
+            catalogFilter:
+              kind: Group
+        system:
+          title: System
+          type: string
+          description: Optional system this cache belongs to.
+          ui:field: EntityPicker
+          ui:options:
+            catalogFilter:
+              kind: System
+        mode:
+          title: Mode
+          type: string
+          description: Fixed after creation.
+          enum: [exact, semantic]
+          enumNames:
+            - Exact — key/value with TTLs (prompt hash, tool, SQL and search results)
+            - Semantic — also vector search with valkey-search (e.g. LiteLLM valkey-semantic)
+          default: exact
+
+    - title: Topology and memory
+      properties:
+        shards:
+          title: Shards
+          type: integer
+          description: >-
+            Valkey cluster mode. More than 1 needs a cluster-aware client; LiteLLM's
+            valkey-semantic cache needs 1 shard and 0 replicas.
+          minimum: 1
+          maximum: 16
+          default: 1
+        replicas:
+          title: Replicas per shard
+          type: integer
+          description: A replica keeps the shard's keys when its primary fails; with 0 a restart empties it.
+          minimum: 0
+          maximum: 5
+          default: 1
+        cpu:
+          title: CPU per pod
+          type: string
+          default: 500m
+          pattern: '^[0-9]+(\.[0-9]+)?m?$'
+        memory:
+          title: Memory per pod
+          type: string
+          description: maxmemory is the share below of this.
+          default: 1Gi
+          pattern: '^[0-9]+(Mi|Gi)$'
+        maxMemoryPercent:
+          title: Max memory (%)
+          type: integer
+          minimum: 10
+          maximum: 90
+          default: 75
+        evictionPolicy:
+          title: Eviction policy
+          type: string
+          enum: [allkeys-lru, allkeys-lfu, allkeys-random, volatile-lru, volatile-lfu, volatile-random, volatile-ttl, noeviction]
+          default: allkeys-lru
+        monitoring:
+          title: Prometheus metrics, alerts and Grafana dashboard
+          type: boolean
+          default: true
+
+  steps:
+    - id: create
+      name: Create ValkeyCache
+      action: cnpg:valkeycache:create
+      input:
+        name: ${{ parameters.name }}
+        # A project entity ref (resource:default/<project>); the action uses
+        # the project name as the namespace.
+        namespace: ${{ parameters.project }}
+        owner: ${{ parameters.owner }}
+        system: ${{ parameters.system }}
+        spec:
+          mode: ${{ parameters.mode }}
+          shards: ${{ parameters.shards }}
+          replicas: ${{ parameters.replicas }}
+          resources:
+            cpu: ${{ parameters.cpu }}
+            memory: ${{ parameters.memory }}
+          maxMemoryPercent: ${{ parameters.maxMemoryPercent }}
+          evictionPolicy: ${{ parameters.evictionPolicy }}
+          monitoring:
+            enabled: ${{ parameters.monitoring }}
+            grafanaDashboard:
+              enabled: ${{ parameters.monitoring }}
+
+  output:
+    links:
+      - title: Open in the portal
+        url: ${{ steps['create'].output.portalPath }}
+      - title: Catalog entity (appears within ~30s)
+        icon: catalog
+        entityRef: ${{ steps['create'].output.entityRef }}
+    text:
+      - title: Connecting
+        content: |
+          Applications in the project's location connect to
+          `valkey-${{ parameters.name }}.${{ steps['create'].output.namespace }}.svc:6379`
+          with the password in Secret `${{ steps['create'].output.namespace }}/${{ parameters.name }}-valkey-auth`
+          (key `uri` holds a full `valkey://` connection string).

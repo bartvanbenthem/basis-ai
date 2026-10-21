@@ -12,11 +12,14 @@
 #                                         binds to. Never deleted by Crossplane:
 #                                         removing the Location leaves it.
 #   Object <name>-cnpg                    observe only: APIService
-#   Object <name>-prometheus-operator       v1.postgresql.cnpg.io / v1.monitoring.coreos.com,
-#                                         which the API server registers for
-#                                         every CRD group -- small, unlike the
-#                                         CRDs themselves, whose schemas would
-#                                         land in the Object's status.
+#   Object <name>-prometheus-operator       v1.postgresql.cnpg.io / v1.monitoring.coreos.com
+#   Object <name>-valkey                    / v1alpha1.valkey.io, which the API
+#                                         server registers for every CRD group
+#                                         -- small, unlike the CRDs themselves,
+#                                         whose schemas would land in the
+#                                         Object's status. The Valkey operator
+#                                         is optional (only for ValkeyCaches):
+#                                         it never makes a Location unready.
 #
 # The Objects live in the namespace of the kubeconfig Secret. Whether the
 # role Object syncs says whether Crossplane can reach the cluster
@@ -60,7 +63,7 @@ spec:
             {{- range dig "status" "conditions" (list) $role }}{{ if and (eq .type "Ready") (eq .status "True") }}{{ $roleReady = true }}{{ end }}{{ end }}
             {{- $connected := and (eq ($synced.status | default "") "True") $roleReady }}
             {{- $operators := dict }}
-            {{- range $key := list "cnpg" "prometheus-operator" }}
+            {{- range $key := list "cnpg" "prometheus-operator" "valkey" }}
             {{- $_ := set $operators $key (not (empty (dig $key "resource" "status" "atProvider" "manifest" (dict) $observed))) }}
             {{- end }}
             ---
@@ -121,7 +124,7 @@ spec:
                       verbs: [get, list, watch]
                     - nonResourceURLs: [/metrics, /metrics/cadvisor]
                       verbs: [get]
-            {{- range $key, $group := dict "cnpg" "postgresql.cnpg.io" "prometheus-operator" "monitoring.coreos.com" }}
+            {{- range $key, $apiService := dict "cnpg" "v1.postgresql.cnpg.io" "prometheus-operator" "v1.monitoring.coreos.com" "valkey" "v1alpha1.valkey.io" }}
             ---
             apiVersion: kubernetes.m.crossplane.io/v1alpha1
             kind: Object
@@ -130,7 +133,7 @@ spec:
               namespace: {{ $ns }}
               annotations:
                 gotemplating.fn.crossplane.io/composition-resource-name: {{ $key }}
-                gotemplating.fn.crossplane.io/ready: {{ if index $operators $key }}"True"{{ else }}"False"{{ end }}
+                gotemplating.fn.crossplane.io/ready: {{ if or (index $operators $key) (eq $key "valkey") }}"True"{{ else }}"False"{{ end }}
               labels:
                 {{- range $k, $v := $labels }}
                 {{ $k }}: {{ $v | quote }}
@@ -145,7 +148,7 @@ spec:
                   apiVersion: apiregistration.k8s.io/v1
                   kind: APIService
                   metadata:
-                    name: v1.{{ $group }}
+                    name: {{ $apiService }}
             {{- end }}
 
             {{- /* ================= XR status ================= */}}
@@ -175,6 +178,7 @@ spec:
               operators:
                 cloudnativepg: {{ $cnpg }}
                 prometheusOperator: {{ $promOp }}
+                valkey: {{ index $operators "valkey" }}
               {{- end }}
             ---
             apiVersion: meta.gotemplating.fn.crossplane.io/v1alpha1

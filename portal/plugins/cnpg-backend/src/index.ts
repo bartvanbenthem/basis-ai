@@ -2,9 +2,9 @@
  * Backend for the CNPG portal.
  *
  * - default export: the `cnpg` plugin (REST API at /api/cnpg)
- * - `catalogModuleCnpg`: mirrors Projects and PostgresClusters into the catalog
- * - `scaffolderModuleCnpg`: the `cnpg:postgrescluster:create` and
- *   `cnpg:project:create` actions
+ * - `catalogModuleCnpg`: mirrors Projects, PostgresClusters and ValkeyCaches into the catalog
+ * - `scaffolderModuleCnpg`: the `cnpg:postgrescluster:create`,
+ *   `cnpg:project:create` and `cnpg:valkeycache:create` actions
  *
  * @packageDocumentation
  */

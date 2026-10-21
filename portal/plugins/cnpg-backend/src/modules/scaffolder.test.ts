@@ -1,5 +1,31 @@
 import { createMockActionContext } from '@backstage/plugin-scaffolder-node-test-utils';
-import { createPostgresClusterAction, createProjectAction, prune } from './scaffolder';
+import { createPostgresClusterAction, createProjectAction, createValkeyCacheAction, prune } from './scaffolder';
+
+describe('cnpg:valkeycache:create', () => {
+  it('applies the cache in the project and outputs links', async () => {
+    const valkey = { apply: jest.fn(async () => ({})) };
+    const action = createValkeyCacheAction(valkey as any);
+    const ctx = createMockActionContext({
+      input: {
+        name: 'llm-cache',
+        namespace: 'resource:default/demo',
+        owner: 'group:default/team-ai',
+        spec: { mode: 'semantic', shards: 1, replicas: 0, monitoring: { podMonitorLabels: {} } },
+      },
+    });
+    await action.handler(ctx);
+    expect(valkey.apply).toHaveBeenCalledWith({
+      name: 'llm-cache',
+      namespace: 'demo',
+      spec: { mode: 'semantic', shards: 1, replicas: 0 },
+      labels: { 'backstage.io/owner': 'team-ai' },
+      createOnly: true,
+      dryRun: undefined,
+    });
+    expect(ctx.output).toHaveBeenCalledWith('portalPath', '/cnpg/caches/demo/llm-cache');
+    expect(ctx.output).toHaveBeenCalledWith('entityRef', 'resource:default/demo--llm-cache.valkey');
+  });
+});
 
 describe('cnpg:postgrescluster:create', () => {
   it('prunes empty optional values', () => {

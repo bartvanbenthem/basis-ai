@@ -16,7 +16,8 @@ The platform currently provides these building blocks:
 | Layer | Component |
 |---|---|
 | Context / RAG | PostgreSQL on [CloudNativePG](https://cloudnative-pg.io/) (CNPG) with [pgvector](https://github.com/pgvector/pgvector), VectorChord and pg_search |
-| Observability | [Prometheus](https://prometheus.io/) and [Grafana](https://grafana.com/) per Project, with metrics, alerts and dashboards |
+| Cache | Exact and semantic caches on [Valkey](https://valkey.io/), run by the [valkey-io operator](https://github.com/valkey-io/valkey-operator), with valkey-search for vector (KNN) lookups |
+| Observability | [Prometheus](https://prometheus.io/) and [Grafana](https://grafana.com/) per Project, with metrics, alerts and dashboards for every database and cache |
 | Object storage | A backup bucket per Project, provisioned with [COSI](https://github.com/kubernetes-sigs/container-object-storage-interface) |
 
 What a team gets:
@@ -28,6 +29,11 @@ What a team gets:
 - **Vector & RAG:** a `vector` workload profile (PostgreSQL 18) with pgvector, VectorChord for large
   vector indexes and pg_search (BM25) for hybrid search, mounted as CNPG extension images, memory
   tuned for building vector indexes and metrics on them (see [Profiles](api/README.md#profiles)).
+- **Caches:** one `ValkeyCache` API object, or a form in the portal, gives a team an exact cache
+  (prompt hash, tool, SQL and search results) or a semantic cache (embedding lookups through
+  valkey-search, e.g. for LiteLLM) in its Project's location, with a generated password, metrics,
+  alerts and a Grafana dashboard in the Project's Grafana, like a PostgresCluster's (see
+  [ValkeyCache](api/README.md#the-valkeycache-api)).
 - **Extensions:** pgvector for vector search (embeddings, RAG) and other extensions from the
   platform's catalog, picked per cluster in the API or the portal (see
   [Extensions](api/README.md#extensions)).
@@ -74,10 +80,10 @@ See [Locations](api/README.md#locations) for how to configure this.
 
 | Folder | What | Built with |
 |---|---|---|
-| [`deps/`](deps/) | cert-manager, Prometheus Operator, grafana-operator, ingress; the `demo` Project | Helm, kubectl |
+| [`deps/`](deps/) | cert-manager, Prometheus Operator, grafana-operator, ingress, the Valkey operator; the `demo` Project | Helm, kubectl |
 | [`operator/`](operator/) | CloudNativePG operator, Barman Cloud backup plugin and the PostgreSQL image catalog, installed from charts **vendored in this repo** | Helm |
-| [`api/`](api/) | `PostgresCluster` (`cnpg.cndev.nl/v1alpha1`): one namespaced API object that bundles everything a production CNPG cluster needs, including metrics, alerts and the CNPG Grafana dashboard. `Project` (`platform.cndev.nl/v1alpha1`): a namespace with its own Prometheus and Grafana, RoleBindings, an optional quota and deletion protection. Both place what runs in the locations through provider-kubernetes. The PostgresCluster composition is a Go composition function, function-basis ([`api/function/`](api/function/)) | Crossplane v2, Go |
-| [`portal/`](portal/) | Portal to create projects and clusters and to inspect them; catalog integration and Software Templates | Backstage (new frontend + backend system) |
+| [`api/`](api/) | `PostgresCluster` (`cnpg.cndev.nl/v1alpha1`): one namespaced API object that bundles everything a production CNPG cluster needs, including metrics, alerts and the CNPG Grafana dashboard. `Project` (`platform.cndev.nl/v1alpha1`): a namespace with its own Prometheus and Grafana, RoleBindings, an optional quota and deletion protection. Both place what runs in the locations through provider-kubernetes. `ValkeyCache` (`cache.cndev.nl/v1alpha1`): an exact or semantic Valkey cache in the Project's location. The PostgresCluster and ValkeyCache compositions are a Go composition function, function-basis ([`api/function/`](api/function/)) | Crossplane v2, Go |
+| [`portal/`](portal/) | Portal to create projects, clusters and caches and to inspect them; catalog integration and Software Templates | Backstage (new frontend + backend system) |
 
 ## Install
 
@@ -87,6 +93,8 @@ Operator from [`deps/`](deps/README.md), then CloudNativePG:
 ```sh
 KUBECONFIG=dc-a.kubeconfig operator/install.sh   # CNPG 1.30 + barman-cloud plugin + ClusterImageCatalog
 ```
+
+Locations that run caches also get the Valkey operator ([`deps/`](deps/README.md#5-valkey-operator-locations-with-caches)).
 
 **The control plane**: the Prometheus Operator and grafana-operator from
 [`deps/`](deps/README.md) (each Project's Grafana and the Prometheus its locations write to
@@ -100,9 +108,20 @@ kubectl apply -f deps/demo/project.yaml                  # Project demo (edit it
 kubectl apply -f api/examples/minimal.yaml    # a PostgresCluster in demo, running in dc-a
 ```
 
-`install.sh` installs the published PostgresCluster composition function, function-basis,
-from ghcr.io; see [function-basis](api/README.md#function-basis) for publishing a new
-version (the package must be public, or Crossplane needs a pull secret) and rolling it out.
+`install.sh` installs the published composition function, function-basis, from ghcr.io, at the
+tag in [`api/install/function-basis.yaml`](api/install/function-basis.yaml). Whenever
+`api/function/` changes (a new API it composes, a composition change), publish a new version and
+roll it out before applying the APIs that need it:
+
+```sh
+make -C api test                                      # unit + render tests
+make -C api function-push FUNCTION_VERSION=<version>  # publish to ghcr.io
+# set <version> in api/install/function-basis.yaml and the api/Makefile default, commit
+api/install/install.sh                                # rolls it out, then the APIs
+```
+
+See [function-basis](api/README.md#function-basis) for the details (logging in to ghcr.io, the
+package must be public or Crossplane needs a pull secret, rolling back).
 
 See [Locations](api/README.md#locations) for the protected and recovery sites and
 geo replication. The portal also runs on the control plane: see
@@ -113,9 +132,9 @@ geo replication. The portal also runs on the control plane: see
 | Command | Needs | Covers |
 |---|---|---|
 | `operator/verify.sh` | helm | vendored charts lint and render with the production values |
-| `make -C api test` | Go, crossplane CLI, Docker/podman | function-basis's unit tests (the switchover state machine, the guards that refuse to tear down a running database, parameter precedence); every composition renders (PostgresCluster: 22 cases incl. sizes and extensions from their catalogs, geo-replicated, switchover, failover, draining, pinned sites, no Project, the Project's COSI backup bucket, restores from the bucket and from a store of its own; Project: 6 incl. both sites, a COSI bucket with its inventory of backup folders and an unregistered location; Location: 3; empty and observed); output, and the manifests inside provider-kubernetes Objects, validated against the real CRD schemas; status/readiness/dashboard/alert/project-wiring/topology assertions |
-| `cd portal && yarn tsc && yarn test:all` | node 22 | backend (REST API, permissions, catalog provider, scaffolder action) and frontend (form, list page) |
-| `hack/e2e-kind.sh` | kind, helm, Docker/podman, `fs.inotify.max_user_instances` ≥ 512 | a control plane and one location on kind, installed as documented: Project goes Ready in both, a PostgresCluster in it goes Ready in the location (no CNPG on the control plane), `psql` through PgBouncer, the location's Prometheus scrapes it and remote-writes to the project's Prometheus on the control plane, its Grafana has the dashboard, deletion guardrails hold, deletes cascade |
+| `make -C api test` | Go, crossplane CLI, Docker/podman | function-basis's unit tests (the switchover state machine, the guards that refuse to tear down a running database, parameter precedence); every composition renders (PostgresCluster: 22 cases incl. sizes and extensions from their catalogs, geo-replicated, switchover, failover, draining, pinned sites, no Project, the Project's COSI backup bucket, restores from the bucket and from a store of its own; Project: 6 incl. both sites, a COSI bucket with its inventory of backup folders and an unregistered location; Location: 3 incl. the optional Valkey operator; ValkeyCache: 3 incl. semantic and no Project; empty and observed); output, and the manifests inside provider-kubernetes Objects, validated against the real CRD schemas; status/readiness/dashboard/alert/project-wiring/topology assertions |
+| `cd portal && yarn tsc && yarn test:all` | node 22 | backend (REST API incl. caches, permissions, catalog provider, scaffolder action) and frontend (forms, list page) |
+| `hack/e2e-kind.sh` | kind, helm, Docker/podman, `fs.inotify.max_user_instances` ≥ 512 | a control plane and one location on kind, installed as documented: Project goes Ready in both, a PostgresCluster in it goes Ready in the location (no CNPG on the control plane), `psql` through PgBouncer, the location's Prometheus scrapes it and remote-writes to the project's Prometheus on the control plane, its Grafana has the dashboard, then a ValkeyCache with the Valkey operator in the location: Ready, password required, metrics on both Prometheuses, alerts, its dashboard in Grafana; deletion guardrails hold, deletes cascade |
 | `hack/e2e-locations.sh` | kind, helm, Docker/podman, `fs.inotify.max_user_instances` ≥ 512 | a control plane, a protected and a recovery location, MinIO as the shared object store: a Project with both sites, a geo-replicated PostgresCluster, a row written in the protected site shows up in the recovery site, a point-in-time restore into a new cluster stops at the target time and archives to a folder of its own, a switchover promotes it (writes work, the old primary follows), turning geo replication off switches back first and loses nothing, the policy and XRD rules reject what they should |
 
 Both e2e scripts use their own kubeconfigs in `.e2e/` and never touch your current context. They
@@ -127,7 +146,7 @@ Next steps for the platform.
 
 | Item | What |
 |---|---|
-| Full generative AI platform | Grow BASIS into the full stack (see [Platform scope](portal/catalog/docs/scope.md)): self-hosted models with vLLM, KServe and llm-d; a router and gateway with the Gateway API Inference Extension and Envoy AI Gateway or agentgateway; llm-d prefix-cache-aware routing; an exact and semantic cache on Valkey; guardrails; OpenTelemetry traces next to Prometheus and Grafana; orchestration with LangGraph. Each as a self-service API object per Project, like `PostgresCluster` |
+| Full generative AI platform | Grow BASIS into the full stack (see [Platform scope](portal/catalog/docs/scope.md)): self-hosted models with vLLM, KServe and llm-d; a router and gateway with the Gateway API Inference Extension and Envoy AI Gateway or agentgateway; llm-d prefix-cache-aware routing (the exact and semantic cache on Valkey is there: `ValkeyCache`); guardrails; OpenTelemetry traces next to Prometheus and Grafana; orchestration with LangGraph. Each as a self-service API object per Project, like `PostgresCluster` |
 | Automatic major upgrades | Opt-in in-place `pg_upgrade` to the next major in a maintenance window: pre-flight checks (health, extensions, recent backup), a fresh base backup afterwards, statistics refreshed; geo-replicated clusters too |
 | Self-fencing at each site | Prevents split brain on a failover. Today the site that is cut off is not fenced: it can't receive the update, so its primary keeps taking writes. With this, the primary site keeps renewing a lease somewhere both sites can reach (the object store or a witness in a third site), and a small agent in each site sets `cnpg.io/fencedInstances` on its own cluster when the lease can't be renewed. A failover is only allowed once the lease has expired plus a safety margin, so there is never more than one primary (as in Patroni-style setups) |
 | Maintenance windows | A window per cluster or Project in which image rollouts, restarts and upgrades may run, instead of whenever the catalog or spec changes |

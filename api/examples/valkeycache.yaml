@@ -1,0 +1,39 @@
+# A semantic cache for LLM responses in the demo Project's protected location:
+# Valkey with the valkey-search module (HNSW/KNN via FT.CREATE / FT.SEARCH),
+# 1Gi of which 75% holds keys (allkeys-lru). Needs the Valkey operator in that
+# location (deps/README.md).
+#
+# Connect, in the location, with the uri in Secret demo/llm-cache-valkey-auth
+# (the control plane has the same in demo/llm-cache-valkey):
+#   valkey://default:<password>@valkey-llm-cache.demo.svc:6379
+#
+# The operator runs Valkey in cluster mode only. Cluster-aware clients
+# (valkey-glide, redis-py's RedisCluster, redisvl) work with any number of
+# shards and replicas. LiteLLM's valkey-semantic cache uses a plain client and
+# doesn't support cluster-mode endpoints, so give it a single node, as here
+# (one shard, no replica: the Service then always reaches the primary). In
+# LiteLLM's config, with VALKEY_PASSWORD from the Secret's password:
+#   cache: true
+#   cache_params:
+#     type: valkey-semantic
+#     host: valkey-llm-cache.demo.svc
+#     port: "6379"
+#     valkey_semantic_cache_embedding_model: <an embedding model in model_list>
+#     similarity_threshold: 0.9   # start strict; measure hits against wrong answers
+#
+# Keep the tenant/user scope, the model ID and the system-prompt version in
+# every cache key (or as a TAG filter in the KNN query): a cache in front of
+# guardrails and context construction must never hand one user's answer to
+# another.
+apiVersion: cache.cndev.nl/v1alpha1
+kind: ValkeyCache
+metadata:
+  name: llm-cache
+  namespace: demo
+spec:
+  mode: semantic
+  shards: 1
+  replicas: 0
+  resources:
+    cpu: "1"
+    memory: 1Gi

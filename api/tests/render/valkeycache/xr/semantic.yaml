@@ -1,0 +1,19 @@
+# A semantic cache (valkey-search) over three shards, sized and pinned to its location.
+apiVersion: cache.cndev.nl/v1alpha1
+kind: ValkeyCache
+metadata:
+  name: answers
+  namespace: payments
+spec:
+  mode: semantic
+  shards: 3
+  replicas: 2
+  resources:
+    cpu: "1.5"
+    memory: 2Gi
+  maxMemoryPercent: 60
+  evictionPolicy: allkeys-lfu
+  monitoring:
+    enabled: false
+status:
+  location: onprem-ams

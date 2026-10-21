@@ -1,0 +1,7 @@
+# Namespace without a Project: only the password Secret, nothing in a location.
+apiVersion: cache.cndev.nl/v1alpha1
+kind: ValkeyCache
+metadata:
+  name: orphan
+  namespace: demo
+spec: {}

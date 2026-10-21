@@ -19,14 +19,20 @@ import {
   CnpgKubernetesService,
   cnpgKubernetesServiceRef,
 } from '../service/CnpgKubernetesService';
+import { ValkeyService, valkeyServiceRef } from '../service/ValkeyService';
 import {
+  CACHE_ANNOTATION,
+  CACHE_MODES,
+  cachePods,
   CNPG_ANNOTATION,
   PostgresCluster,
   Project,
   PROJECT_ANNOTATION,
   ProjectSummary,
   summarize,
+  summarizeCache,
   summarizeProject,
+  ValkeyCache,
 } from '@internal/backstage-plugin-cnpg-common';
 
 /**
@@ -38,9 +44,11 @@ import {
  * - a PostgresCluster becomes a Resource of type "postgres-cluster" named
  *   "<namespace>--<name>", owner/system from the backstage.io/owner and
  *   backstage.io/system labels on the XR, and dependsOn its project.
+ * - a ValkeyCache becomes a Resource of type "valkey-cache" named
+ *   "<namespace>--<name>.valkey", owned and linked the same way.
  *
- * Project names can't contain "--" (enforced by the XRD), so the two never
- * collide.
+ * Project names can't contain "--" (enforced by the XRD), and cluster and
+ * cache names no ".", so none of them collide.
  */
 export class PostgresClusterEntityProvider implements EntityProvider {
   #connection?: EntityProviderConnection;
@@ -50,6 +58,7 @@ export class PostgresClusterEntityProvider implements EntityProvider {
     private readonly taskRunner: SchedulerServiceTaskRunner,
     private readonly logger: LoggerService,
     private readonly options: { defaultOwner: string; appBaseUrl: string; grafanaUrl?: string },
+    private readonly valkey?: Pick<ValkeyService, 'list'>,
   ) {}
 
   getProviderName() {
@@ -66,18 +75,23 @@ export class PostgresClusterEntityProvider implements EntityProvider {
 
   async refresh() {
     if (!this.#connection) return;
-    const [clusters, projects] = await Promise.all([this.k8s.list(), this.k8s.listProjects()]);
+    const [clusters, projects, caches] = await Promise.all([
+      this.k8s.list(),
+      this.k8s.listProjects(),
+      this.valkey?.list() ?? Promise.resolve([]),
+    ]);
     const byName = new Map(projects.map(p => [p.metadata.name, summarizeProject(p)]));
     const entities = [
       ...projects.map(p => this.toProjectEntity(p)),
       ...clusters.map(c => this.toEntity(c, byName.get(c.metadata.namespace))),
+      ...caches.map(c => this.toCacheEntity(c, byName.get(c.metadata.namespace))),
     ];
     await this.#connection.applyMutation({
       type: 'full',
       entities: entities.map(entity => ({ entity, locationKey: this.getProviderName() })),
     });
     this.logger.debug(
-      `Synced ${projects.length} Projects and ${clusters.length} PostgresClusters into the catalog`,
+      `Synced ${projects.length} Projects, ${clusters.length} PostgresClusters and ${caches.length} ValkeyCaches into the catalog`,
     );
   }
 
@@ -171,6 +185,50 @@ export class PostgresClusterEntityProvider implements EntityProvider {
       },
     };
   }
+  /** `project`: the Project whose namespace the cache is in, if any. */
+  toCacheEntity(cache: ValkeyCache, project?: ProjectSummary): Entity {
+    const { name, namespace, labels = {} } = cache.metadata;
+    const s = summarizeCache(cache);
+    const location = `cnpg:cache/${namespace}/${name}`;
+    const links = [
+      {
+        url: `${this.options.appBaseUrl.replace(/\/$/, '')}/cnpg/caches/${namespace}/${name}`,
+        title: 'CNPG portal',
+      },
+    ];
+    const grafanaUrl =
+      project?.grafanaUrl ?? this.options.grafanaUrl?.replace(/\{namespace\}/g, namespace);
+    if (s.dashboardUid && grafanaUrl) {
+      links.push({
+        url: `${grafanaUrl.replace(/\/$/, '')}/d/${s.dashboardUid}`,
+        title: 'Grafana dashboard',
+      });
+    }
+    return {
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Resource',
+      metadata: {
+        name: `${namespace}--${name}.valkey`.slice(0, 63),
+        title: `${name} (${namespace})`,
+        description: `${CACHE_MODES[s.mode].displayName} Valkey cache, ${s.shards} shard(s) with ${s.replicas} replica(s), ${cachePods(s)} pods of ${s.memory}`,
+        annotations: {
+          [ANNOTATION_LOCATION]: location,
+          [ANNOTATION_ORIGIN_LOCATION]: location,
+          [CACHE_ANNOTATION]: `${namespace}/${name}`,
+          'backstage.io/kubernetes-namespace': namespace,
+          'backstage.io/kubernetes-label-selector': `valkey.io/cluster=${name}`,
+        },
+        tags: ['valkey', 'cache', s.mode],
+        links,
+      },
+      spec: {
+        type: 'valkey-cache',
+        owner: labels['backstage.io/owner'] ?? this.options.defaultOwner,
+        ...(labels['backstage.io/system'] ? { system: labels['backstage.io/system'] } : {}),
+        ...(project ? { dependsOn: [`resource:default/${project.name}`] } : {}),
+      },
+    };
+  }
 }
 
 export function readCatalogOptions(config: RootConfigService) {
@@ -197,8 +255,9 @@ export const catalogModuleCnpg = createBackendModule({
         logger: coreServices.logger,
         scheduler: coreServices.scheduler,
         k8s: cnpgKubernetesServiceRef,
+        valkey: valkeyServiceRef,
       },
-      async init({ catalog, config, logger, scheduler, k8s }) {
+      async init({ catalog, config, logger, scheduler, k8s, valkey }) {
         const seconds = config.getOptionalNumber('cnpg.catalog.refreshSeconds') ?? 30;
         catalog.addEntityProvider(
           new PostgresClusterEntityProvider(
@@ -209,6 +268,7 @@ export const catalogModuleCnpg = createBackendModule({
             }),
             logger,
             readCatalogOptions(config),
+            valkey,
           ),
         );
       },

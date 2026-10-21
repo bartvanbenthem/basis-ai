@@ -198,6 +198,9 @@ components:
                   type: boolean
                 prometheusOperator:
                   type: boolean
+                valkey:
+                  description: The Valkey operator, which ValkeyCaches need (optional).
+                  type: boolean
               type: object
             providerConfig:
               description: The provider-kubernetes ClusterProviderConfig compositions place objects through.

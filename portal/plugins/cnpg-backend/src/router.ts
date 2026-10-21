@@ -13,6 +13,11 @@ import Router from 'express-promise-router';
 import { z } from 'zod/v3';
 import {
   cnpgBucketDeletePermission,
+  cnpgCacheCreatePermission,
+  cnpgCacheCredentialsReadPermission,
+  cnpgCacheDeletePermission,
+  cnpgCacheReadPermission,
+  cnpgCacheUpdatePermission,
   cnpgBucketReadPermission,
   cnpgClusterCreatePermission,
   cnpgClusterCredentialsReadPermission,
@@ -50,14 +55,17 @@ import {
   restoreSpec,
   serverRestoreSource,
   summarize,
+  summarizeCache,
   summarizeProject,
   targetTimeError,
+  ValkeyCacheSummary,
 } from '@internal/backstage-plugin-cnpg-common';
 import { AuditService } from './service/AuditService';
 import { BucketService } from './service/BucketService';
 import { CnpgKubernetesService } from './service/CnpgKubernetesService';
 import { MAX_KUBECONFIG_BYTES } from './service/kubeconfig';
 import { LocationService, withTimeout } from './service/LocationService';
+import { ValkeyService } from './service/ValkeyService';
 import { VolumeService } from './service/VolumeService';
 
 // DNS-1123 label, short enough that CNPG's derived names (<name>-pooler-rw,
@@ -210,6 +218,12 @@ function withProject(
   };
 }
 
+/** Adds the cache's Project (same name as its namespace) and that project's Grafana. */
+function withCacheProject(summary: ValkeyCacheSummary, project: Project | undefined): ValkeyCacheSummary {
+  if (!project) return summary;
+  return { ...summary, project: project.metadata.name, grafanaUrl: project.status?.grafana?.url || undefined };
+}
+
 export async function createRouter(options: {
   httpAuth: HttpAuthService;
   permissions: PermissionsService;
@@ -219,8 +233,9 @@ export async function createRouter(options: {
   buckets: BucketService;
   volumes: VolumeService;
   audit: AuditService;
+  valkey: ValkeyService;
 }): Promise<express.Router> {
-  const { httpAuth, permissions, config, k8s, locations, buckets, volumes, audit } = options;
+  const { httpAuth, permissions, config, k8s, locations, buckets, volumes, audit, valkey } = options;
   const router = Router();
   // Uploaded kubeconfigs can carry a few certificates.
   router.use(express.json({ limit: '1mb' }));
@@ -477,11 +492,17 @@ export async function createRouter(options: {
     if (!p.success) throw new InputError(p.error.toString());
     await k8s.getProject(p.data.name);
     // Deleting the project deletes its namespace, and with it every
-    // PostgresCluster and its databases: only an empty project goes.
+    // PostgresCluster and ValkeyCache: only an empty project goes.
     const clusters = (await k8s.list(p.data.name)).map(c => c.metadata.name);
     if (clusters.length) {
       throw new ConflictError(
         `Project ${p.data.name} still has PostgreSQL clusters: ${clusters.sort().join(', ')}; delete them first`,
+      );
+    }
+    const caches = (await valkey.list(p.data.name)).map(c => c.metadata.name);
+    if (caches.length) {
+      throw new ConflictError(
+        `Project ${p.data.name} still has Valkey caches: ${caches.sort().join(', ')}; delete them first`,
       );
     }
     await k8s.deleteProject(p.data.name);
@@ -537,6 +558,73 @@ export async function createRouter(options: {
     if (!p.success) throw new InputError(p.error.toString());
     await volumes.deleteVolume(p.data.location, p.data.name);
     res.json({ status: 'deleted' });
+  });
+
+  // Valkey caches (cache.cndev.nl ValkeyCache), in a project's protected
+  // location. The spec goes to the XR as-is: the XRD validates it.
+  router.get('/caches', async (req, res) => {
+    await authorize(req, cnpgCacheReadPermission);
+    const q = z.object({ namespace: namespace.optional() }).safeParse(req.query);
+    if (!q.success) throw new InputError(q.error.toString());
+    const [items, projects] = await Promise.all([valkey.list(q.data.namespace), k8s.listProjects()]);
+    const byName = new Map(projects.map(p => [p.metadata.name, p]));
+    res.json({
+      items: items.map(c => {
+        const project = byName.get(c.metadata.namespace);
+        return withCacheProject(summarizeCache(c, project), project);
+      }),
+    });
+  });
+
+  router.get('/caches/:namespace/:name', async (req, res) => {
+    await authorize(req, cnpgCacheReadPermission);
+    const p = params(req);
+    const [details, project] = await Promise.all([
+      valkey.details(p.namespace, p.name, location => locations.kubeConfig(location)),
+      k8s.getProject(p.namespace).catch(() => undefined),
+    ]);
+    res.json({
+      ...details,
+      summary: withCacheProject(summarizeCache(details.resource, project), project),
+    });
+  });
+
+  router.get('/caches/:namespace/:name/connection', async (req, res) => {
+    await authorize(req, cnpgCacheReadPermission);
+    await authorize(req, cnpgCacheCredentialsReadPermission);
+    const p = params(req);
+    // Carries the password: keep it out of every cache.
+    res.set('Cache-Control', 'no-store');
+    res.json(await valkey.connection(p.namespace, p.name, location => locations.kubeConfig(location)));
+  });
+
+  router.post('/caches', async (req, res) => {
+    await authorize(req, cnpgCacheCreatePermission);
+    const parsed = createSchema.safeParse(req.body);
+    if (!parsed.success) throw new InputError(parsed.error.toString());
+    const { owner, ...rest } = parsed.data;
+    const created = await valkey.apply({
+      ...rest,
+      labels: owner ? { 'backstage.io/owner': owner } : undefined,
+      createOnly: true,
+    });
+    res.status(parsed.data.dryRun ? 200 : 201).json(created);
+  });
+
+  router.patch('/caches/:namespace/:name', async (req, res) => {
+    await authorize(req, cnpgCacheUpdatePermission);
+    const p = params(req);
+    const parsed = patchSchema.safeParse(req.body);
+    if (!parsed.success) throw new InputError(parsed.error.toString());
+    const { spec, owner, dryRun } = parsed.data;
+    res.json(await valkey.patch({ ...p, spec, labels: ownerLabel(owner), dryRun }));
+  });
+
+  router.delete('/caches/:namespace/:name', async (req, res) => {
+    await authorize(req, cnpgCacheDeletePermission);
+    const p = params(req);
+    await valkey.delete(p.namespace, p.name);
+    res.status(202).json({ status: 'deleting' });
   });
 
   router.post('/clusters', async (req, res) => {

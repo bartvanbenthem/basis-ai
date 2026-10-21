@@ -202,6 +202,7 @@ export const LocationDetailPage = () => {
                         ? [
                             `CloudNativePG ${value.status.operators.cloudnativepg ? 'installed' : 'missing'}`,
                             `Prometheus Operator ${value.status.operators.prometheusOperator ? 'installed' : 'missing'}`,
+                            `Valkey operator ${value.status.operators.valkey ? 'installed' : 'not installed (only caches need it)'}`,
                           ].join(', ')
                         : 'unknown until Crossplane connects',
                     ],

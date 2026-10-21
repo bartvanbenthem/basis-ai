@@ -1,0 +1,7 @@
+# Smallest ValkeyCache: an exact cache, one shard with one replica (all defaults).
+apiVersion: cache.cndev.nl/v1alpha1
+kind: ValkeyCache
+metadata:
+  name: prompt-cache
+  namespace: demo
+spec: {}

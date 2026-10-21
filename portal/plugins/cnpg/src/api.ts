@@ -8,6 +8,7 @@ import type {
   AuditLog,
   BucketDetails,
   BucketList,
+  CacheConnection,
   ClusterConnection,
   ClusterExtension,
   ClusterSize,
@@ -21,6 +22,9 @@ import type {
   Project,
   PromotionRequest,
   ProjectSummary,
+  ValkeyCache,
+  ValkeyCacheDetails,
+  ValkeyCacheSummary,
   VolumeList,
   VolumeSummary,
 } from '@internal/backstage-plugin-cnpg-common';
@@ -152,6 +156,14 @@ export interface CnpgApi {
   listVolumes(project?: string): Promise<VolumeList>;
   /** Deletes an orphaned claim or released volume with its storage; 409 for one in use. */
   deleteVolume(volume: VolumeSummary): Promise<void>;
+  listCaches(namespace?: string): Promise<ValkeyCacheSummary[]>;
+  getCache(namespace: string, name: string): Promise<ValkeyCacheDetails>;
+  createCache(request: CreateClusterRequest): Promise<ValkeyCache>;
+  patchCache(namespace: string, name: string, request: PatchRequest & { owner?: string | null }): Promise<ValkeyCache>;
+  /** Deletes the cache and every key in it. */
+  deleteCache(namespace: string, name: string): Promise<void>;
+  /** valkey://default:<password>@host:6379 from the Secret in the cache's location. */
+  getCacheConnection(namespace: string, name: string): Promise<CacheConnection>;
 }
 
 export const cnpgApiRef = createApiRef<CnpgApi>().with({
@@ -337,6 +349,34 @@ export class CnpgClient implements CnpgApi {
         ? `/volumes/${enc(volume.location)}/persistentvolumes/${enc(volume.volume ?? '')}`
         : `/volumes/${enc(volume.location)}/claims/${enc(volume.project)}/${enc(volume.claim)}`;
     await this.#request(path, { method: 'DELETE' });
+  }
+
+  async listCaches(namespace?: string) {
+    const query = namespace ? `?namespace=${enc(namespace)}` : '';
+    return (await this.#request<{ items: ValkeyCacheSummary[] }>(`/caches${query}`)).items;
+  }
+
+  getCache(namespace: string, name: string) {
+    return this.#request<ValkeyCacheDetails>(`/caches/${enc(namespace)}/${enc(name)}`);
+  }
+
+  createCache(request: CreateClusterRequest) {
+    return this.#request<ValkeyCache>('/caches', { method: 'POST', body: JSON.stringify(request) });
+  }
+
+  patchCache(namespace: string, name: string, request: PatchRequest & { owner?: string | null }) {
+    return this.#request<ValkeyCache>(`/caches/${enc(namespace)}/${enc(name)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async deleteCache(namespace: string, name: string) {
+    await this.#request(`/caches/${enc(namespace)}/${enc(name)}`, { method: 'DELETE' });
+  }
+
+  getCacheConnection(namespace: string, name: string) {
+    return this.#request<CacheConnection>(`/caches/${enc(namespace)}/${enc(name)}/connection`);
   }
 
   async #request<T>(path: string, init?: RequestInit): Promise<T> {

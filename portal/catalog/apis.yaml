@@ -1853,6 +1853,9 @@ spec:
                       type: boolean
                     prometheusOperator:
                       type: boolean
+                    valkey:
+                      description: The Valkey operator, which ValkeyCaches need (optional).
+                      type: boolean
                   type: object
                 providerConfig:
                   description: The provider-kubernetes ClusterProviderConfig compositions place objects through.
@@ -2090,6 +2093,521 @@ spec:
     tags:
       - description: A Kubernetes cluster the platform can run Projects' databases in.
         name: Location
+  lifecycle: experimental
+  owner: guests
+  system: basis
+  type: openapi
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  description: An exact or semantic Valkey cache for an AI service (cache.cndev.nl/v1alpha1), namespaced in its Project
+  name: valkeycache
+  tags:
+    - kubernetes
+    - crossplane
+  title: ValkeyCache API
+spec:
+  definition: |
+    components:
+      schemas:
+        ObjectMeta:
+          description: Standard Kubernetes object metadata (the fields that matter here).
+          properties:
+            annotations:
+              additionalProperties:
+                type: string
+              type: object
+            labels:
+              additionalProperties:
+                type: string
+              type: object
+            name:
+              type: string
+            namespace:
+              type: string
+          required:
+            - name
+          type: object
+        ValkeyCache:
+          description: |-
+            A Valkey cache (exact or semantic) for an AI service, in its Project's location.
+
+            Rules:
+            - ValkeyCache names are lowercase letters, digits and "-", start with a letter, max 40 characters
+          properties:
+            apiVersion:
+              enum:
+                - cache.cndev.nl/v1alpha1
+              type: string
+            kind:
+              enum:
+                - ValkeyCache
+              type: string
+            metadata:
+              $ref: '#/components/schemas/ObjectMeta'
+            spec:
+              description: |-
+                Rules:
+                - mode can't change; create a new cache
+              properties:
+                crossplane:
+                  description: 'Set by Crossplane: how it composes this resource. Leave it out; the platform''s composition (valkeycache) is the only one, and Crossplane fills in the rest.'
+                  properties:
+                    compositionRef:
+                      description: 'The Composition that composes this resource (default: valkeycache).'
+                      properties:
+                        name:
+                          type: string
+                      required:
+                        - name
+                      type: object
+                    compositionRevisionRef:
+                      description: The Composition revision in use; Crossplane sets it.
+                      properties:
+                        name:
+                          type: string
+                      required:
+                        - name
+                      type: object
+                    compositionRevisionSelector:
+                      description: Selects the Composition revision by labels (with compositionUpdatePolicy Manual).
+                      properties:
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      required:
+                        - matchLabels
+                      type: object
+                    compositionSelector:
+                      description: Selects a Composition by labels instead of compositionRef.
+                      properties:
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      required:
+                        - matchLabels
+                      type: object
+                    compositionUpdatePolicy:
+                      default: Automatic
+                      description: 'Automatic: move to a new Composition revision as soon as there is one. Manual: stay on compositionRevisionRef.'
+                      enum:
+                        - Automatic
+                        - Manual
+                      type: string
+                    resourceRefs:
+                      description: The resources Crossplane composed for this one (read-only).
+                      items:
+                        properties:
+                          apiVersion:
+                            description: ""
+                            type: string
+                          kind:
+                            description: ""
+                            type: string
+                          name:
+                            description: ""
+                            type: string
+                        required:
+                          - apiVersion
+                          - kind
+                        type: object
+                      type: array
+                  type: object
+                evictionPolicy:
+                  default: allkeys-lru
+                  description: What goes when maxmemory is reached (maxmemory-policy). allkeys-lru suits a cache; volatile-* only evicts keys with a TTL; noeviction refuses writes instead.
+                  enum:
+                    - allkeys-lru
+                    - allkeys-lfu
+                    - allkeys-random
+                    - volatile-lru
+                    - volatile-lfu
+                    - volatile-random
+                    - volatile-ttl
+                    - noeviction
+                  type: string
+                maxMemoryPercent:
+                  default: 75
+                  description: Share of the pod's memory Valkey fills with keys before evicting (maxmemory). The rest is for replication buffers, fragmentation and, in semantic mode, index building.
+                  maximum: 90
+                  minimum: 10
+                  type: integer
+                mode:
+                  default: exact
+                  description: 'exact: plain key/value with TTLs (hashed prompt plus context, tool, SQL and search results). semantic: also loads the valkey-search module (FT.CREATE / FT.SEARCH, HNSW/KNN vector search) for embedding-based hits, e.g. LiteLLM''s valkey-semantic cache. Fixed after creation.'
+                  enum:
+                    - exact
+                    - semantic
+                  type: string
+                monitoring:
+                  default: {}
+                  properties:
+                    enabled:
+                      default: true
+                      description: Run the redis_exporter sidecar and a PodMonitor for it, scraped by the Project's Prometheus (semantic caches add valkey-search's module metrics).
+                      type: boolean
+                    grafanaDashboard:
+                      default: {}
+                      properties:
+                        allowCrossNamespaceImport:
+                          default: false
+                          description: Allow a Grafana in another namespace to import this dashboard.
+                          type: boolean
+                        datasourceName:
+                          default: prometheus
+                          description: Name of the Prometheus datasource in Grafana.
+                          type: string
+                        enabled:
+                          default: true
+                          description: Create a grafana-operator GrafanaDashboard with the Valkey cache dashboard, preselected on this cache.
+                          type: boolean
+                        folder:
+                          default: Valkey
+                          type: string
+                        instanceSelector:
+                          additionalProperties:
+                            type: string
+                          description: matchLabels selecting the Grafana instance(s). Defaults to dashboards.paas.cndev.nl/scope=<namespace>.
+                          type: object
+                      type: object
+                    podMonitorLabels:
+                      additionalProperties:
+                        type: string
+                      description: Extra labels on the PodMonitor/PrometheusRule, to match your Prometheus' selectors.
+                      type: object
+                    prometheusRule:
+                      default: {}
+                      properties:
+                        enabled:
+                          default: true
+                          description: Create a PrometheusRule with the cache alerts (node down, cluster state, slots, replica link, restarts, rejected writes, connections, eviction, hit ratio).
+                          type: boolean
+                        excludeRules:
+                          description: Alert names to leave out, e.g. [ValkeyCacheLowHitRatio].
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                  type: object
+                replicas:
+                  default: 1
+                  description: Replicas per shard. A replica takes over when its primary fails, so the cache stays warm; 0 loses that shard's keys on every pod restart.
+                  maximum: 5
+                  minimum: 0
+                  type: integer
+                resources:
+                  default: {}
+                  description: CPU and memory for each Valkey pod (memory is request and limit).
+                  properties:
+                    cpu:
+                      default: 500m
+                      pattern: ^[0-9]+(\.[0-9]+)?m?$
+                      type: string
+                    memory:
+                      default: 1Gi
+                      description: Mi or Gi; maxmemory is maxMemoryPercent of this.
+                      pattern: ^[0-9]+(Mi|Gi)$
+                      type: string
+                  type: object
+                shards:
+                  default: 1
+                  description: Primaries the keyspace is spread over (Valkey cluster mode). Grow for more memory or write throughput, with a cluster-aware client. Clients without cluster support (e.g. LiteLLM's valkey-semantic cache) need 1 shard and 0 replicas, so the Service always reaches the primary.
+                  maximum: 16
+                  minimum: 1
+                  type: integer
+              type: object
+            status:
+              properties:
+                conditions:
+                  description: Conditions of the resource, one per type. Crossplane sets Ready (every composed resource is ready) and Synced (the last reconcile succeeded); the composition adds its own, e.g. PostgresReady.
+                  items:
+                    properties:
+                      lastTransitionTime:
+                        format: date-time
+                        type: string
+                      message:
+                        description: Human-readable detail
+                        type: string
+                      observedGeneration:
+                        format: int64
+                        type: integer
+                      reason:
+                        description: Machine-readable reason, e.g. Available, ReconcileSuccess
+                        type: string
+                      status:
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                        type: string
+                      type:
+                        description: e.g. Ready, Synced
+                        type: string
+                    required:
+                      - type
+                      - status
+                      - reason
+                      - lastTransitionTime
+                    type: object
+                  type: array
+                endpoint:
+                  description: host:port of the cluster's Service in the location (any node; cluster-mode clients follow redirects).
+                  type: string
+                location:
+                  description: The Project's location the cache runs in, pinned on first use.
+                  type: string
+                message:
+                  type: string
+                modules:
+                  description: Modules loaded (search in semantic mode).
+                  items:
+                    type: string
+                  type: array
+                monitoring:
+                  properties:
+                    dashboardUid:
+                      description: uid of the GrafanaDashboard in the Project's Grafana.
+                      type: string
+                  type: object
+                ready:
+                  type: boolean
+                readyShards:
+                  type: integer
+                secret:
+                  description: Secret in this namespace on the control plane with username, password, host, port and uri (valkey://). A copy is in the location for workloads there.
+                  type: string
+                shards:
+                  type: integer
+                state:
+                  description: The ValkeyCluster's state (Initializing, Reconciling, Ready, Degraded, Failed).
+                  type: string
+              type: object
+          required:
+            - apiVersion
+            - kind
+            - metadata
+          type: object
+      securitySchemes:
+        bearerAuth:
+          description: A Kubernetes token (OIDC or ServiceAccount) with RBAC on valkeycaches.cache.cndev.nl
+          scheme: bearer
+          type: http
+    info:
+      description: |-
+        A Valkey cache (exact or semantic) for an AI service, in its Project's location.
+
+        A Crossplane composite resource on the platform's control plane, namespaced: it lives in its Project's namespace. Use it with `kubectl` (short name `vcache`), GitOps, or the Kubernetes API below; the portal and its software templates create it the same way. This is the CRD Crossplane makes of the XRD (api/apis): the platform's fields plus Crossplane's own (spec.crossplane, status.conditions), so it is what the API server validates: the schema, its defaults and the rules listed under each field.
+      title: ValkeyCache (cache.cndev.nl/v1alpha1)
+      version: v1alpha1
+    openapi: 3.0.3
+    paths:
+      /apis/cache.cndev.nl/v1alpha1/namespaces/{namespace}/valkeycaches:
+        get:
+          operationId: listValkeyCache
+          responses:
+            "200":
+              content:
+                application/json:
+                  schema:
+                    properties:
+                      items:
+                        items:
+                          $ref: '#/components/schemas/ValkeyCache'
+                        type: array
+                    type: object
+              description: OK
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: List valkeycaches in a namespace
+          tags:
+            - ValkeyCache
+        parameters:
+          - description: The Project's namespace
+            in: path
+            name: namespace
+            required: true
+            schema:
+              type: string
+        post:
+          operationId: createValkeyCache
+          parameters:
+            - description: 'All: validate (schema, rules, admission policies) without persisting'
+              in: query
+              name: dryRun
+              schema:
+                enum:
+                  - All
+                type: string
+          requestBody:
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/ValkeyCache'
+            required: true
+          responses:
+            "201":
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/ValkeyCache'
+              description: Created
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "409":
+              description: Already exists
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Create a ValkeyCache
+          tags:
+            - ValkeyCache
+      /apis/cache.cndev.nl/v1alpha1/namespaces/{namespace}/valkeycaches/{name}:
+        delete:
+          operationId: deleteValkeyCache
+          responses:
+            "200":
+              description: Deletion started
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Delete a ValkeyCache
+          tags:
+            - ValkeyCache
+        get:
+          operationId: readValkeyCache
+          responses:
+            "200":
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/ValkeyCache'
+              description: OK
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Read a ValkeyCache
+          tags:
+            - ValkeyCache
+        parameters:
+          - description: The Project's namespace
+            in: path
+            name: namespace
+            required: true
+            schema:
+              type: string
+          - description: ValkeyCache name
+            in: path
+            name: name
+            required: true
+            schema:
+              type: string
+        patch:
+          description: JSON merge patch (only the fields sent change, null removes one) or server-side apply.
+          operationId: patchValkeyCache
+          parameters:
+            - description: 'All: validate (schema, rules, admission policies) without persisting'
+              in: query
+              name: dryRun
+              schema:
+                enum:
+                  - All
+                type: string
+          requestBody:
+            content:
+              application/apply-patch+yaml:
+                schema:
+                  type: object
+              application/merge-patch+json:
+                schema:
+                  type: object
+            required: true
+          responses:
+            "200":
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/ValkeyCache'
+              description: OK
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Change fields of a ValkeyCache
+          tags:
+            - ValkeyCache
+        put:
+          operationId: replaceValkeyCache
+          parameters:
+            - description: 'All: validate (schema, rules, admission policies) without persisting'
+              in: query
+              name: dryRun
+              schema:
+                enum:
+                  - All
+                type: string
+          requestBody:
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/ValkeyCache'
+            required: true
+          responses:
+            "200":
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/ValkeyCache'
+              description: OK
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "409":
+              description: 'Conflict: changed since read (resourceVersion)'
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Replace a ValkeyCache
+          tags:
+            - ValkeyCache
+    security:
+      - bearerAuth: []
+    servers:
+      - description: The control plane's Kubernetes API server
+        url: https://{apiserver}
+        variables:
+          apiserver:
+            default: kubernetes.default.svc
+    tags:
+      - description: A Valkey cache (exact or semantic) for an AI service, in its Project's location.
+        name: ValkeyCache
   lifecycle: experimental
   owner: guests
   system: basis

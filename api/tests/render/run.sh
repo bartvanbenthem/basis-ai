@@ -4,7 +4,7 @@
 #  1. The function's embedded assets are up to date with src/, and
 #     function-basis (../../function) builds into a local image.
 #  2. `crossplane render` (that image for PostgresCluster, the real
-#     function-go-templating image for the others, XRD defaults
+#     for ValkeyCache, the real function-go-templating image for the others, XRD defaults
 #     applied via --xrd) for every <api>/xr/<case>.yaml, first with nothing
 #     observed, then with <api>/observed/<case>.yaml if present.
 #     <api>/required/<case>.yaml (else <api>/required/default.yaml), if
@@ -14,7 +14,8 @@
 #     extensions.yaml (the postgres-extensions catalog) if it has them.
 #  3. `crossplane resource validate` of every rendered object against the
 #     real CRD schemas: CNPG + Barman Cloud from ../../../operator/charts,
-#     Prometheus Operator, grafana-operator, provider-kubernetes and
+#     Prometheus Operator, grafana-operator, provider-kubernetes, the Valkey
+#     operator's ValkeyCluster and
 #     Crossplane's ClusterUsage from ../crds. The manifest inside each provider-kubernetes Object (what goes
 #     to a remote location) is validated too. Core kinds (Namespace,
 #     RoleBinding, ...) have no CRD and are skipped.
@@ -29,7 +30,7 @@ API_ROOT="$(cd "${HERE}/../.." && pwd)"
 OPERATOR_CHARTS="$(cd "${API_ROOT}/../operator/charts" && pwd)"
 # Built from ../../function by this script; never pulled.
 FUNCTION_IMAGE="${FUNCTION_IMAGE:-localhost/function-basis:render}"
-APIS=(postgrescluster project location)
+APIS=(postgrescluster project location valkeycache)
 
 if [[ -z "${DOCKER_HOST:-}" && -S "/run/user/${UID}/podman/podman.sock" ]]; then
   export DOCKER_HOST="unix:///run/user/${UID}/podman/podman.sock"

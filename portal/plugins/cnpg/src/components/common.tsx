@@ -5,6 +5,7 @@ import type {
   VolumeState,
   PostgresClusterSummary,
   ProjectSummary,
+  ValkeyCacheSummary,
 } from '@internal/backstage-plugin-cnpg-common';
 import { ReactNode } from 'react';
 
@@ -46,6 +47,14 @@ export function projectHealth(p: ProjectSummary): Health {
   return p.ready ? 'healthy' : 'progressing';
 }
 
+/** A cache from Crossplane's Ready condition and the operator's state. */
+export function cacheHealth(c: ValkeyCacheSummary): Health {
+  if (c.deleting) return 'deleting';
+  if (c.ready) return 'healthy';
+  if (c.state === 'Degraded' || c.state === 'Failed') return 'degraded';
+  return 'progressing';
+}
+
 /** `label` replaces the health's own word, e.g. "Reachable" for healthy. */
 export const StatusDot = ({ health: h, label }: { health: Health; label?: string }) => {
   const { color } = HEALTH[h];
@@ -62,6 +71,10 @@ export const StatusDot = ({ health: h, label }: { health: Health; label?: string
 
 export const HealthBadge = ({ cluster }: { cluster: PostgresClusterSummary }) => (
   <StatusDot health={health(cluster)} />
+);
+
+export const CacheHealthBadge = ({ cache }: { cache: ValkeyCacheSummary }) => (
+  <StatusDot health={cacheHealth(cache)} />
 );
 
 export const ProjectHealthBadge = ({ project }: { project: ProjectSummary }) => (

@@ -12,7 +12,8 @@ import { BucketService, bucketServiceRef } from './service/BucketService';
 import { LocationService, locationServiceRef } from './service/LocationService';
 import { VolumeService, volumeServiceRef } from './service/VolumeService';
 import { AuditService, auditServiceRef } from './service/AuditService';
-import { PostgresCluster, Project } from '@internal/backstage-plugin-cnpg-common';
+import { ValkeyService, valkeyServiceRef } from './service/ValkeyService';
+import { PostgresCluster, Project, ValkeyCache } from '@internal/backstage-plugin-cnpg-common';
 
 const ordersDb: PostgresCluster = {
   apiVersion: 'cnpg.cndev.nl/v1alpha1',
@@ -146,6 +147,39 @@ function fakeVolumes() {
   };
 }
 
+const llmCache: ValkeyCache = {
+  apiVersion: 'cache.cndev.nl/v1alpha1',
+  kind: 'ValkeyCache',
+  metadata: { name: 'llm-cache', namespace: 'demo', labels: { 'backstage.io/owner': 'team-ai' } },
+  spec: { mode: 'semantic', shards: 1, replicas: 0 },
+  status: {
+    state: 'Ready',
+    readyShards: 1,
+    location: 'prod-ams',
+    endpoint: 'valkey-llm-cache.demo.svc:6379',
+    secret: 'llm-cache-valkey',
+    conditions: [
+      { type: 'Ready', status: 'True' },
+      { type: 'Synced', status: 'True' },
+    ],
+  },
+};
+
+function fakeValkey(caches: ValkeyCache[] = []) {
+  return {
+    list: jest.fn(async (_ns?: string) => caches),
+    get: jest.fn(async () => llmCache),
+    details: jest.fn(async () => ({ summary: {}, resource: llmCache, pods: [], events: [] })),
+    connection: jest.fn(async (_ns: string, _name: string, _kubeConfigFor: unknown) => ({
+      uri: 'valkey://default:s3cret@valkey-llm-cache.demo.svc:6379',
+      location: 'prod-ams',
+    })),
+    apply: jest.fn(async (o: any) => ({ ...llmCache, metadata: { name: o.name, namespace: o.namespace } })),
+    patch: jest.fn(async () => llmCache),
+    delete: jest.fn(async () => undefined),
+  };
+}
+
 function fakeAudit() {
   return {
     list: jest.fn(async ({ project }: { project: string }) => ({ project, items: [], clusters: [] })),
@@ -159,6 +193,7 @@ async function start(
   buckets = fakeBuckets(),
   volumes = fakeVolumes(),
   audit = fakeAudit(),
+  valkey = fakeValkey(),
 ) {
   const { server } = await startTestBackend({
     features: [
@@ -187,6 +222,11 @@ async function start(
         service: auditServiceRef,
         deps: {},
         factory: () => audit as unknown as AuditService,
+      }),
+      createServiceFactory({
+        service: valkeyServiceRef,
+        deps: {},
+        factory: () => valkey as unknown as ValkeyService,
       }),
       mockServices.permissions.factory({
         result: allow ? AuthorizeResult.ALLOW : AuthorizeResult.DENY,
@@ -485,6 +525,18 @@ describe('cnpg backend', () => {
     expect(res.status).toBe(409);
     expect(res.body.error.message).toContain('orders-db');
     expect(k8s.list).toHaveBeenCalledWith('demo');
+    expect(k8s.deleteProject).not.toHaveBeenCalled();
+  });
+
+  it("won't delete a project that still has caches", async () => {
+    const k8s = fakeK8s();
+    k8s.list.mockResolvedValue([]);
+    const valkey = fakeValkey([llmCache]);
+    const server = await start(k8s, true, fakeLocations(), fakeBuckets(), fakeVolumes(), fakeAudit(), valkey);
+    const res = await request(server).delete('/api/cnpg/projects/demo');
+    expect(res.status).toBe(409);
+    expect(res.body.error.message).toContain('llm-cache');
+    expect(valkey.list).toHaveBeenCalledWith('demo');
     expect(k8s.deleteProject).not.toHaveBeenCalled();
   });
 
@@ -882,6 +934,94 @@ describe('cnpg backend', () => {
       expect((await request(server).delete('/api/cnpg/volumes/prod-ams/persistentvolumes/pv-3')).status).toBe(403);
       expect(volumes.deleteClaim).not.toHaveBeenCalled();
       expect(volumes.deleteVolume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('caches', () => {
+    const startWith = (valkey: ReturnType<typeof fakeValkey>, allow = true) =>
+      start(fakeK8s(), allow, fakeLocations(), fakeBuckets(), fakeVolumes(), fakeAudit(), valkey);
+
+    it('lists caches as summaries with their project', async () => {
+      const valkey = fakeValkey([llmCache]);
+      const res = await request(await startWith(valkey)).get('/api/cnpg/caches?namespace=demo');
+      expect(res.status).toBe(200);
+      expect(valkey.list).toHaveBeenCalledWith('demo');
+      expect(res.body.items).toEqual([
+        expect.objectContaining({
+          name: 'llm-cache',
+          namespace: 'demo',
+          mode: 'semantic',
+          shards: 1,
+          replicas: 0,
+          ready: true,
+          state: 'Ready',
+          location: 'prod-ams',
+          owner: 'team-ai',
+          project: 'demo',
+        }),
+      ]);
+    });
+
+    it('reads details and the connection through the location', async () => {
+      const valkey = fakeValkey([llmCache]);
+      const server = await startWith(valkey);
+      const details = await request(server).get('/api/cnpg/caches/demo/llm-cache');
+      expect(details.status).toBe(200);
+      expect(details.body.summary).toMatchObject({ name: 'llm-cache', project: 'demo' });
+      const conn = await request(server).get('/api/cnpg/caches/demo/llm-cache/connection');
+      expect(conn.status).toBe(200);
+      expect(conn.headers['cache-control']).toBe('no-store');
+      expect(conn.body.uri).toContain('valkey://default:');
+      const kubeConfigFor = valkey.connection.mock.calls[0][2] as (l: string) => Promise<unknown>;
+      expect(await kubeConfigFor('prod-ams')).toEqual({ location: 'prod-ams' });
+    });
+
+    it('creates a cache with its owner label, and refuses bad names', async () => {
+      const valkey = fakeValkey();
+      const server = await startWith(valkey);
+      const res = await request(server)
+        .post('/api/cnpg/caches')
+        .send({ name: 'llm-cache', namespace: 'demo', owner: 'team-ai', spec: { mode: 'semantic' } });
+      expect(res.status).toBe(201);
+      expect(valkey.apply).toHaveBeenCalledWith({
+        name: 'llm-cache',
+        namespace: 'demo',
+        spec: { mode: 'semantic' },
+        labels: { 'backstage.io/owner': 'team-ai' },
+        createOnly: true,
+      });
+      const bad = await request(server).post('/api/cnpg/caches').send({ name: 'Bad', namespace: 'demo', spec: {} });
+      expect(bad.status).toBe(400);
+    });
+
+    it('patches and deletes a cache', async () => {
+      const valkey = fakeValkey([llmCache]);
+      const server = await startWith(valkey);
+      const patched = await request(server)
+        .patch('/api/cnpg/caches/demo/llm-cache')
+        .send({ spec: { shards: 2 }, dryRun: true });
+      expect(patched.status).toBe(200);
+      expect(valkey.patch).toHaveBeenCalledWith({
+        namespace: 'demo',
+        name: 'llm-cache',
+        spec: { shards: 2 },
+        labels: undefined,
+        dryRun: true,
+      });
+      expect((await request(server).delete('/api/cnpg/caches/demo/llm-cache')).status).toBe(202);
+      expect(valkey.delete).toHaveBeenCalledWith('demo', 'llm-cache');
+    });
+
+    it('needs the cache permissions', async () => {
+      const valkey = fakeValkey([llmCache]);
+      const server = await startWith(valkey, false);
+      expect((await request(server).get('/api/cnpg/caches')).status).toBe(403);
+      expect((await request(server).get('/api/cnpg/caches/demo/llm-cache/connection')).status).toBe(403);
+      expect((await request(server).post('/api/cnpg/caches').send({ name: 'x', namespace: 'demo', spec: {} })).status).toBe(403);
+      expect((await request(server).delete('/api/cnpg/caches/demo/llm-cache')).status).toBe(403);
+      expect(valkey.connection).not.toHaveBeenCalled();
+      expect(valkey.apply).not.toHaveBeenCalled();
+      expect(valkey.delete).not.toHaveBeenCalled();
     });
   });
 });

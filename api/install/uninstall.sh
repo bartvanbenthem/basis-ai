@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Removes the PostgresCluster, Project and Location APIs from the control
-# plane. Refuses while PostgresClusters or Projects exist, because deleting an
+# Removes the PostgresCluster, ValkeyCache, Project and Location APIs from the
+# control plane. Refuses while PostgresClusters, ValkeyCaches or Projects exist, because deleting an
 # XRD cascade-deletes every object of that kind (and with it the databases in
 # the locations). Locations go with their XRD: their ClusterProviderConfigs
 # too, but not their kubeconfig Secrets or what the platform installed in
@@ -21,6 +21,15 @@ if kubectl get crd postgresclusters.cnpg.cndev.nl >/dev/null 2>&1; then
   fi
 fi
 
+if kubectl get crd valkeycaches.cache.cndev.nl >/dev/null 2>&1; then
+  remaining="$(kubectl get valkeycaches.cache.cndev.nl -A --no-headers 2>/dev/null | wc -l)"
+  if [[ "${remaining}" -gt 0 ]]; then
+    echo "ERROR: ${remaining} ValkeyCache(s) still exist; delete them first:" >&2
+    kubectl get valkeycaches.cache.cndev.nl -A >&2
+    exit 1
+  fi
+fi
+
 if kubectl get crd projects.platform.cndev.nl >/dev/null 2>&1; then
   remaining="$(kubectl get projects.platform.cndev.nl --no-headers 2>/dev/null | wc -l)"
   if [[ "${remaining}" -gt 0 ]]; then
@@ -30,6 +39,9 @@ if kubectl get crd projects.platform.cndev.nl >/dev/null 2>&1; then
   fi
 fi
 
+kubectl delete -f "${API_DIR}/valkeycache/policies.yaml" --ignore-not-found
+kubectl delete -f "${API_DIR}/valkeycache/composition.yaml" --ignore-not-found
+kubectl delete -f "${API_DIR}/valkeycache/definition.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/project/policies.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/project/composition.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/project/definition.yaml" --ignore-not-found

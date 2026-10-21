@@ -1,8 +1,13 @@
 // Command generate prepares the vendored sources the composition function
-// embeds (function/postgrescluster/assets):
+// embeds, for PostgresCluster (function/postgrescluster/assets):
 //
 //	src/dashboards/cnpg-cluster.json    -> zz_generated.dashboard.json
 //	src/alerts/cnpg-cluster-rules.yaml  -> zz_generated.alert-rules.yaml
+//
+// and for ValkeyCache (function/valkeycache/assets):
+//
+//	src/dashboards/valkey-cache.json    -> zz_generated.dashboard.json
+//	src/alerts/valkey-cache-rules.yaml  -> zz_generated.alert-rules.yaml
 //
 // and the OpenAPI documents of the APIs for the portal (see openapi.go).
 //
@@ -10,9 +15,9 @@
 // there replaces the upstream rule of the same name), so that
 // hack/refresh-alerts.sh can overwrite cnpg-cluster-rules.yaml freely.
 //
-// Both keep placeholders (zzclusterzz, zznamespacezz, zzuidzz) that the
-// function replaces, so each PostgresCluster gets its own dashboard
-// title/uid/preselected variables and cluster-scoped alert rules.
+// They keep placeholders (zzclusterzz, zznamespacezz, zzuidzz) that the
+// function replaces, so each PostgresCluster and ValkeyCache gets its own
+// dashboard title/uid/preselected variables and scoped alert rules.
 //
 //	go run ./hack/generate          # write the assets
 //	go run ./hack/generate --check  # exit 1 if an asset is stale
@@ -35,7 +40,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Placeholders the function substitutes (function/postgrescluster/assets.go).
+// Placeholders the function substitutes (function/*/assets.go).
 const (
 	cluster   = "zzclusterzz"
 	namespace = "zznamespacezz"
@@ -61,19 +66,31 @@ func root() string {
 
 func run(check bool) error {
 	base := root()
-	assets := filepath.Join(base, "function", "postgrescluster", "assets")
-	dash, err := dashboard(filepath.Join(base, "src", "dashboards", "cnpg-cluster.json"))
-	if err != nil {
-		return err
-	}
 	alerts := filepath.Join(base, "src", "alerts")
-	rules, err := alertRules(filepath.Join(alerts, "cnpg-cluster-rules.yaml"), filepath.Join(alerts, "local-rules.yaml"))
-	if err != nil {
-		return err
-	}
-	outputs := []struct{ path, content string }{
-		{filepath.Join(assets, "zz_generated.dashboard.json"), dash + "\n"},
-		{filepath.Join(assets, "zz_generated.alert-rules.yaml"), header + rules + "\n"},
+	var outputs []struct{ path, content string }
+	for _, a := range []struct {
+		pkg, dashboard, titlePrefix string
+		rules                       []string // upstream, then optional local overrides
+	}{
+		{"postgrescluster", "cnpg-cluster.json", "CloudNativePG", []string{"cnpg-cluster-rules.yaml", "local-rules.yaml"}},
+		{"valkeycache", "valkey-cache.json", "Valkey", []string{"valkey-cache-rules.yaml"}},
+	} {
+		assets := filepath.Join(base, "function", a.pkg, "assets")
+		dash, err := dashboard(filepath.Join(base, "src", "dashboards", a.dashboard), a.titlePrefix)
+		if err != nil {
+			return err
+		}
+		local := ""
+		if len(a.rules) > 1 {
+			local = filepath.Join(alerts, a.rules[1])
+		}
+		rules, err := alertRules(filepath.Join(alerts, a.rules[0]), local)
+		if err != nil {
+			return err
+		}
+		outputs = append(outputs,
+			struct{ path, content string }{filepath.Join(assets, "zz_generated.dashboard.json"), dash + "\n"},
+			struct{ path, content string }{filepath.Join(assets, "zz_generated.alert-rules.yaml"), header + rules + "\n"})
 	}
 	docs, err := openAPIDocs(base)
 	if err != nil {
@@ -107,7 +124,7 @@ func splitLines(s string) []string {
 	return strings.Split(s, "\n")
 }
 
-func dashboard(path string) (string, error) {
+func dashboard(path, titlePrefix string) (string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
@@ -120,7 +137,7 @@ func dashboard(path string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("%s: not a JSON object", path)
 	}
-	dash.set("title", "CloudNativePG / "+namespace+" / "+cluster)
+	dash.set("title", titlePrefix+" / "+namespace+" / "+cluster)
 	dash.set("uid", uid)
 	templating, _ := dash.get("templating").(*object)
 	if templating != nil {
@@ -155,16 +172,18 @@ func dashboard(path string) (string, error) {
 
 // alertRules emits the merged rules as one YAML sequence. A rule in local
 // replaces the upstream rule of the same name in place; one with a new name
-// is appended. Both files are top-level block sequences, so each item is
-// embedded exactly as formatted there.
+// is appended (no local file: none). Both files are top-level block
+// sequences, so each item is embedded exactly as formatted there.
 func alertRules(upstream, local string) (string, error) {
 	rules, err := readRules(upstream)
 	if err != nil {
 		return "", err
 	}
-	overrides, err := readRules(local)
-	if err != nil {
-		return "", err
+	var overrides []alertRule
+	if local != "" {
+		if overrides, err = readRules(local); err != nil {
+			return "", err
+		}
 	}
 	for _, o := range overrides {
 		replaced := false

@@ -1,0 +1,18 @@
+# The Projects the ValkeyCache composition reads (extra resource "project",
+# named after the XR's namespace): spec.locations.protected is where it runs.
+apiVersion: platform.cndev.nl/v1alpha1
+kind: Project
+metadata:
+  name: demo
+spec:
+  locations:
+    protected: si-ske-demo
+---
+apiVersion: platform.cndev.nl/v1alpha1
+kind: Project
+metadata:
+  name: payments
+spec:
+  locations:
+    protected: si-ske-demo
+    recovery: onprem-ams

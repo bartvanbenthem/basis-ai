@@ -8,7 +8,9 @@
 # the database is healthy, its metrics reach the location's Prometheus and,
 # by remote write, the project's Prometheus on the control plane, its
 # dashboard reaches the project's Grafana, and that the Project deletion
-# guardrails hold. hack/e2e-locations.sh covers the recovery site.
+# guardrails hold. Then the same for a ValkeyCache (with the Valkey operator in
+# the location): Ready, password required, metrics, alerts and dashboard.
+# hack/e2e-locations.sh covers the recovery site.
 #
 # Uses its own kubeconfig files (never touches your current context):
 #   hack/e2e-kind.sh                 # create clusters, install, test
@@ -33,6 +35,7 @@ CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.21.2}"
 KUBE_PROMETHEUS_STACK_VERSION="${KUBE_PROMETHEUS_STACK_VERSION:-89.2.0}"
 GRAFANA_OPERATOR_VERSION="${GRAFANA_OPERATOR_VERSION:-5.25.0}"
 HAPROXY_INGRESS_VERSION="${HAPROXY_INGRESS_VERSION:-1.54.0}"
+VALKEY_OPERATOR_VERSION="${VALKEY_OPERATOR_VERSION:-0.7.0}"
 
 # Two kind clusters run out of inotify instances at the default 128.
 if [[ "$(sysctl -n fs.inotify.max_user_instances 2>/dev/null || echo 512)" -lt 512 ]]; then
@@ -100,11 +103,16 @@ helm upgrade -i haproxy-ingress kubernetes-ingress --kubeconfig "${CP_KUBECONFIG
   --set controller.kind=DaemonSet --set controller.daemonset.useHostPort=true \
   --wait --timeout 5m >/dev/null
 
-echo "==> location (deps + operator): cert-manager, Prometheus Operator, CloudNativePG"
+echo "==> location (deps + operator): cert-manager, Prometheus Operator, CloudNativePG, Valkey operator"
 "${L[@]}" apply --server-side -f "https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.yaml" >/dev/null
 kube_prometheus_stack "${LOC_KUBECONFIG}"
 "${L[@]}" -n cert-manager wait deploy --all --for=condition=Available --timeout=300s
 KUBECONFIG="${LOC_KUBECONFIG}" "${ROOT}/operator/install.sh"
+# As deps/README.md: the default chart values.
+helm upgrade -i valkey-operator valkey-operator --kubeconfig "${LOC_KUBECONFIG}" \
+  --repo https://valkey.io/valkey-helm \
+  --version "${VALKEY_OPERATOR_VERSION}" -n valkey-operator-system --create-namespace \
+  --wait --timeout 5m >/dev/null
 
 echo "==> api on the control plane"
 # function-basis from this checkout, not the published package.
@@ -118,6 +126,8 @@ KUBECONFIG="${CP_KUBECONFIG}" "${ROOT}/api/install/add-location.sh" "${LOCATION}
 if ! "${C[@]}" wait location/${LOCATION} --for=condition=Ready --timeout=300s; then
   "${C[@]}" get location ${LOCATION} -o yaml; exit 1
 fi
+wait_for "the Location sees the Valkey operator" 30 bash -c \
+  "[[ \"\$(kubectl --kubeconfig '${CP_KUBECONFIG}' get location ${LOCATION} -o jsonpath='{.status.operators.valkey}')\" == true ]]"
 
 echo "==> project-defaults: remote write through the control plane's ingress (nip.io: ${CP_IP})"
 "${C[@]}" apply -f - <<YAML
@@ -261,6 +271,63 @@ if ! wait_for "dashboard ${uid} in the project's Grafana" 30 bash -c \
 fi
 grafana datasources/name/prometheus | grep -q '"isDefault":true'
 echo "dashboard ${uid} and datasource prometheus present"
+
+echo "==> ValkeyCache demo/llm-cache (one node, small, to fit kind)"
+"${C[@]}" apply -f - <<'VC'
+apiVersion: cache.cndev.nl/v1alpha1
+kind: ValkeyCache
+metadata:
+  name: llm-cache
+  namespace: demo
+spec:
+  shards: 1
+  replicas: 0
+  resources:
+    cpu: 100m
+    memory: 256Mi
+VC
+if ! "${C[@]}" -n demo wait valkeycache/llm-cache --for=condition=Ready --timeout=600s; then
+  "${C[@]}" -n demo get valkeycache llm-cache -o yaml
+  "${C[@]}" -n demo get objects.kubernetes.m.crossplane.io,grafanadashboard,secret
+  "${L[@]}" -n demo get valkeycluster,valkeynode,podmonitor,prometheusrule,pods,secret
+  exit 1
+fi
+"${C[@]}" -n demo get valkeycache llm-cache -o jsonpath='{.status}' | jq .
+"${L[@]}" -n demo get valkeycluster,podmonitor,prometheusrule,pods
+if "${C[@]}" get crd valkeyclusters.valkey.io >/dev/null 2>&1; then
+  echo "FAIL: the Valkey operator on the control plane; caches run in the locations"; exit 1
+fi
+
+echo "==> the cache needs the generated password (in the location)"
+vpod="$("${L[@]}" -n demo get pod -l valkey.io/cluster=llm-cache -o jsonpath='{.items[0].metadata.name}')"
+vpass="$("${C[@]}" -n demo get secret llm-cache-valkey -o jsonpath='{.data.password}' | base64 -d)"
+[[ "$("${L[@]}" -n demo get secret llm-cache-valkey-auth -o jsonpath='{.data.password}' | base64 -d)" == "${vpass}" ]]
+if "${L[@]}" -n demo exec "${vpod}" -c server -- valkey-cli SET e2e nope 2>&1 | grep -q '^OK'; then
+  echo "FAIL: the cache took a write without a password"; exit 1
+fi
+"${L[@]}" -n demo exec "${vpod}" -c server -- valkey-cli -c -a "${vpass}" --no-auth-warning SET e2e works | grep -q '^OK'
+[[ "$("${L[@]}" -n demo exec "${vpod}" -c server -- valkey-cli -c -a "${vpass}" --no-auth-warning GET e2e)" == works ]]
+"${L[@]}" -n demo get prometheusrule llm-cache-alerts -o jsonpath='{.spec.groups[0].rules[*].alert}' | grep -q ValkeyCacheDown
+
+# redis_up{cluster="llm-cache"}, URL-encoded: the PodMonitor's cluster label.
+vquery='redis_up%7Bcluster%3D%22llm-cache%22%7D'
+echo "==> the cache's metrics reach the location's Prometheus and the project's on the control plane"
+if ! wait_for "redis_up from ${LOCATION} on the control plane" 30 bash -c \
+    "$(declare -f prom_query); prom_query '${CP_KUBECONFIG}' '${vquery}' | grep -q '\"location\":\"${LOCATION}\"'"; then
+  prom_query "${LOC_KUBECONFIG}" "${vquery}"; prom_query "${CP_KUBECONFIG}" "${vquery}"; exit 1
+fi
+vuid="$("${C[@]}" -n demo get valkeycache llm-cache -o jsonpath='{.status.monitoring.dashboardUid}')"
+if ! wait_for "dashboard ${vuid} in the project's Grafana" 30 bash -c \
+    "$(declare -f grafana); CP_KUBECONFIG='${CP_KUBECONFIG}'; grafana 'dashboards/uid/${vuid}' | grep -q '\"uid\":\"${vuid}\"'"; then
+  "${C[@]}" -n demo get grafanadashboard llm-cache-valkey -o yaml; exit 1
+fi
+echo "dashboard ${vuid} present"
+
+echo "==> deleting the ValkeyCache cascades, in the location too"
+"${C[@]}" -n demo delete valkeycache llm-cache --wait --timeout=180s
+wait_for "llm-cache gone from the location" 30 bash -c \
+  "kubectl --kubeconfig '${LOC_KUBECONFIG}' -n demo get valkeycluster,podmonitor,prometheusrule 2>&1 | grep -q 'No resources found'"
+"${C[@]}" -n demo get secret llm-cache-valkey 2>&1 | grep -q 'NotFound'
 
 echo "==> guardrails: a protected Project and its namespace can't be deleted"
 if "${C[@]}" delete project demo --wait=false 2>/dev/null; then

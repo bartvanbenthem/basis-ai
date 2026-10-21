@@ -50,6 +50,7 @@ const RESERVED = [
   'locations',
   'buckets',
   'volumes',
+  'caches',
   'crossplane-system',
   'cnpg-system',
   'cnpg-locations',

@@ -1,7 +1,7 @@
 # Composition function used by apis/project and apis/location. Check
 # https://github.com/crossplane-contrib/function-go-templating/releases before
 # bumping and re-run `make test` (tests/render renders against this exact pin).
-# PostgresCluster runs on function-basis (function-basis.yaml).
+# PostgresCluster and ValkeyCache run on function-basis (function-basis.yaml).
 apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:

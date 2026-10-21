@@ -58,6 +58,34 @@ func TestRunFunction(t *testing.T) {
 		}
 	})
 
+	t.Run("composes a ValkeyCache", func(t *testing.T) {
+		cache := resource.MustStructJSON(`{"apiVersion":"cache.cndev.nl/v1alpha1","kind":"ValkeyCache",
+			"metadata":{"name":"llm-cache","namespace":"payments"},"spec":{"mode":"semantic"}}`)
+		rsp := runFunction(t, &fnv1.RunFunctionRequest{
+			Observed:          &fnv1.State{Composite: &fnv1.Resource{Resource: cache}},
+			RequiredResources: map[string]*fnv1.Resources{"project": {Items: []*fnv1.Resource{{Resource: project}}}},
+		})
+		if len(rsp.GetResults()) > 0 {
+			t.Fatalf("results %v", rsp.GetResults())
+		}
+		if rsp.GetRequirements().GetResources()["project"].GetMatchName() != "payments" {
+			t.Errorf("requirements %v", rsp.GetRequirements())
+		}
+		res := rsp.GetDesired().GetResources()
+		for _, key := range []string{"auth-secret", "cluster", "dashboard"} {
+			if res[key] == nil {
+				t.Errorf("missing %s", key)
+			}
+		}
+		status := rsp.GetDesired().GetComposite().GetResource().GetFields()["status"].GetStructValue().GetFields()
+		if status["location"].GetStringValue() != "si-ske-demo" || status["monitoring"].GetStructValue() == nil {
+			t.Errorf("status %v", status)
+		}
+		if c := rsp.GetConditions(); len(c) != 1 || c[0].GetType() != "CacheReady" {
+			t.Errorf("conditions %v", c)
+		}
+	})
+
 	t.Run("refuses other kinds", func(t *testing.T) {
 		other := resource.MustStructJSON(`{"apiVersion":"example.org/v1","kind":"Other","metadata":{"name":"x"}}`)
 		rsp := runFunction(t, &fnv1.RunFunctionRequest{Observed: &fnv1.State{Composite: &fnv1.Resource{Resource: other}}})

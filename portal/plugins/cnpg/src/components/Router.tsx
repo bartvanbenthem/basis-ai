@@ -1,5 +1,8 @@
 import { Route, Routes } from 'react-router-dom';
 import { AuditLogPage } from './AuditLogPage';
+import { CacheDetailPage } from './CacheDetailPage';
+import { CreateCachePage, EditCachePage } from './CacheFormPages';
+import { CacheListPage } from './CacheListPage';
 import { BucketDetailPage } from './BucketDetailPage';
 import { BucketListPage } from './BucketListPage';
 import { ClusterDetailPage } from './ClusterDetailPage';
@@ -21,7 +24,7 @@ export const Router = () => (
     <Route path="/" element={<ClusterListPage />} />
     <Route path="/create" element={<CreateClusterPage />} />
     <Route path="/audit" element={<AuditLogPage />} />
-    {/* Static "locations"/"projects"/"buckets"/"volumes" segments outrank /:namespace/:name; all are reserved project names. */}
+    {/* Static "locations"/"projects"/"buckets"/"volumes"/"caches" segments outrank /:namespace/:name; all are reserved project names. */}
     <Route path="/locations" element={<LocationListPage />} />
     <Route path="/locations/create" element={<CreateLocationPage />} />
     <Route path="/locations/:name" element={<LocationDetailPage />} />
@@ -29,6 +32,11 @@ export const Router = () => (
     <Route path="/buckets" element={<BucketListPage />} />
     <Route path="/buckets/:name" element={<BucketDetailPage />} />
     <Route path="/volumes" element={<VolumeListPage />} />
+    <Route path="/caches" element={<CacheListPage />} />
+    <Route path="/caches/create" element={<CreateCachePage />} />
+    <Route path="/caches/:namespace/:name" element={<CacheDetailPage tab="overview" />} />
+    <Route path="/caches/:namespace/:name/monitoring" element={<CacheDetailPage tab="monitoring" />} />
+    <Route path="/caches/:namespace/:name/edit" element={<EditCachePage />} />
     <Route path="/projects" element={<ProjectListPage />} />
     <Route path="/projects/create" element={<CreateProjectPage />} />
     <Route path="/projects/:name" element={<ProjectDetailPage />} />

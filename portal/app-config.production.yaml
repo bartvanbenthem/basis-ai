@@ -58,6 +58,12 @@ catalog:
       rules:
         - allow: [Template]
 
+    # Software Template: provision a ValkeyCache (exact or semantic cache)
+    - type: file
+      target: ./templates/valkey-cache/template.yaml
+      rules:
+        - allow: [Template]
+
     # Local example organizational data
     - type: file
       target: ./catalog/catalog-info.yaml

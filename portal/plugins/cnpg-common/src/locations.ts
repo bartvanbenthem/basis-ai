@@ -85,7 +85,8 @@ export interface LocationStatus {
   /** Crossplane reached the API server with the kubeconfig. */
   connected?: boolean;
   /** Operators found there; unset until connected. */
-  operators?: { cloudnativepg?: boolean; prometheusOperator?: boolean };
+  /** valkey: the optional Valkey operator ValkeyCaches need. */
+  operators?: { cloudnativepg?: boolean; prometheusOperator?: boolean; valkey?: boolean };
 }
 
 export interface LocationSummary {

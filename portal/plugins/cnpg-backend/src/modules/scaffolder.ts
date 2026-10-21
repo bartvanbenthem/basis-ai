@@ -7,6 +7,7 @@ import {
   CnpgKubernetesService,
   cnpgKubernetesServiceRef,
 } from '../service/CnpgKubernetesService';
+import { ValkeyService, valkeyServiceRef } from '../service/ValkeyService';
 
 /**
  * Drops empty strings, nulls and objects left empty by that, so templates can
@@ -141,6 +142,63 @@ export function createProjectAction(k8s: CnpgKubernetesService) {
 }
 
 /**
+ * `cnpg:valkeycache:create` -- applies a ValkeyCache (cache.cndev.nl/v1alpha1)
+ * from a Software Template: an exact or semantic Valkey cache in the project's
+ * location. The API server validates `spec` against the XRD.
+ */
+export function createValkeyCacheAction(valkey: Pick<ValkeyService, 'apply'>) {
+  return createTemplateAction({
+    id: 'cnpg:valkeycache:create',
+    description: 'Creates a Valkey cache (cache.cndev.nl/v1alpha1 ValkeyCache) through the Crossplane API',
+    supportsDryRun: true,
+    schema: {
+      input: {
+        name: z => z.string().regex(/^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$/).describe('Cache name'),
+        namespace: z =>
+          z
+            .string()
+            .describe(
+              'Kubernetes namespace, or the entity ref of a project (resource:default/<project>) from an EntityPicker',
+            ),
+        owner: z => z.string().optional().describe('Owning group (backstage.io/owner label)'),
+        system: z => z.string().optional().describe('Backstage system (backstage.io/system label)'),
+        spec: z => z.record(z.unknown()).describe('ValkeyCache spec'),
+      },
+      output: {
+        name: z => z.string(),
+        namespace: z => z.string(),
+        entityRef: z => z.string(),
+        portalPath: z => z.string(),
+      },
+    },
+    async handler(ctx) {
+      const { name, owner, system, spec } = ctx.input;
+      // A project entity is named after its namespace.
+      const namespace = ctx.input.namespace.replace(/^.*[:/]/, '');
+      const labels: Record<string, string> = {};
+      // Label values cannot hold "group:default/x"; store the bare name.
+      if (owner) labels['backstage.io/owner'] = owner.replace(/^.*[:/]/, '');
+      if (system) labels['backstage.io/system'] = system.replace(/^.*[:/]/, '');
+
+      ctx.logger.info(`Applying ValkeyCache ${namespace}/${name}`);
+      await valkey.apply({
+        name,
+        namespace,
+        spec: (prune(spec) ?? {}) as Record<string, unknown>,
+        labels,
+        createOnly: true,
+        dryRun: ctx.isDryRun,
+      });
+
+      ctx.output('name', name);
+      ctx.output('namespace', namespace);
+      ctx.output('entityRef', `resource:default/${namespace}--${name}.valkey`.slice(0, 80));
+      ctx.output('portalPath', `/cnpg/caches/${namespace}/${name}`);
+    },
+  });
+}
+
+/**
  * Scaffolder module registering the cnpg actions.
  *
  * @public
@@ -153,9 +211,14 @@ export const scaffolderModuleCnpg = createBackendModule({
       deps: {
         scaffolder: scaffolderActionsExtensionPoint,
         k8s: cnpgKubernetesServiceRef,
+        valkey: valkeyServiceRef,
       },
-      async init({ scaffolder, k8s }) {
-        scaffolder.addActions(createPostgresClusterAction(k8s), createProjectAction(k8s));
+      async init({ scaffolder, k8s, valkey }) {
+        scaffolder.addActions(
+          createPostgresClusterAction(k8s),
+          createProjectAction(k8s),
+          createValkeyCacheAction(valkey),
+        );
       },
     });
   },

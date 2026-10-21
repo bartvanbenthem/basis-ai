@@ -1,11 +1,11 @@
 .PHONY: generate check unit test function-image function-xpkg function-push install uninstall
 
-# function-basis, the composition function behind PostgresCluster.
+# function-basis, the composition function behind PostgresCluster and ValkeyCache.
 FUNCTION_IMAGE ?= ghcr.io/bartvanbenthem/function-basis
-FUNCTION_VERSION ?= v0.1.1
+FUNCTION_VERSION ?= v0.2.0
 XPKG := _output/function-basis-$(FUNCTION_VERSION).xpkg
 
-# Rebuild the function's embedded assets from src/ (dashboard, alert rules)
+# Rebuild the function's embedded assets from src/ (dashboards, alert rules)
 generate:
 	go run ./hack/generate
 

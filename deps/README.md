@@ -15,6 +15,7 @@ databases run in. Each component goes where its column says.
 | Prometheus Operator | `Prometheus` per Project; `PodMonitor` / `PrometheusRule` per PostgresCluster | yes (the Prometheus the locations write to) | yes |
 | grafana-operator | `Grafana` per Project, `GrafanaDashboard` per PostgresCluster | yes | no |
 | HAProxy Ingress | Grafana from outside, and the remote-write endpoint the locations' Prometheus send to | yes | no |
+| Valkey operator | `ValkeyCache` (exact and semantic caches) | no | where caches run |
 
 Install them in the order below, each in the clusters its row says.
 
@@ -95,7 +96,37 @@ MetalLB isn't needed.
 kubectl get svc -n haproxy-ingress   # EXTERNAL-IP is where ingress hosts must resolve to
 ```
 
-## 5. Platform settings: `project-defaults` (after `api/`)
+## 5. Valkey operator (locations with caches)
+
+The official [valkey-io operator](https://github.com/valkey-io/valkey-operator)
+runs the `ValkeyCluster`s that `ValkeyCache` places in a Project's protected
+location ([`api`](../api/README.md#the-valkeycache-api)). Install it with its
+default chart values in every location caches run in; the control plane
+doesn't need it.
+
+```sh
+helm upgrade -i valkey-operator valkey-operator \
+  --repo https://valkey.io/valkey-helm \
+  --version 0.7.0 -n valkey-operator-system --create-namespace
+```
+
+Verify:
+
+```sh
+kubectl get pods -n valkey-operator-system
+kubectl get crd valkeyclusters.valkey.io
+```
+
+The operator is v1alpha1 and marked early development upstream: cluster mode
+only (no standalone or Sentinel), no backups, no modules of its own. The
+`ValkeyCache` composition loads valkey-search for semantic caches through the
+`valkey/valkey-bundle` image, and pins both images
+([`function/valkeycache/compose.go`](../api/function/valkeycache/compose.go), a
+new function-basis version); bump them together with this chart. Read the
+[upgrade notes](https://github.com/valkey-io/valkey-helm/tree/main/valkey-operator)
+before a chart upgrade: an operator upgrade can roll every cache's pods.
+
+## 6. Platform settings: `project-defaults` (after `api/`)
 
 [`control-plane/project-defaults.yaml`](control-plane/project-defaults.yaml)
 is the `EnvironmentConfig` every Project's composition reads: one per control
@@ -121,7 +152,7 @@ documents every key. Projects pick up a change on their next reconcile.
 kubectl apply -f control-plane/project-defaults.yaml
 ```
 
-## 6. The `demo` Project (after `api/`)
+## 7. The `demo` Project (after `api/`)
 
 A namespace with its own Prometheus and Grafana is a **Project**
 (`platform.cndev.nl/v1alpha1`, see
@@ -132,7 +163,7 @@ and after registering the location the demo databases run in
 run against that location first). `demo/project.yaml` names it
 `si-ske-demo`: change that to your location's name.
 
-It needs the platform settings of step 5.
+It needs the platform settings of step 6.
 [`demo/project.yaml`](demo/project.yaml) is the `demo` Project. Crossplane
 creates the namespace on the control plane and in the location, a Prometheus
 in the location that scrapes every `PodMonitor` and `PrometheusRule` in it

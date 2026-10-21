@@ -1,0 +1,93 @@
+# Observed state for xr/minimal.yaml: the password exists, its copy is in the
+# location and the operator reports the cluster Ready.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prompt-cache-valkey
+  namespace: demo
+  annotations:
+    crossplane.io/composition-resource-name: auth-secret
+data:
+  password: c2VjcmV0LXBhc3N3b3JkLTAxMjM0NTY3ODk= # secret-password-0123456789
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: prompt-cache-auth
+  namespace: demo
+  annotations:
+    crossplane.io/composition-resource-name: auth
+status:
+  conditions:
+    - type: Synced
+      status: "True"
+      reason: ReconcileSuccess
+    - type: Ready
+      status: "True"
+      reason: Available
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: prompt-cache-cluster
+  namespace: demo
+  annotations:
+    crossplane.io/composition-resource-name: cluster
+status:
+  atProvider:
+    manifest:
+      apiVersion: valkey.io/v1alpha1
+      kind: ValkeyCluster
+      metadata:
+        name: prompt-cache
+        namespace: demo
+      status:
+        state: Ready
+        reason: ClusterHealthy
+        message: Cluster is healthy
+        shards: 1
+        readyShards: 1
+  conditions:
+    - type: Synced
+      status: "True"
+      reason: ReconcileSuccess
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: prompt-cache-podmonitor
+  namespace: demo
+  annotations:
+    crossplane.io/composition-resource-name: podmonitor
+status:
+  atProvider:
+    manifest:
+      apiVersion: monitoring.coreos.com/v1
+      kind: PodMonitor
+      metadata:
+        name: prompt-cache-valkey
+        namespace: demo
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: prompt-cache-prometheusrule
+  namespace: demo
+  annotations:
+    crossplane.io/composition-resource-name: prometheusrule
+status:
+  atProvider:
+    manifest:
+      apiVersion: monitoring.coreos.com/v1
+      kind: PrometheusRule
+      metadata:
+        name: prompt-cache-alerts
+        namespace: demo
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: prompt-cache-valkey
+  namespace: demo
+  annotations:
+    crossplane.io/composition-resource-name: dashboard

@@ -134,6 +134,12 @@ catalog:
       rules:
         - allow: [Template]
 
+    # Software Template: provision a ValkeyCache (exact or semantic cache)
+    - type: file
+      target: ../../templates/valkey-cache/template.yaml
+      rules:
+        - allow: [Template]
+
     # The platform itself: its docs (TechDocs) and API reference (API docs)
     - type: file
       target: ../../catalog/catalog-info.yaml

@@ -1,0 +1,47 @@
+# Guardrails for ValkeyCaches (ValidatingAdmissionPolicy, Kubernetes >= 1.30),
+# the same as PostgresClusters': caches run in their Project's protected
+# location, never on the control plane. A new one needs a namespace whose
+# Project has a protected location (namespace annotation
+# platform.cndev.nl/protected-location, set by the Project composition) that
+# is open to new workloads (not in platform.cndev.nl/unschedulable-locations).
+# Existing caches there stay editable.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: cache.cndev.nl-valkeycache-locations
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [cache.cndev.nl]
+        apiVersions: ["*"]
+        resources: [valkeycaches]
+        operations: [CREATE]
+  variables:
+    - name: annotations
+      expression: "has(namespaceObject.metadata.annotations) ? namespaceObject.metadata.annotations : {}"
+    - name: protected
+      expression: "'platform.cndev.nl/protected-location' in variables.annotations ? variables.annotations['platform.cndev.nl/protected-location'] : ''"
+    - name: closed
+      expression: >-
+        'platform.cndev.nl/unschedulable-locations' in variables.annotations
+        ? variables.annotations['platform.cndev.nl/unschedulable-locations'].split(',')
+        : []
+  validations:
+    - expression: "variables.protected != ''"
+      messageExpression: >-
+        'namespace ' + namespaceObject.metadata.name + ' is not a Project with a protected location; '
+        + 'ValkeyCaches run in a Project\'s location, never on the control plane'
+      reason: Forbidden
+    - expression: "!(variables.protected in variables.closed)"
+      messageExpression: >-
+        'location ' + variables.protected + ' (protected) is closed to new workloads (Location spec.schedulable: false)'
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: cache.cndev.nl-valkeycache-locations
+spec:
+  policyName: cache.cndev.nl-valkeycache-locations
+  validationActions: [Deny]

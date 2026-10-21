@@ -166,6 +166,37 @@ export const cnpgVolumeDeletePermission = createPermission({
   attributes: { action: 'delete' },
 });
 
+/** List and inspect ValkeyCaches (exact and semantic caches) and their pods. */
+export const cnpgCacheReadPermission = createPermission({
+  name: 'cnpg.cache.read',
+  attributes: { action: 'read' },
+});
+
+export const cnpgCacheCreatePermission = createPermission({
+  name: 'cnpg.cache.create',
+  attributes: { action: 'create' },
+});
+
+export const cnpgCacheUpdatePermission = createPermission({
+  name: 'cnpg.cache.update',
+  attributes: { action: 'update' },
+});
+
+/** Delete a cache: its pods and every key in it go. */
+export const cnpgCacheDeletePermission = createPermission({
+  name: 'cnpg.cache.delete',
+  attributes: { action: 'delete' },
+});
+
+/**
+ * Read a cache's connection URI, password included (also needs
+ * cnpg.cache.read). Grant it to whoever may connect to the cache.
+ */
+export const cnpgCacheCredentialsReadPermission = createPermission({
+  name: 'cnpg.cache.credentials.read',
+  attributes: { action: 'read' },
+});
+
 export const cnpgPermissions = [
   cnpgClusterReadPermission,
   cnpgClusterCreatePermission,
@@ -188,4 +219,9 @@ export const cnpgPermissions = [
   cnpgBucketDeletePermission,
   cnpgVolumeReadPermission,
   cnpgVolumeDeletePermission,
+  cnpgCacheReadPermission,
+  cnpgCacheCreatePermission,
+  cnpgCacheUpdatePermission,
+  cnpgCacheDeletePermission,
+  cnpgCacheCredentialsReadPermission,
 ];

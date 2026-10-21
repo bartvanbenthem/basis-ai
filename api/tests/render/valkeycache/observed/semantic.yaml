@@ -1,0 +1,38 @@
+# Observed state for xr/semantic.yaml: the ValkeyCluster can't be applied
+# because the location has no Valkey operator (no CRD).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: answers-valkey
+  namespace: payments
+  annotations:
+    crossplane.io/composition-resource-name: auth-secret
+data:
+  password: c2VjcmV0LXBhc3N3b3JkLTAxMjM0NTY3ODk=
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: answers-auth
+  namespace: payments
+  annotations:
+    crossplane.io/composition-resource-name: auth
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: answers-cluster
+  namespace: payments
+  annotations:
+    crossplane.io/composition-resource-name: cluster
+status:
+  conditions:
+    - type: Synced
+      status: "False"
+      reason: ReconcileError
+      message: 'cannot create object: no matches for kind "ValkeyCluster" in version "valkey.io/v1alpha1"'

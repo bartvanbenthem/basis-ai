@@ -62,7 +62,7 @@ run) and optionally a **recovery** location (replica clusters).
 | Schema, defaults, immutable fields | The XRDs (`api/apis/*/definition.yaml`), enforced by the API server |
 | Sizes, extensions, Project defaults | EnvironmentConfigs on the control plane: see [Catalogs](catalogs.md) |
 | Cross-object rules (size in catalog, sites set, deletion protection) | ValidatingAdmissionPolicies (`api/apis/*/policies.yaml`) |
-| What gets composed, switchover/failover | function-basis (`api/function/postgrescluster`) |
+| What gets composed, switchover/failover | function-basis (`api/function/postgrescluster`, `api/function/valkeycache`) |
 | Who may do what in the portal | Backstage permissions (`cnpg.*`) |
 
 ## Growing the stack

@@ -24,28 +24,36 @@ const Notice = ({
 );
 
 /**
- * The cluster's CloudNativePG dashboard, i.e. the GrafanaDashboard the
- * PostgresCluster composition creates (uid in status.monitoring.dashboardUid),
- * embedded from the Grafana configured as cnpg.grafanaUrl.
+ * The GrafanaDashboard a composition creates for a PostgresCluster (the
+ * CloudNativePG dashboard) or a ValkeyCache (the Valkey cache dashboard), uid
+ * in status.monitoring.dashboardUid, embedded from the project's Grafana (or
+ * the one configured as cnpg.grafanaUrl). Both dashboards take the namespace
+ * and cluster variables.
  */
 export const GrafanaDashboard = ({
   grafanaUrl,
   namespace,
   name,
   uid,
+  title = 'CloudNativePG',
+  subject = 'cluster',
   height = 'calc(100vh - 230px)',
 }: {
   grafanaUrl?: string;
   namespace: string;
   name: string;
   uid?: string;
+  /** The dashboard's title prefix. */
+  title?: string;
+  /** What the dashboard is about, for the notices. */
+  subject?: 'cluster' | 'cache';
   height?: string;
 }) => {
   const [range, setRange] = useState<TimeRange>('6h');
 
   if (!uid) {
     return (
-      <Notice title="No dashboard for this cluster">
+      <Notice title={`No dashboard for this ${subject}`}>
         <Text color="secondary">
           The Grafana dashboard is disabled (
           <Mono>spec.monitoring.grafanaDashboard.enabled</Mono>) or the
@@ -59,7 +67,7 @@ export const GrafanaDashboard = ({
     return (
       <Notice title="Grafana is not connected">
         <Text color="secondary">
-          The composition created dashboard <Mono>{uid}</Mono> for this cluster.
+          The composition created dashboard <Mono>{uid}</Mono> for this {subject}.
           To show it here, set the Grafana base URL and restart the portal:
         </Text>
         <Mono>CNPG_GRAFANA_URL=https://grafana.example.com</Mono>
@@ -79,7 +87,7 @@ export const GrafanaDashboard = ({
     <div className="tp-grafana">
       <div className="tp-grafana__bar">
         <Text variant="body-small" color="secondary">
-          CloudNativePG / {namespace} / {name}
+          {title} / {namespace} / {name}
         </Text>
         <Flex gap="2" align="center">
           <div className="tp-segmented" role="group" aria-label="Time range">

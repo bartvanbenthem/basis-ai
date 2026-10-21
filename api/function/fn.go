@@ -13,9 +13,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/bartvanbenthem/basis-ai/api/function/postgrescluster"
+	"github.com/bartvanbenthem/basis-ai/api/function/valkeycache"
 )
 
-var postgresClusterGVK = schema.GroupVersionKind{Group: "cnpg.cndev.nl", Version: "v1alpha1", Kind: "PostgresCluster"}
+var (
+	postgresClusterGVK = schema.GroupVersionKind{Group: "cnpg.cndev.nl", Version: "v1alpha1", Kind: "PostgresCluster"}
+	valkeyCacheGVK     = schema.GroupVersionKind{Group: "cache.cndev.nl", Version: "v1alpha1", Kind: "ValkeyCache"}
+)
 
 // Function composes BASIS's APIs. It dispatches on the kind of the XR.
 type Function struct {
@@ -38,6 +42,8 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 	switch gvk := oxr.Resource.GroupVersionKind(); gvk {
 	case postgresClusterGVK:
 		f.postgresCluster(req, rsp, oxr)
+	case valkeyCacheGVK:
+		f.valkeyCache(req, rsp, oxr)
 	default:
 		response.Fatal(rsp, errors.Errorf("function-basis doesn't compose %s", gvk))
 	}
@@ -45,14 +51,85 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 	return rsp, nil
 }
 
+// requirement is a resource a composition asks Crossplane for, by name.
+type requirement struct{ apiVersion, kind, name string }
+
+// composedResource is one desired composed resource and its readiness.
+type composedResource struct {
+	object any
+	ready  bool
+}
+
+// composed is what one composition returns, in a shape both packages map onto.
+type composed struct {
+	resources     map[string]composedResource
+	status        any
+	conditionType string
+	condition     struct {
+		status          bool
+		reason, message string
+	}
+}
+
 func (f *Function) postgresCluster(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionResponse, oxr *resource.Composite) {
-	// Ask for the Project and the catalogs every time: Crossplane calls the
-	// function again with them once they're resolved.
+	reqs := map[string]requirement{}
+	for key, r := range postgrescluster.Requirements(oxr.Resource.GetNamespace()) {
+		reqs[key] = requirement{r.APIVersion, r.Kind, r.Name}
+	}
+	compose(req, rsp, oxr, reqs, func(xr map[string]any, observed map[string]map[string]any, required map[string][]map[string]any) (*composed, error) {
+		in := postgrescluster.Input{XR: xr, Observed: map[string]postgrescluster.Object{}, Required: map[string][]postgrescluster.Object{}}
+		for k, v := range observed {
+			in.Observed[k] = v
+		}
+		for k, v := range required {
+			in.Required[k] = append([]postgrescluster.Object{}, v...)
+		}
+		out, err := postgrescluster.Compose(in)
+		if err != nil {
+			return nil, err
+		}
+		c := &composed{status: out.Status, conditionType: "PostgresReady"}
+		c.resources = make(map[string]composedResource, len(out.Composed))
+		for name, r := range out.Composed {
+			c.resources[name] = composedResource{r.Object, r.Ready}
+		}
+		c.condition.status, c.condition.reason, c.condition.message = out.Condition.Status, out.Condition.Reason, out.Condition.Message
+		return c, nil
+	})
+}
+
+func (f *Function) valkeyCache(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionResponse, oxr *resource.Composite) {
+	reqs := map[string]requirement{}
+	for key, r := range valkeycache.Requirements(oxr.Resource.GetNamespace()) {
+		reqs[key] = requirement{r.APIVersion, r.Kind, r.Name}
+	}
+	compose(req, rsp, oxr, reqs, func(xr map[string]any, observed map[string]map[string]any, required map[string][]map[string]any) (*composed, error) {
+		out, err := valkeycache.Compose(valkeycache.Input{XR: xr, Observed: observed, Required: required})
+		if err != nil {
+			return nil, err
+		}
+		c := &composed{status: out.Status, conditionType: "CacheReady"}
+		c.resources = make(map[string]composedResource, len(out.Composed))
+		for name, r := range out.Composed {
+			c.resources[name] = composedResource{r.Object, r.Ready}
+		}
+		c.condition.status, c.condition.reason, c.condition.message = out.Condition.Status, out.Condition.Reason, out.Condition.Message
+		return c, nil
+	})
+}
+
+// compose asks for the requirements, runs fn on this reconcile's view and
+// writes its composed resources, status and condition into the response.
+func compose(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionResponse, oxr *resource.Composite,
+	reqs map[string]requirement,
+	fn func(xr map[string]any, observed map[string]map[string]any, required map[string][]map[string]any) (*composed, error)) {
+	// Ask for the requirements every time: Crossplane calls the function
+	// again with them once they're resolved.
 	requirements := &fnv1.Requirements{Resources: map[string]*fnv1.ResourceSelector{},
 		ExtraResources: map[string]*fnv1.ResourceSelector{}} //nolint:staticcheck // Crossplane < 2 reads extra_resources
-	for key, r := range postgrescluster.Requirements(oxr.Resource.GetNamespace()) {
-		sel := &fnv1.ResourceSelector{ApiVersion: r.APIVersion, Kind: r.Kind,
-			Match: &fnv1.ResourceSelector_MatchName{MatchName: r.Name}}
+	for key, r := range reqs {
+		sel := &fnv1.ResourceSelector{ApiVersion: r.apiVersion, Kind: r.kind,
+			Match: &fnv1.ResourceSelector_MatchName{MatchName: r.name}}
 		requirements.Resources[key] = sel
 		requirements.ExtraResources[key] = sel //nolint:staticcheck // see above
 	}
@@ -68,12 +145,12 @@ func (f *Function) postgresCluster(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFu
 		response.Fatal(rsp, errors.Wrap(err, "cannot get observed composed resources"))
 		return
 	}
-	in := postgrescluster.Input{XR: oxr.Resource.UnstructuredContent(), Observed: map[string]postgrescluster.Object{}, Required: required}
+	obs := make(map[string]map[string]any, len(observed))
 	for name, o := range observed {
-		in.Observed[string(name)] = o.Resource.UnstructuredContent()
+		obs[string(name)] = o.Resource.UnstructuredContent()
 	}
 
-	out, err := postgrescluster.Compose(in)
+	out, err := fn(oxr.Resource.UnstructuredContent(), obs, required)
 	if err != nil {
 		response.Fatal(rsp, err)
 		return
@@ -84,14 +161,14 @@ func (f *Function) postgresCluster(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFu
 		response.Fatal(rsp, errors.Wrap(err, "cannot get desired composed resources"))
 		return
 	}
-	for name, c := range out.Composed {
+	for name, c := range out.resources {
 		dc := resource.NewDesiredComposed()
-		if err := convert(c.Object, &dc.Resource.Object); err != nil {
+		if err := convert(c.object, &dc.Resource.Object); err != nil {
 			response.Fatal(rsp, errors.Wrapf(err, "cannot convert composed resource %s", name))
 			return
 		}
 		dc.Ready = resource.ReadyFalse
-		if c.Ready {
+		if c.ready {
 			dc.Ready = resource.ReadyTrue
 		}
 		desired[resource.Name(name)] = dc
@@ -107,7 +184,7 @@ func (f *Function) postgresCluster(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFu
 		return
 	}
 	var status map[string]any
-	if err := convert(out.Status, &status); err != nil {
+	if err := convert(out.status, &status); err != nil {
 		response.Fatal(rsp, errors.Wrap(err, "cannot convert status"))
 		return
 	}
@@ -126,17 +203,17 @@ func (f *Function) postgresCluster(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFu
 	}
 
 	// Next to Crossplane's own Ready/Synced (those two types are reserved):
-	// CNPG's view of health.
-	cond := response.ConditionFalse(rsp, "PostgresReady", out.Condition.Reason)
-	if out.Condition.Status {
-		cond = response.ConditionTrue(rsp, "PostgresReady", out.Condition.Reason)
+	// the workload's view of health (CNPG's, the Valkey operator's).
+	cond := response.ConditionFalse(rsp, out.conditionType, out.condition.reason)
+	if out.condition.status {
+		cond = response.ConditionTrue(rsp, out.conditionType, out.condition.reason)
 	}
-	cond.WithMessage(out.Condition.Message).TargetComposite()
+	cond.WithMessage(out.condition.message).TargetComposite()
 }
 
 // requiredResources returns the resolved requirements as unstructured JSON:
 // a name is present once Crossplane has resolved it.
-func requiredResources(req *fnv1.RunFunctionRequest) (map[string][]postgrescluster.Object, error) {
+func requiredResources(req *fnv1.RunFunctionRequest) (map[string][]map[string]any, error) {
 	resolved, err := request.GetRequiredResources(req)
 	if err != nil {
 		return nil, err
@@ -147,9 +224,9 @@ func requiredResources(req *fnv1.RunFunctionRequest) (map[string][]postgresclust
 			return nil, err
 		}
 	}
-	out := make(map[string][]postgrescluster.Object, len(resolved))
+	out := make(map[string][]map[string]any, len(resolved))
 	for name, items := range resolved {
-		out[name] = []postgrescluster.Object{}
+		out[name] = []map[string]any{}
 		for _, r := range items {
 			out[name] = append(out[name], r.Resource.UnstructuredContent())
 		}

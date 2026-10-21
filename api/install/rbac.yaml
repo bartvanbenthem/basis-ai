@@ -7,7 +7,9 @@
 # The control plane runs no databases: CNPG and Prometheus Operator objects
 # go to the locations as provider-kubernetes Objects (managed resources,
 # which Crossplane grants itself), applied there with each location's
-# kubeconfig. What PostgresClusters compose here is the GrafanaDashboard.
+# kubeconfig. What PostgresClusters compose here is the GrafanaDashboard;
+# ValkeyCaches compose their password Secret (Crossplane's own ClusterRole
+# already covers Secrets).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -101,6 +103,30 @@ metadata:
 rules:
   - apiGroups: [cnpg.cndev.nl]
     resources: [postgresclusters]
+    verbs: [get, list, watch]
+---
+# The same for ValkeyCaches.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cnpg-platform:valkeycaches:edit
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+rules:
+  - apiGroups: [cache.cndev.nl]
+    resources: [valkeycaches]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cnpg-platform:valkeycaches:view
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+rules:
+  - apiGroups: [cache.cndev.nl]
+    resources: [valkeycaches]
     verbs: [get, list, watch]
 ---
 # Projects are cluster-scoped, so the namespace roles don't apply: reading

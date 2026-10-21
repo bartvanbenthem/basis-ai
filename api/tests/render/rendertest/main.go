@@ -6,7 +6,7 @@
 //	    the objects to schema-validate: no Function Results, no core kinds, plus
 //	    the manifest inside every provider-kubernetes Object
 //	rendertest assert <api> <case> <empty|observed> <render-output.yaml> [dashboard.json]
-//	    semantic assertions on `crossplane render` output (postgrescluster.go, project.go, location.go)
+//	    semantic assertions on `crossplane render` output (postgrescluster.go, project.go, location.go, valkeycache.go)
 package main
 
 import (
@@ -237,6 +237,12 @@ func assert(api, kase, state, path string, rest []string) int {
 			assertLocation(r)
 			return r.report(fmt.Sprintf("FAIL location/%s (%s):", kase, state),
 				fmt.Sprintf("ok   location/%s (%s)", kase, state))
+		}
+	case "valkeycache":
+		if r, err = loadRender(kase, state, path, "ValkeyCache"); err == nil {
+			assertValkeyCache(r)
+			return r.report(fmt.Sprintf("FAIL valkeycache/%s (%s):", kase, state),
+				fmt.Sprintf("ok   valkeycache/%s (%s)", kase, state))
 		}
 	default:
 		fmt.Fprintf(os.Stderr, "no assertions for API %q\n", api)

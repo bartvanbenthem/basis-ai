@@ -172,7 +172,8 @@ spec:
   ([`function/`](function/)), with typed inputs, the switchover state machine as a pure function
   ([`topology.go`](function/postgrescluster/topology.go)) and unit tests. It emits only the fields
   it sets (not the upstream CNPG Go types, which would apply defaulted and empty fields to every
-  running cluster). The Project and Location compositions are still function-go-templating.
+  running cluster). ValkeyCache runs on it too ([`function/valkeycache`](function/valkeycache)).
+  The Project and Location compositions are still function-go-templating.
 - Readiness is set explicitly per resource, so `function-auto-ready` isn't needed. The custom
   `PostgresReady` condition is a function condition, not hand-written `status.conditions`.
 - The dashboard JSON and alert rules are kept as readable sources in `src/`; `make generate`
@@ -255,6 +256,75 @@ holding the bound permissions itself, it gets `bind` on just `admin`, `edit` and
 to a location is applied there with that location's kubeconfig. Projects are
 cluster-scoped, so the namespace roles don't cover creating them: bind
 `cnpg-platform:projects:admin` to whoever may create projects.
+
+## The ValkeyCache API
+
+The cache layer of an AI service, on [Valkey](https://valkey.io/) (BSD-licensed, Linux Foundation),
+run by the official [valkey-io operator](https://github.com/valkey-io/valkey-operator) in the
+Project's protected location ([`deps/`](../deps/README.md#5-valkey-operator-locations-with-caches)):
+
+```yaml
+apiVersion: cache.cndev.nl/v1alpha1
+kind: ValkeyCache
+metadata:
+  name: llm-cache
+  namespace: demo            # a Project
+spec:
+  mode: semantic             # exact (default) | semantic: also loads valkey-search
+  shards: 1                  # cluster mode; 1..16
+  replicas: 0                # per shard; a replica keeps the shard warm on failover
+  resources: {cpu: "1", memory: 1Gi}
+  maxMemoryPercent: 75       # maxmemory = 75% of memory
+  evictionPolicy: allkeys-lru
+```
+
+See [`examples/valkeycache.yaml`](examples/valkeycache.yaml) (with a LiteLLM configuration) and
+[`apis/valkeycache/definition.yaml`](apis/valkeycache/definition.yaml) for the schema.
+
+- **exact**: plain key/value with TTLs: a hash of the normalised prompt plus its context, tool, SQL
+  and search results. **semantic**: also vector search (FT.CREATE / FT.SEARCH, HNSW/KNN, tag and
+  numeric filters) through the valkey-search module, from the `valkey/valkey-bundle` image, with its
+  reader/writer threads capped at the pod's CPU.
+- **A cache, not a store**: no persistence (memory only); `maxmemory` stays below the container
+  limit with an eviction policy. Keep the primary vector store in PostgreSQL (`profile: vector`).
+- **Auth**: the `default` user needs a password generated once into Secret `<name>-valkey` on the
+  control plane (`username`, `password`, `host`, `port`, `uri`); a copy, `<name>-valkey-auth`, is
+  in the location for workloads there. The user gets everything but `@admin`.
+- **Clients**: the operator runs Valkey in cluster mode only, behind the headless Service
+  `valkey-<name>` (`status.endpoint`). Cluster-aware clients work with any layout. Clients without
+  cluster support, such as LiteLLM's `valkey-semantic` cache, need `shards: 1` and `replicas: 0`
+  (the Service then only reaches the primary).
+- **Monitoring**, the same way as PostgresCluster: metrics in the Project's Prometheus, alerts from
+  a PrometheusRule and a dashboard in the Project's Grafana (`spec.monitoring`: `enabled`,
+  `podMonitorLabels`, `prometheusRule.{enabled,excludeRules}`,
+  `grafanaDashboard.{enabled,instanceSelector,allowCrossNamespaceImport,folder,datasourceName}`).
+  The PodMonitor labels every series with `cluster` (the cache), `shard` and `node`; semantic caches
+  add valkey-search's module metrics to the exporter.
+
+The composition is Go, in function-basis ([`function/valkeycache`](function/valkeycache)), like
+PostgresCluster's: the dashboard and alerts are readable sources in `src/`, which `make generate`
+prepares as the function's embedded assets.
+
+| Composed resource | Where | Notes |
+|---|---|---|
+| `Secret <name>-valkey` | control plane | Password generated once and kept; host, port, uri |
+| `GrafanaDashboard <name>-valkey` | control plane | `monitoring.grafanaDashboard.enabled` (default): [`src/dashboards/valkey-cache.json`](src/dashboards/valkey-cache.json) with its own uid (`status.monitoring.dashboardUid`), preselected on this cache: hit ratio, keys, memory of maxmemory, evictions, commands and latency, clients, cluster and replication health, and (collapsed) valkey-search. Panels adapted from redis_exporter's dashboard (MIT) |
+| `Secret <name>-valkey-auth` | location (Object) | Data patched from the one above, never in the Object spec |
+| `ValkeyCluster <name>` | location (Object) | Ready when the operator reports `Ready`; `status.state`, `readyShards` and the message come from it |
+| `PodMonitor <name>-valkey` | location (Object) | `monitoring.enabled` (default) |
+| `PrometheusRule <name>-alerts` | location (Object) | `monitoring.prometheusRule.enabled` (default): [`src/alerts/valkey-cache-rules.yaml`](src/alerts/valkey-cache-rules.yaml), based on the redis-mixin alerts (MIT), scoped to this cache: node down, cluster state, failing slots, replica link down, restarts, writes rejected at maxmemory, connections near maxclients, continuous eviction and a low hit ratio (info). Being at maxmemory alone is normal for a cache and doesn't alert |
+
+The cache runs in the Project's protected location, pinned in `status.location` on first use. A
+ValidatingAdmissionPolicy ([`apis/valkeycache/policies.yaml`](apis/valkeycache/policies.yaml))
+refuses a new one outside a Project or in a location closed to new workloads. `mode` is fixed after
+creation. Project members manage caches through the built-in `admin`/`edit`/`view` roles, like
+PostgresClusters.
+
+Design points for the clients that matter more than the engine: put the tenant, user or role scope
+in every key (or a TAG filter in the KNN query), because the cache sits before guardrails and
+context construction; include the model ID and system-prompt version in the key; start semantic
+thresholds strict (about 0.9) and measure hits against wrong answers; and purge or shorten TTLs when
+source data changes. This is not the inference engine's KV/prefix cache (vLLM, LMCache).
 
 ## Locations
 
@@ -499,7 +569,7 @@ taken after the switchover: restore from before it out of the protected site's f
 ```
 apis/postgrescluster/definition.yaml       XRD (the API contract)
 apis/postgrescluster/composition.yaml      one pipeline step: function-basis
-function/                                  function-basis: the PostgresCluster composition in Go
+function/                                  function-basis: the PostgresCluster and ValkeyCache compositions in Go
 function/postgrescluster/                  what gets composed (compose.go), per location (member.go),
                                            the primary/switchover state machine (topology.go), status
 function/postgrescluster/assets/           what it embeds: monitoring queries, GENERATED dashboard and alerts
@@ -516,6 +586,14 @@ apis/project/definition.yaml               Project XRD (cluster-scoped)
 apis/project/composition.yaml              Project composition (hand-written, nothing embedded)
 apis/project/policies.yaml                 deletion protection, PostgresClusters only in a Project's
                                            sites, unschedulable locations
+apis/valkeycache/definition.yaml           ValkeyCache XRD (namespaced): an exact or semantic Valkey cache
+apis/valkeycache/composition.yaml          one pipeline step: function-basis
+function/valkeycache/                      the ValkeyCache composition in Go: password Secret, ValkeyCluster,
+                                           PodMonitor, PrometheusRule, GrafanaDashboard
+function/valkeycache/assets/               what it embeds: GENERATED dashboard and alerts
+src/dashboards/valkey-cache.json           the Valkey cache Grafana dashboard
+src/alerts/valkey-cache-rules.yaml         the Valkey cache alerts
+apis/valkeycache/policies.yaml             ValkeyCaches only in a Project's open protected location
 hack/generate/                             prepares src/ as the function's assets, and the APIs' OpenAPI documents for the portal (../portal/catalog)
 hack/xpkgcache/                            seeds Crossplane's package cache (e2e on kind, no registry)
 hack/observe/                              generates tests/render observed-state fixtures
@@ -524,7 +602,7 @@ internal/doc/                              shared YAML helpers for the Go tools
 install/                                   Crossplane, the functions, provider-kubernetes, RBAC,
                                            install/uninstall, add-location.sh, migrate-locations.sh
 examples/                                  PostgresClusters (incl. a geo-replicated and a restored one), a Project, the
-                                           project-defaults EnvironmentConfig
+                                           project-defaults EnvironmentConfig, a ValkeyCache
 tests/render/<api>/                        offline render + schema validation tests per API
 tests/render/rendertest/                   their assertions (one Go file per API)
 ```
@@ -586,11 +664,27 @@ XRDs exist, the short names `pgc`, `proj` and `loc` match both groups, so name t
 
 ## function-basis
 
-The PostgresCluster composition runs in a composition function of its own, built from
-[`function/`](function/) and published as a Crossplane package to
-`ghcr.io/bartvanbenthem/function-basis`. The Composition only names it
-(`functionRef: function-basis`), so a new version of the function changes how every
-PostgresCluster is composed without touching the Composition.
+The platform's Go compositions run in one composition function, built from
+[`function/`](function/) (a package per API, dispatched by kind in
+[`function/fn.go`](function/fn.go)) and published as a Crossplane package to
+`ghcr.io/bartvanbenthem/function-basis`. The Compositions only name it
+(`functionRef: function-basis`), so a new version of the function changes how every XR of those
+APIs is composed without touching the Compositions.
+
+Publish and roll out a new version whenever anything under `function/` changes, including a new
+API it composes or a new embedded asset from `src/` (`make generate`). A version from before an
+API was added answers its XRs with `function-basis doesn't compose <group>/<version>, Kind=<kind>`,
+so roll the function out before, or together with, a new API's XRD and Composition:
+
+1. `make test`, then publish the next version: `make function-push FUNCTION_VERSION=<version>`
+   ([Publish a version](#publish-a-version)).
+2. Set `<version>` in [`install/function-basis.yaml`](install/function-basis.yaml) and as the
+   `FUNCTION_VERSION` default in the [`Makefile`](Makefile), and commit.
+3. Apply it on every control plane ([Roll out a version](#roll-out-a-version)), then the new or
+   changed XRDs and Compositions (`install/install.sh` does both).
+
+Versions follow semver: a new API or a composition change is a minor bump (`v0.1.1` -> `v0.2.0`),
+a fix that composes the same objects a patch bump.
 
 ### Publish a version
 
@@ -603,8 +697,8 @@ read -rs GHCR_TOKEN
 echo "$GHCR_TOKEN" | podman login --authfile ~/.docker/config.json ghcr.io -u <github user> --password-stdin
 unset GHCR_TOKEN
 
-make test                                     # unit + render tests against this checkout
-make function-push FUNCTION_VERSION=v0.1.1    # image -> _output/*.xpkg -> ghcr.io
+make test                                        # unit + render tests against this checkout
+make function-push FUNCTION_VERSION=<version>    # image -> _output/*.xpkg -> ghcr.io
 ```
 
 `--authfile ~/.docker/config.json` matters with podman: `crossplane xpkg push` reads its
@@ -643,13 +737,13 @@ Set the new tag in [`install/function-basis.yaml`](install/function-basis.yaml) 
 kubectl apply -f install/function-basis.yaml      # or re-run install/install.sh
 kubectl get function function-basis -w            # INSTALLED/HEALTHY True on the new package
 kubectl get functionrevision | grep function-basis   # the new revision is Active
-kubectl get postgrescluster -A                        # SYNCED/READY stay True
+kubectl get crossplane -A                         # every XR: SYNCED/READY stay True
 ```
 
-Crossplane installs the new FunctionRevision, switches traffic to it and every PostgresCluster is
+Crossplane installs the new FunctionRevision, switches traffic to it and every XR it composes is
 composed by it on its next reconcile. What it sends to the locations changes only where the new
-version composes differently; a change to a CNPG Cluster's spec (resources, parameters, ...) makes
-CNPG restart its instances one by one, the primary last. `make test` shows such changes before
+version composes differently; a change to a workload's spec can restart it (CNPG restarts a
+Cluster's instances one by one, the primary last). `make test` shows such changes before
 you publish (the render tests fail on any unexpected one).
 
 To roll back, apply the previous tag the same way: the old version's package is still in the
@@ -657,8 +751,8 @@ registry.
 
 ### When the API group or version changes
 
-The function only composes the one group, version and kind compiled into it (`postgresClusterGVK`
-in [`function/fn.go`](function/fn.go)). Changing the group or version in
+The function only composes the groups, versions and kinds compiled into it (the `...GVK`
+variables in [`function/fn.go`](function/fn.go)). Changing the group or version in
 [`apis/postgrescluster/definition.yaml`](apis/postgrescluster/definition.yaml) therefore takes a new
 function version too. Without one, every PostgresCluster of the new group stays `SYNCED=False` with:
 
@@ -723,7 +817,7 @@ make test       # make unit, then crossplane render for every API, PostgresClust
                 # the CNPG/Barman/Prometheus/Grafana/provider-kubernetes/ClusterUsage CRDs
                 # (manifests inside Objects too), assertions
 go run ./hack/observe project full   # regenerate an observed-state fixture after changing a composition
-make function-push FUNCTION_VERSION=v0.1.1   # publish the function: see "function-basis" above
+make function-push FUNCTION_VERSION=<version>   # publish the function: see "function-basis" above
 # crossplane render doesn't resolve namespaced extra resources (Crossplane itself does), so the
 # render tests can't show COSI's credentials Secrets being unpacked; they check the rest.
 ../hack/e2e-kind.sh        # the real thing: a control plane and one location on kind

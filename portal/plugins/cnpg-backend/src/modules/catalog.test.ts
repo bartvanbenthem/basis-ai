@@ -14,7 +14,7 @@ describe('PostgresClusterEntityProvider', () => {
     status: { monitoring: { dashboardUid: 'cnpg-abc' } },
   };
 
-  const make = (k8s: any = {}) =>
+  const make = (k8s: any = {}, valkey?: any) =>
     new PostgresClusterEntityProvider(
       k8s,
       { run: jest.fn() } as any,
@@ -24,6 +24,7 @@ describe('PostgresClusterEntityProvider', () => {
         appBaseUrl: 'https://portal.example.com',
         grafanaUrl: 'https://grafana.example.com/',
       },
+      valkey,
     );
 
   it('maps a PostgresCluster to a Resource entity', () => {
@@ -97,24 +98,70 @@ describe('PostgresClusterEntityProvider', () => {
     ]);
   });
 
+  it('maps a ValkeyCache to a valkey-cache Resource that never collides with a cluster', () => {
+    const cache = {
+      apiVersion: 'cache.cndev.nl/v1alpha1',
+      kind: 'ValkeyCache',
+      metadata: { name: 'payments-db', namespace: 'payments', labels: { 'backstage.io/owner': 'team-ai' } },
+      spec: { mode: 'semantic' as const, shards: 1, replicas: 0 },
+      status: { monitoring: { dashboardUid: 'valkey-abc' } },
+    };
+    const entity = make().toCacheEntity(cache, {
+      name: 'payments',
+      ready: true,
+      synced: true,
+      deleting: false,
+      deletionProtection: true,
+      prometheus: true,
+      grafana: true,
+      grafanaUrl: 'http://grafana-payments.example.com',
+      locations: ['ske'],
+    });
+    expect(entity).toMatchObject({
+      kind: 'Resource',
+      metadata: {
+        name: 'payments--payments-db.valkey',
+        annotations: { 'cache.cndev.nl/valkeycache': 'payments/payments-db' },
+        tags: ['valkey', 'cache', 'semantic'],
+      },
+      spec: { type: 'valkey-cache', owner: 'team-ai', dependsOn: ['resource:default/payments'] },
+    });
+    expect(entity.metadata.name).not.toBe(make().toEntity(cluster).metadata.name);
+    expect(entity.metadata.links).toEqual([
+      { url: 'https://portal.example.com/cnpg/caches/payments/payments-db', title: 'CNPG portal' },
+      { url: 'http://grafana-payments.example.com/d/valkey-abc', title: 'Grafana dashboard' },
+    ]);
+  });
+
   it('falls back to the default owner', () => {
     const entity = make().toEntity({ ...cluster, metadata: { name: 'a', namespace: 'b' } });
     expect(entity.spec?.owner).toBe('group:default/guests');
   });
 
   it('replaces the full entity set on refresh', async () => {
-    const provider = make({
-      list: jest.fn(async () => [cluster]),
-      listProjects: jest.fn(async () => [
-        { apiVersion: 'platform.cndev.nl/v1alpha1', kind: 'Project', metadata: { name: 'payments' }, spec: {} },
-      ]),
-    });
+    const provider = make(
+      {
+        list: jest.fn(async () => [cluster]),
+        listProjects: jest.fn(async () => [
+          { apiVersion: 'platform.cndev.nl/v1alpha1', kind: 'Project', metadata: { name: 'payments' }, spec: {} },
+        ]),
+      },
+      {
+        list: jest.fn(async () => [
+          { apiVersion: 'cache.cndev.nl/v1alpha1', kind: 'ValkeyCache', metadata: { name: 'llm', namespace: 'payments' }, spec: {} },
+        ]),
+      },
+    );
     const connection = { applyMutation: jest.fn(), refresh: jest.fn() };
     await provider.connect(connection);
     await provider.refresh();
     const { entities } = connection.applyMutation.mock.calls[0][0];
     expect(connection.applyMutation.mock.calls[0][0].type).toBe('full');
-    expect(entities.map((e: any) => e.entity.metadata.name)).toEqual(['payments', 'payments--payments-db']);
+    expect(entities.map((e: any) => e.entity.metadata.name)).toEqual([
+      'payments',
+      'payments--payments-db',
+      'payments--llm.valkey',
+    ]);
     expect(entities.every((e: any) => e.locationKey === 'cnpg-postgresclusters')).toBe(true);
     expect(entities[1].entity.spec.dependsOn).toEqual(['resource:default/payments']);
   });

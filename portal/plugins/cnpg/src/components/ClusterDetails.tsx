@@ -29,7 +29,7 @@ import { ReactNode, useState } from 'react';
 import { cnpgApiRef } from '../api';
 import { age, Fields, health, Mono } from './common';
 
-const StaticTable = <T extends { id: string }>({
+export const StaticTable = <T extends { id: string }>({
   rows,
   columns,
   empty,
@@ -67,13 +67,18 @@ const Section = ({ title, children }: { title: string; children: ReactNode }) =>
 const onOff = (v: unknown) => (v ? 'enabled' : 'disabled');
 
 /**
- * The app connection URI, masked until asked for. The password is only
- * fetched (live from the primary's Secret, with the external LB address)
- * when the user shows or copies it.
+ * A connection URI, masked until asked for. The password is only fetched
+ * (`load`: live from the Secret in the location) when the user shows or
+ * copies it. `external: false` notes that the URI has the in-cluster host.
  */
-const ConnectionUri = ({ namespace, name, masked }: { namespace: string; name: string; masked: string }) => {
-  const api = useApi(cnpgApiRef);
-  const [conn, setConn] = useState<ClusterConnection>();
+export const ConnectionUri = ({
+  load: fetchConnection,
+  masked,
+}: {
+  load: () => Promise<Pick<ClusterConnection, 'uri'> & { external?: boolean }>;
+  masked: string;
+}) => {
+  const [conn, setConn] = useState<Pick<ClusterConnection, 'uri'> & { external?: boolean }>();
   const [shown, setShown] = useState(false);
   const [copied, setCopied] = useState(false);
   const [pending, setPending] = useState(false);
@@ -84,7 +89,7 @@ const ConnectionUri = ({ namespace, name, masked }: { namespace: string; name: s
     setPending(true);
     setError(undefined);
     try {
-      const c = await api.getConnection(namespace, name);
+      const c = await fetchConnection();
       setConn(c);
       return c;
     } catch (e) {
@@ -134,7 +139,7 @@ const ConnectionUri = ({ namespace, name, masked }: { namespace: string; name: s
           {copied ? 'Copied' : 'Copy'}
         </Button>
       </Flex>
-      {conn && !conn.external && (
+      {conn && conn.external === false && (
         <Text variant="body-small" color="secondary">
           The load balancer has no address yet: this is the in-cluster host.
         </Text>
@@ -154,6 +159,7 @@ const ConnectionUri = ({ namespace, name, masked }: { namespace: string; name: s
  * portal detail page and the catalog entity tab.
  */
 export const ClusterDetails = ({ details }: { details: PostgresClusterDetails }) => {
+  const api = useApi(cnpgApiRef);
   const { summary, resource, pods, events, cnpgStatus } = details;
   const spec = resource.spec;
   const status = resource.status ?? {};
@@ -258,8 +264,7 @@ export const ClusterDetails = ({ details }: { details: PostgresClusterDetails })
               [
                 'Connection URI',
                 <ConnectionUri
-                  namespace={ns}
-                  name={summary.name}
+                  load={() => api.getConnection(ns, summary.name)}
                   masked={`postgresql://${spec.database?.owner ?? 'app'}:••••••@${details.externalHost ?? status.endpoints?.readWrite}:5432/${spec.database?.name ?? 'app'}`}
                 />,
               ],
