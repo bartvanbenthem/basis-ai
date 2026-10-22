@@ -264,7 +264,12 @@ func assertProject(r *render) {
 		prom := mp(obj, "spec")
 		check(equal(get(prom, "enableRemoteWriteReceiver"), true), "the control plane's Prometheus receives remote writes")
 		var scraping []string
+		_, costRules := composed["cost-rules"]
 		for _, k := range sortedKeys(prom) {
+			// With the price catalog it evaluates the project's cost rules, still scraping nothing.
+			if costRules && (k == "ruleSelector" || k == "ruleNamespaceSelector") {
+				continue
+			}
 			if strings.HasSuffix(k, "Selector") {
 				scraping = append(scraping, k)
 			}
@@ -300,7 +305,7 @@ func assertProject(r *render) {
 		check(str(graf, "metadata", "labels", "dashboards.paas.cndev.nl/scope") == name,
 			"Grafana must carry the scope label dashboards select on")
 		check(str(graf, "spec", "config", "security", "allow_embedding") == "true", "embedding must be allowed")
-		host := map[string]string{"minimal": "grafana-demo.10.0.0.1.nip.io", "full": "grafana-team-payments.example.com",
+		host := map[string]string{"minimal": "grafana-demo.10.0.0.1.nip.io", "governed": "grafana-demo.10.0.0.1.nip.io", "full": "grafana-team-payments.example.com",
 			"sites": "grafana-team-ledger.example.com"}[kase]
 		switch {
 		case host == "": // no Grafana ingress in this case's project-defaults

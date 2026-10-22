@@ -27,6 +27,7 @@ nav:
       - Projects: platform/projects.md
       - Locations: platform/locations.md
       - Catalogs: platform/catalogs.md
+      - Governance and cost: platform/governance.md
       - Upgrades: platform/upgrades.md
       - Monitoring: platform/monitoring.md
       - Identity and SSO (design): platform/identity-and-sso.md

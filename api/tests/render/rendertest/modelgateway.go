@@ -74,6 +74,20 @@ func assertModelGateway(r *render) {
 		} else {
 			check(r.live(s+"-external-gateway") == nil && r.live(s+"-certificate") == nil, "%s: external Gateway without spec.expose", s)
 		}
+		// Token metrics for the Project's cost, an access log, the caller upstream.
+		pm := r.live(s + "-podmonitor")
+		check(equal(get(pm, "spec", "podMetricsEndpoints"), L{M{"targetPort": 1064, "path": "/metrics", "interval": "30s"}}),
+			"%s: token metrics from the extproc sidecar: %s", s, repr(pm))
+		check(str(ep, "spec", "telemetry", "accessLog", "settings", 0, "format", "json", "basis") == "gateway", "%s: access log", s)
+		check(str(r.live(s+"-securitypolicy"), "spec", "apiKeyAuth", "forwardClientIDHeader") == "x-basis-client", "%s: client header", s)
+		rl := r.live(s + "-ratelimit")
+		if kase == "minimal" {
+			rules := list(rl, "spec", "rateLimit", "global", "rules")
+			check(len(rules) == 2 && str(rl, "spec", "targetRefs", 0, "kind") == "HTTPRoute",
+				"%s: monthly caps for support-bot and the gateway: %s", s, repr(rl))
+		} else {
+			check(rl == nil, "%s: no rate limits without monthlyTokens", s)
+		}
 		sp := r.live(s + "-securitypolicy")
 		check(equal(get(sp, "spec", "apiKeyAuth", "credentialRefs"), L{M{"name": name + "-keys"}}) &&
 			equal(get(sp, "spec", "apiKeyAuth", "sanitize"), true), "%s: client API key auth", s)

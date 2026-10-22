@@ -1,13 +1,16 @@
 # A gateway in the protected location for a hosted and a self-hosted model,
-# with two clients.
+# with two clients, a monthly token cap for one of them and for the gateway.
 apiVersion: ai.cndev.nl/v1alpha1
 kind: ModelGateway
 metadata:
   name: llm
   namespace: ai-team
 spec:
+  monthlyTokens: 5000000
   clients:
     - name: support-bot
+      owner: team-support
+      monthlyTokens: 1000000
     - name: coding-agent
   models:
     - name: gpt-4o-mini

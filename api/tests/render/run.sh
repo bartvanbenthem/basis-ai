@@ -25,6 +25,13 @@
 # Requires the crossplane CLI (v2), helm, Go, and a Docker API and CLI (to build the function)
 # (rootless podman works: export DOCKER_HOST=unix:///run/user/$UID/podman/podman.sock).
 #
+#   RENDER_FUNCTION=local            run function-basis as a local process instead of
+#                                    a container; FUNCTION_ADDRESS to listen on
+#                                    (127.0.0.1:9443)
+#   CROSSPLANE_BINARY=<path>         crossplane render's engine as a local Crossplane
+#                                    binary instead of its container; with
+#                                    RENDER_FUNCTION=local no Docker is needed (go install
+#                                    github.com/crossplane/crossplane/v2/cmd/crossplane@<version>)
 #   RENDER_APIS="project location"   only these APIs
 #   RENDER_OUT=<dir>                 keep the rendered output there (<api>-<case>-<state>.yaml)
 set -euo pipefail
@@ -54,10 +61,30 @@ RT="${OUT}/rendertest"
 echo "=== generate --check"
 (cd "${API_ROOT}" && go run ./hack/generate --check)
 
-echo "=== build function-basis (${FUNCTION_IMAGE})"
-docker build -q -f "${API_ROOT}/function/Dockerfile" -t "${FUNCTION_IMAGE}" "${API_ROOT}" >/dev/null
 FUNCTIONS="${OUT}/functions.yaml"
-cat >"${FUNCTIONS}" <<EOF
+if [[ "${RENDER_FUNCTION:-docker}" == "local" ]]; then
+  # function-basis as a process on this machine (crossplane render's
+  # Development runtime): no container runtime needed.
+  echo "=== build and start function-basis (local, ${FUNCTION_ADDRESS:=127.0.0.1:9443})"
+  (cd "${API_ROOT}" && go build -o "${OUT}/function-basis" ./function)
+  "${OUT}/function-basis" --insecure --address "${FUNCTION_ADDRESS}" >"${OUT}/function.log" 2>&1 &
+  FUNCTION_PID=$!
+  trap 'kill ${FUNCTION_PID} 2>/dev/null; rm -rf "${OUT}"' EXIT
+  cat >"${FUNCTIONS}" <<EOF
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-basis
+  annotations:
+    render.crossplane.io/runtime: Development
+    render.crossplane.io/runtime-development-target: ${FUNCTION_ADDRESS}
+spec:
+  package: ${FUNCTION_IMAGE}
+EOF
+else
+  echo "=== build function-basis (${FUNCTION_IMAGE})"
+  docker build -q -f "${API_ROOT}/function/Dockerfile" -t "${FUNCTION_IMAGE}" "${API_ROOT}" >/dev/null
+  cat >"${FUNCTIONS}" <<EOF
 apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
@@ -67,6 +94,7 @@ metadata:
 spec:
   package: ${FUNCTION_IMAGE}
 EOF
+fi
 
 echo "=== collecting CRD schemas"
 SCHEMAS="${OUT}/schemas"
@@ -116,7 +144,9 @@ for api in "${APIS[@]}"; do
       fi
       out="${OUT}/${api}-${case}-${state}.yaml"
       echo "=== ${api}/${case} (${state}): render"
-      if ! crossplane render "${xr}" "${composition}" "${FUNCTIONS}" --xrd "${xrd}" \
+      engine=()
+      [[ -n "${CROSSPLANE_BINARY:-}" ]] && engine=(--crossplane-binary="${CROSSPLANE_BINARY}")
+      if ! crossplane render "${xr}" "${composition}" "${FUNCTIONS}" --xrd "${xrd}" "${engine[@]}" \
           --include-full-xr --include-function-results "${args[@]}" "${required[@]}" >"${out}" 2>"${out}.err"; then
         echo "FAIL: render errored"; cat "${out}.err"; fail=1; continue
       fi

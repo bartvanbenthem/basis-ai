@@ -5,7 +5,10 @@
 //
 //	go run ./hack/observe <api> <case>   # writes tests/render/<api>/observed/<case>.yaml
 //
-// Needs the crossplane CLI and a Docker API, like tests/render/run.sh. Health
+// Needs the crossplane CLI and a Docker API, like tests/render/run.sh, and
+// function-basis built from this checkout (run.sh builds it; or
+// docker build -f function/Dockerfile -t localhost/function-basis:render .;
+// FUNCTION_IMAGE names another image). Health
 // is what the compositions look for: Namespace Active, Prometheus Available,
 // Grafana complete/success, Ready=True conditions (CNPG Cluster, Objects), a
 // provisioned BucketClaim and a granted BucketAccess (COSI), a CronJob whose
@@ -72,13 +75,29 @@ func run(api, kase string) error {
 	}
 	defer os.RemoveAll(tmp)
 	obsPath := filepath.Join(tmp, "observed.yaml")
+	// function-basis built from this checkout, as tests/render/run.sh builds it.
+	image := os.Getenv("FUNCTION_IMAGE")
+	if image == "" {
+		image = "localhost/function-basis:render"
+	}
+	functions := filepath.Join(tmp, "functions.yaml")
+	if err := os.WriteFile(functions, []byte(`apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-basis
+  annotations:
+    render.crossplane.io/runtime-docker-pull-policy: Never
+spec:
+  package: `+image+"\n"), 0o600); err != nil {
+		return err
+	}
 
 	var observed []M
 	var seen []string
 	for range 5 {
 		args := []string{"render", xrPath,
 			filepath.Join(base, "apis", api, "composition.yaml"),
-			filepath.Join(base, "install", "functions.yaml"),
+			functions,
 			"--xrd", filepath.Join(base, "apis", api, "definition.yaml")}
 		if exists(required) {
 			args = append(args, "--required-resources="+required)

@@ -253,6 +253,49 @@ A third policy keeps databases off the control plane: a new PostgresCluster need
 whose Project has a protected location, and turning on `geoReplication` needs a recovery
 location. See [Locations](#locations).
 
+### Governance and cost
+
+A Project says what it is, who pays and what it may spend:
+
+```yaml
+spec:
+  classification: confidential   # public | internal (default) | confidential
+  environment: sandbox           # production (default) | staging | development | sandbox
+  costCenter: CC-4711
+  budget: {monthly: 2500, monthlyTokens: 50000000}
+  expiresAt: "2026-12-31"        # the last day, e.g. for a sandbox
+```
+
+- **Labels.** The composition sets `platform.cndev.nl/classification`, `/environment`,
+  `/cost-center` and, past `expiresAt`, `/expired=true` on the project's namespaces, on the
+  control plane and in the locations. `status.governance` repeats them.
+- **Cost (showback).** With the platform's price catalog, the EnvironmentConfig `basis-prices`
+  ([`apis/project/prices.yaml`](apis/project/prices.yaml), installed once, the platform team's to
+  edit), the composition puts PrometheusRule `basis-cost` in the project's control-plane
+  Prometheus. It has every location's series by remote write, so it sees both sites. The rules
+  record:
+  - `basis:cost_per_hour`, by site and component: CPU and memory requests of running pods, volume
+    claims, LoadBalancers, and gateway tokens per model (the gateways' `gen_ai_*` metrics).
+  - `basis:tokens_per_hour`.
+  - The month's forecasts, `basis:cost_monthly_forecast` and `basis:tokens_monthly_forecast`, at
+    the last day's rate.
+
+  Grafana gets a *Cost* dashboard, and the portal shows a Cost card on the project page.
+- **Budgets.** `budget.monthly` and `budget.monthlyTokens` alert when the forecast passes 80% and
+  100% (`BasisBudgetForecast*`, `BasisTokenBudgetForecast*`). Hard token caps are per gateway or
+  per client: see [the ModelGateway API](#the-modelgateway-api).
+- **Admission policies** ([`apis/project/governance.yaml`](apis/project/governance.yaml)):
+  - **Model residency.** A gateway's models must use an endpoint from the `basis-models` catalog
+    ([`apis/modelgateway/models.yaml`](apis/modelgateway/models.yaml)) whose residency
+    (`self-hosted`, `eu`, `non-eu`) the classification allows. By default `confidential` allows
+    only self-hosted and EU. Without the catalog, every endpoint is allowed.
+  - **Exposure.** In a `confidential` project nothing opens to `0.0.0.0/0` or `::/0`.
+  - **Expiry.** Past `expiresAt`, nothing new can be created in the project. What runs keeps
+    running, and can be changed or deleted; the status says so.
+
+  On an update, the first two only look at what changed, so Crossplane's own writes to existing
+  objects never trip them.
+
 ### RBAC
 
 Crossplane gets exactly what the compositions compose on the control plane
@@ -374,7 +417,19 @@ See [`examples/modelgateway.yaml`](examples/modelgateway.yaml) and
 | `SecurityPolicy`, `ClientTrafficPolicy`, `BackendTrafficPolicy`, `Secret <name>-keys` (copy) | each site's location | Client API key auth on `Authorization: Bearer`, not forwarded; prompts (also over HTTP/2: images) and responses (embeddings, long completions) up to 50Mi |
 | `AIGatewayRoute <name>` | each site's location | A rule per model on the request's `model` |
 | `Backend`, `AIServiceBackend`, `BackendTLSPolicy`, `BackendSecurityPolicy`, `Secret` per model | each site's location | The provider's endpoint (TLS for https), its key copied from the Project's Secret under `apiKey` |
+| `PodMonitor <name>-tokens` | each site's location | Agent Router's token metrics per model (`gen_ai_client_token_usage`), which the Project's cost rules price |
+| `BackendTrafficPolicy <name>-limits` | each site's location, with a `monthlyTokens` | Monthly token caps: per client (`clients[].monthlyTokens`) and for the whole gateway (`spec.monthlyTokens`). Envoy Gateway global rate limits on the route, charged with each response's total tokens; past a cap, 429 until the month ends. Each site counts on its own; needs the rate limit store ([`deps/`](../deps/README.md#7-envoy-gateway--agent-router-locations-with-model-gateways)) |
 | `Certificate <name>-tls`, `Gateway <name>-external` + `EnvoyProxy <name>-external` | each site's location, with `spec.expose` | HTTPS only at `expose.hostname`, LoadBalancer Service `<name>-external` limited to `expose.loadBalancerSourceRanges`; certificate from the cert-manager ClusterIssuer `expose.issuer` (`basis`); the route and key auth cover both Gateways |
+
+**Clients and the audit trail.**
+- **Caller identity.** The caller's client name goes upstream in header `x-basis-client`, and each
+  request's tokens go into Envoy's metadata.
+- **Access log.** Both Gateways write a JSON line per request: client, model, tokens, status and
+  duration, never the prompt. The portal's Audit logs page lists these as *Model gateway* entries.
+- **Client fields.** A client can have an `owner`, a `monthlyTokens` cap and an `expiresAt`. After
+  that day its key is revoked (`status.expiredClients`), and a later date makes a new key.
+- **Model residency.** The models are subject to the Project's classification (see
+  [Governance and cost](#governance-and-cost)).
 
 It runs in the Project's protected location and, with `recovery.enabled`, a standby in the recovery
 location ([`apis/modelgateway/policies.yaml`](apis/modelgateway/policies.yaml) refuses either
@@ -980,13 +1035,15 @@ make test       # make unit, then crossplane render for every API, PostgresClust
                 # extensions, their preloads and requires, the size's vector settings), geo-replicated,
                 # switchover/failover/promoted, draining, pinned sites, no Project, the Project's
                 # backup bucket and one still provisioning, restores from the bucket, from a store
-                # of its own and from a bucket not ready yet; Project: 8 cases incl. both sites, a
-                # COSI bucket (also with a long name, and while a grant is pending) and an unregistered location; Location: connected, ready,
+                # of its own and from a bucket not ready yet; Project: 9 cases incl. both sites, a
+                # COSI bucket (also with a long name, and while a grant is pending), an unregistered location
+                # and governance with the price catalog; Location: connected, ready,
                 # unreachable; each empty and observed where it matters; required/ mocks the
                 # Projects, Locations and EnvironmentConfig, plus the shipped size and extension catalogs),
                 # crossplane resource validate against
                 # the CNPG/Barman/Prometheus/Grafana/provider-kubernetes/ClusterUsage CRDs
                 # (manifests inside Objects too), assertions
+RENDER_FUNCTION=local CROSSPLANE_BINARY=<crossplane core binary> tests/render/run.sh   # the same without Docker
 go run ./hack/observe project full   # regenerate an observed-state fixture after changing a composition
 make function-push FUNCTION_VERSION=<version>   # publish the function: see "function-basis" above
 # crossplane render doesn't resolve namespaced extra resources (Crossplane itself does), so the
