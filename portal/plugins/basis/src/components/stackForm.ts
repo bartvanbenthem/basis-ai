@@ -46,6 +46,10 @@ export interface StackForm {
   gatewayReplicas: number;
   /** The stack's own gateway's monthly token cap; empty for none. */
   gatewayMonthlyTokens: string;
+  /** Its retry attempts per model, then each fallback. */
+  gatewayRetryAttempts: number;
+  /** Its requests per minute; empty for no cap. */
+  gatewayRequestsPerMinute: string;
   models: ModelRow[];
   /** gateway.expose: the stack's own gateway over HTTPS. */
   gatewayExpose: ExposeFields;
@@ -74,6 +78,8 @@ export const defaultStackForm = (): StackForm => ({
   gatewayClient: '',
   gatewayReplicas: 2,
   gatewayMonthlyTokens: '',
+  gatewayRetryAttempts: 2,
+  gatewayRequestsPerMinute: '',
   models: [emptyModel()],
   gatewayExpose: defaultExpose(),
 });
@@ -104,6 +110,8 @@ export function fromStack(stack: GenAIStack): StackForm {
     gatewayClient: spec.gateway?.client ?? '',
     gatewayReplicas: spec.gateway?.replicas ?? d.gatewayReplicas,
     gatewayMonthlyTokens: spec.gateway?.monthlyTokens ? String(spec.gateway.monthlyTokens) : '',
+    gatewayRetryAttempts: spec.gateway?.retry?.attempts ?? d.gatewayRetryAttempts,
+    gatewayRequestsPerMinute: spec.gateway?.rateLimit?.requestsPerMinute ? String(spec.gateway.rateLimit.requestsPerMinute) : '',
     models: (spec.gateway?.models ?? []).map(m => fromModel(m, metadata.name)),
     gatewayExpose: fromExpose(spec.gateway?.expose),
   };
@@ -137,6 +145,9 @@ export function validateStack(f: StackForm): StackErrors {
   } else if (f.gatewayEnabled) {
     if (f.gatewayMonthlyTokens && !/^[1-9][0-9]*$/.test(f.gatewayMonthlyTokens)) {
       e.gatewayMonthlyTokens = 'A whole number, e.g. 10000000.';
+    }
+    if (f.gatewayRequestsPerMinute && !/^[1-9][0-9]*$/.test(f.gatewayRequestsPerMinute)) {
+      e.gatewayRequestsPerMinute = 'A whole number, e.g. 600.';
     }
     const rows = validateModels(f.models);
     if (Object.keys(rows).length) e.modelRows = rows;
@@ -181,6 +192,8 @@ export function toStackSpec(f: StackForm): Record<string, unknown> {
           models: toModels(f.models, f.name),
           ...(f.gatewayExpose.enabled ? { expose: toExpose(f.gatewayExpose) } : {}),
           ...(f.gatewayMonthlyTokens ? { monthlyTokens: Number(f.gatewayMonthlyTokens) } : {}),
+          retry: { attempts: f.gatewayRetryAttempts },
+          ...(f.gatewayRequestsPerMinute ? { rateLimit: { requestsPerMinute: Number(f.gatewayRequestsPerMinute) } } : {}),
         },
   };
 }

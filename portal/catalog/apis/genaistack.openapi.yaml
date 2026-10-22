@@ -133,6 +133,10 @@ components:
               default: {}
               description: 'The stack''s ModelGateway (<name>-gateway, Agent Router in each site''s location, deps/README.md): one internal, OpenAI-compatible endpoint (OPENAI_BASE_URL) routing on the request''s model to the models below, with their provider keys kept in the platform. Or, with ref, a ModelGateway shared with others. Apps authenticate with OPENAI_API_KEY from the connection Secret.'
               properties:
+                alerts:
+                  additionalProperties: true
+                  description: The stack's own gateway's alert thresholds (its ModelGateway's spec.alerts, as it is).
+                  type: object
                 client:
                   description: The stack's client in the shared gateway (spec.clients); the stack's name by default.
                   pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$
@@ -191,6 +195,12 @@ components:
                         description: Base URL of the provider's API, its path the API prefix, e.g. https://api.openai.com/v1, https://api.anthropic.com/v1 or http://vllm.models.svc:8000/v1 (self-hosted, OpenAI-compatible).
                         pattern: ^https?://[^/:]+(:[0-9]+)?(/.*)?$
                         type: string
+                      fallbacks:
+                        description: 'Other models of this gateway (by name) to try, in order, when this one fails after retry.attempts: the request goes to the next one, with that model''s name and key.'
+                        items:
+                          type: string
+                        maxItems: 5
+                        type: array
                       name:
                         description: The model name apps send (the request's "model").
                         maxLength: 200
@@ -217,6 +227,10 @@ components:
                   description: Tokens the stack's own gateway may pass per calendar month in each site (its ModelGateway's monthlyTokens); past it, 429 until the month ends.
                   minimum: 1
                   type: integer
+                rateLimit:
+                  additionalProperties: true
+                  description: The stack's own gateway's per-minute caps (its ModelGateway's spec.rateLimit, as it is).
+                  type: object
                 ref:
                   description: A ModelGateway in this namespace to use instead of one of the stack's own; models are then the gateway's. It needs a client for the stack (client) and, with recovery, a recovery site of its own.
                   pattern: ^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$
@@ -227,6 +241,10 @@ components:
                   maximum: 10
                   minimum: 1
                   type: integer
+                retry:
+                  additionalProperties: true
+                  description: The stack's own gateway's retry (its ModelGateway's spec.retry, as it is).
+                  type: object
               type: object
             recovery:
               default: {}

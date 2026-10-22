@@ -2317,6 +2317,10 @@ spec:
                   default: {}
                   description: 'The stack''s ModelGateway (<name>-gateway, Agent Router in each site''s location, deps/README.md): one internal, OpenAI-compatible endpoint (OPENAI_BASE_URL) routing on the request''s model to the models below, with their provider keys kept in the platform. Or, with ref, a ModelGateway shared with others. Apps authenticate with OPENAI_API_KEY from the connection Secret.'
                   properties:
+                    alerts:
+                      additionalProperties: true
+                      description: The stack's own gateway's alert thresholds (its ModelGateway's spec.alerts, as it is).
+                      type: object
                     client:
                       description: The stack's client in the shared gateway (spec.clients); the stack's name by default.
                       pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$
@@ -2375,6 +2379,12 @@ spec:
                             description: Base URL of the provider's API, its path the API prefix, e.g. https://api.openai.com/v1, https://api.anthropic.com/v1 or http://vllm.models.svc:8000/v1 (self-hosted, OpenAI-compatible).
                             pattern: ^https?://[^/:]+(:[0-9]+)?(/.*)?$
                             type: string
+                          fallbacks:
+                            description: 'Other models of this gateway (by name) to try, in order, when this one fails after retry.attempts: the request goes to the next one, with that model''s name and key.'
+                            items:
+                              type: string
+                            maxItems: 5
+                            type: array
                           name:
                             description: The model name apps send (the request's "model").
                             maxLength: 200
@@ -2401,6 +2411,10 @@ spec:
                       description: Tokens the stack's own gateway may pass per calendar month in each site (its ModelGateway's monthlyTokens); past it, 429 until the month ends.
                       minimum: 1
                       type: integer
+                    rateLimit:
+                      additionalProperties: true
+                      description: The stack's own gateway's per-minute caps (its ModelGateway's spec.rateLimit, as it is).
+                      type: object
                     ref:
                       description: A ModelGateway in this namespace to use instead of one of the stack's own; models are then the gateway's. It needs a client for the stack (client) and, with recovery, a recovery site of its own.
                       pattern: ^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$
@@ -2411,6 +2425,10 @@ spec:
                       maximum: 10
                       minimum: 1
                       type: integer
+                    retry:
+                      additionalProperties: true
+                      description: The stack's own gateway's retry (its ModelGateway's spec.retry, as it is).
+                      type: object
                   type: object
                 recovery:
                   default: {}
@@ -2860,6 +2878,7 @@ spec:
               description: |-
                 Rules:
                 - activeSite can only be recovery with recovery.enabled
+                - a model's fallbacks must name other models of this gateway
               properties:
                 activeSite:
                   default: protected
@@ -2868,6 +2887,27 @@ spec:
                     - protected
                     - recovery
                   type: string
+                alerts:
+                  description: 'Thresholds of the gateway''s alerts in the Project''s Prometheus (per site, per model): the 95th percentile of the request duration and of the time to first token (streamed requests), and the share of failed requests.'
+                  properties:
+                    disabled:
+                      default: false
+                      description: No alerts for this gateway.
+                      type: boolean
+                    errorRatePercent:
+                      default: 5
+                      maximum: 100
+                      minimum: 0
+                      type: number
+                    latencySeconds:
+                      default: 60
+                      minimum: 0
+                      type: number
+                    timeToFirstTokenSeconds:
+                      default: 10
+                      minimum: 0
+                      type: number
+                  type: object
                 clients:
                   default:
                     - name: apps
@@ -2890,6 +2930,14 @@ spec:
                         description: Who to ask about this key, a person or a group.
                         maxLength: 100
                         type: string
+                      requestsPerMinute:
+                        description: Requests this client may send per minute in each site; past it, 429.
+                        minimum: 1
+                        type: integer
+                      tokensPerMinute:
+                        description: Tokens (input and output) this client may use per minute in each site; past it, 429.
+                        minimum: 1
+                        type: integer
                     required:
                       - name
                     type: object
@@ -3013,6 +3061,12 @@ spec:
                         description: Base URL of the provider's API, its path the API prefix, e.g. https://api.openai.com/v1, https://api.anthropic.com/v1 or http://vllm.models.svc:8000/v1 (self-hosted, OpenAI-compatible).
                         pattern: ^https?://[^/:]+(:[0-9]+)?(/.*)?$
                         type: string
+                      fallbacks:
+                        description: 'Other models of this gateway (by name) to try, in order, when this one fails after retry.attempts: the request goes to the next one, with that model''s name and key.'
+                        items:
+                          type: string
+                        maxItems: 5
+                        type: array
                       name:
                         description: The model name clients send (the request's "model").
                         maxLength: 200
@@ -3039,6 +3093,17 @@ spec:
                   description: Tokens (input and output) all clients together may use per calendar month in each site; past it, the gateway answers 429 until the month ends. Needs Envoy Gateway's rate limit service in the location (deps/README.md).
                   minimum: 1
                   type: integer
+                rateLimit:
+                  description: 'Per-minute caps for all clients together, in each site; past one, 429. Per client: clients[].requestsPerMinute and tokensPerMinute. Need Envoy Gateway''s rate limit service in the location (deps/README.md).'
+                  properties:
+                    requestsPerMinute:
+                      minimum: 1
+                      type: integer
+                    tokensPerMinute:
+                      description: Input and output tokens.
+                      minimum: 1
+                      type: integer
+                  type: object
                 recovery:
                   default: {}
                   description: A standby gateway in the Project's recovery location (the Project needs one), with the same models and client keys.
@@ -3059,6 +3124,34 @@ spec:
                   maximum: 10
                   minimum: 1
                   type: integer
+                retry:
+                  description: 'How a failed request is retried: attempts per model on the provider''s retried statuses and on connection failures (with backoff), then the model''s fallbacks, the same number each. Before anything is sent back, so not halfway a streamed answer.'
+                  properties:
+                    attempts:
+                      default: 2
+                      description: Attempts per model, the first included; 1 retries nothing.
+                      maximum: 5
+                      minimum: 1
+                      type: integer
+                    perTryTimeout:
+                      description: How long one attempt may take, e.g. 60s; unset, as long as the request may.
+                      pattern: ^[0-9]+(ms|s|m)$
+                      type: string
+                    retryOn:
+                      default:
+                        - 429
+                        - 500
+                        - 502
+                        - 503
+                        - 504
+                      description: The provider's HTTP statuses that are retried.
+                      items:
+                        maximum: 599
+                        minimum: 400
+                        type: integer
+                      maxItems: 10
+                      type: array
+                  type: object
               type: object
             status:
               properties:
@@ -3098,6 +3191,9 @@ spec:
                       - lastTransitionTime
                     type: object
                   type: array
+                dashboardUid:
+                  description: The gateway's dashboard in the Project's Grafana, at <grafana>/d/<uid>.
+                  type: string
                 endpoint:
                   description: Base URL for OpenAI clients in each site's location (OPENAI_BASE_URL).
                   type: string

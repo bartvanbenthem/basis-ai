@@ -17,9 +17,15 @@
 //	securitypolicy,    (model-<hash>-{backend,aiservicebackend,tls,apikey,
 //	route, model-...   backendsecurity}); the client's name goes upstream
 //	                   in x-basis-client, each request's tokens in metadata
-//	podmonitor         the token metrics per model, for the Project's cost
-//	ratelimit          with monthlyTokens (per client or the gateway): the
-//	                   monthly token caps, a BackendTrafficPolicy on the route
+//	podmonitor         Agent Router's and Envoy's metrics (latency, tokens,
+//	                   errors, retries), for the dashboard, the alerts and
+//	                   the Project's cost
+//	prometheusrule     latency and error alerts (spec.alerts)
+//	ratelimit          with monthlyTokens or per-minute caps (per client or the
+//	                   gateway): a BackendTrafficPolicy on the route
+//
+// On the control plane also: dashboard, a GrafanaDashboard in the Project's
+// Grafana. Fallbacks and retries: resilience.go.
 //
 // Both Gateways write an access log per request (client, model, tokens,
 // outcome; no prompts): the portal's audit trail. A client past its
@@ -47,7 +53,6 @@ import (
 	"fmt"
 	"math/big"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -111,6 +116,8 @@ type Status struct {
 	Sites            []SiteStatus `json:"sites"`
 	// ExpiredClients are the clients past their expiresAt: their keys are revoked.
 	ExpiredClients []string `json:"expiredClients,omitempty"`
+	// DashboardUID is the gateway's dashboard in the Project's Grafana (/d/<uid>).
+	DashboardUID string `json:"dashboardUid,omitempty"`
 }
 
 type Output struct {
@@ -201,8 +208,13 @@ func Compose(in Input) (*Output, error) {
 		"data": keys,
 	}}
 
+	// The gateway's dashboard in the Project's Grafana, on the control plane.
+	dashboard := c.dashboard()
+	out.Composed["dashboard"] = Composed{Ready: true, Object: dashboard}
+
 	status := Status{ActiveSite: active, Models: len(spec.Models), Clients: len(keys),
-		Endpoint: Endpoint(c.name, c.ns), KeysSecret: KeysSecret(c.name), Sites: []SiteStatus{}}
+		Endpoint: Endpoint(c.name, c.ns), KeysSecret: KeysSecret(c.name), Sites: []SiteStatus{},
+		DashboardUID: dig(dashboard, "spec", "uid").(string)}
 	for _, cl := range spec.clientList() {
 		if cl.expired() {
 			status.ExpiredClients = append(status.ExpiredClients, cl.Name)
@@ -376,12 +388,17 @@ func (c *composition) siteObjects(replicas int) (map[string]object, error) {
 		"spec": Object{"targetRefs": gatewayRefs, "connection": Object{"bufferLimit": "50Mi"},
 			"http2": Object{"initialStreamWindowSize": "50Mi", "initialConnectionWindowSize": "50Mi"}},
 	}}
+	backendTraffic := Object{"targetRefs": gatewayRefs, "connection": Object{"bufferLimit": "50Mi"}}
+	if retry := c.retryPolicy(); retry != nil {
+		// Retries, and with them the fallbacks (resilience.go).
+		backendTraffic["retry"] = retry
+	}
 	out["backendtraffic"] = object{ready: reported, manifest: Object{
 		"apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "BackendTrafficPolicy", "metadata": c.meta(c.name),
 		// Agent Router's per-backend filter buffers whole responses on the
 		// upstream connection, 32Ki by default: an embedding (4096 floats as
 		// JSON) or a long completion is more, and fails with a 500.
-		"spec": Object{"targetRefs": gatewayRefs, "connection": Object{"bufferLimit": "50Mi"}},
+		"spec": backendTraffic,
 	}}
 	out["keys"] = object{ready: objectReady, copyFrom: &copySpec{from: KeysSecret(c.name)},
 		manifest: Object{"apiVersion": "v1", "kind": "Secret", "metadata": c.meta(KeysSecret(c.name))}}
@@ -401,11 +418,14 @@ func (c *composition) siteObjects(replicas int) (map[string]object, error) {
 	}}
 
 	var rules []any
-	models := append([]Model(nil), spec.Models...)
-	sort.Slice(models, func(i, j int) bool { return models[i].Name < models[j].Name })
+	models := sortedModels(spec.Models)
+	byName := map[string]Model{}
+	for _, m := range models {
+		byName[m.Name] = m
+	}
 	for _, m := range models {
 		id := "model-" + sha1hex(m.Name)[:8]
-		obj := c.name + "-" + id
+		obj := c.modelObject(m.Name)
 		u, err := url.Parse(m.Endpoint)
 		if err != nil || u.Hostname() == "" {
 			return nil, fmt.Errorf("model %q: endpoint %q is not a URL", m.Name, m.Endpoint)
@@ -455,13 +475,10 @@ func (c *composition) siteObjects(replicas int) (map[string]object, error) {
 				"spec": policy,
 			}}
 		}
-		backendRef := Object{"name": obj}
-		if m.UpstreamModel != "" {
-			backendRef["modelNameOverride"] = m.UpstreamModel
-		}
 		rules = append(rules, Object{
-			"matches":     []any{Object{"headers": []any{Object{"type": "Exact", "name": "x-ai-eg-model", "value": m.Name}}}},
-			"backendRefs": []any{backendRef},
+			"matches": []any{Object{"headers": []any{Object{"type": "Exact", "name": "x-ai-eg-model", "value": m.Name}}}},
+			// The model, then its fallbacks (resilience.go).
+			"backendRefs": c.backendRefs(m, byName),
 		})
 	}
 	if len(rules) > 0 {
@@ -485,15 +502,10 @@ func (c *composition) siteObjects(replicas int) (map[string]object, error) {
 	if spec.exposed() {
 		gateways = append(gateways, c.name+"-external")
 	}
-	out["podmonitor"] = object{ready: always, manifest: Object{
-		"apiVersion": "monitoring.coreos.com/v1", "kind": "PodMonitor", "metadata": c.meta(c.name + "-tokens"),
-		"spec": Object{
-			"selector": Object{"matchExpressions": []any{Object{
-				"key": "gateway.envoyproxy.io/owning-gateway-name", "operator": "In", "values": gateways}}},
-			// The ai-gateway-extproc sidecar's admin port (no named port).
-			"podMetricsEndpoints": []any{Object{"targetPort": ExtProcMetricsPort, "path": "/metrics", "interval": "30s"}},
-		},
-	}}
+	out["podmonitor"] = object{ready: always, manifest: c.podMonitor(gateways, models)}
+	if !spec.Alerts.Disabled {
+		out["prometheusrule"] = object{ready: always, manifest: c.alertRules()}
+	}
 	return out, nil
 }
 
@@ -526,6 +538,7 @@ func (c *composition) tokenLimits() Object {
 	if n := c.spec.MonthlyTokens; n > 0 {
 		rules = append(rules, Object{"limit": Object{"requests": n, "unit": "Month"}, "cost": cost, "shared": true})
 	}
+	rules = append(rules, c.minuteRules(cost)...)
 	return Object{
 		"apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "BackendTrafficPolicy", "metadata": c.meta(c.name + "-limits"),
 		"spec": Object{

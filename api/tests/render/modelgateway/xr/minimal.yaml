@@ -1,5 +1,6 @@
 # A gateway in the protected location for a hosted and a self-hosted model,
-# with two clients, a monthly token cap for one of them and for the gateway.
+# with two clients, a monthly token cap for one of them and for the gateway,
+# a per-minute cap, and the self-hosted model as the hosted one's fallback.
 apiVersion: ai.cndev.nl/v1alpha1
 kind: ModelGateway
 metadata:
@@ -7,6 +8,8 @@ metadata:
   namespace: ai-team
 spec:
   monthlyTokens: 5000000
+  rateLimit:
+    requestsPerMinute: 600
   clients:
     - name: support-bot
       owner: team-support
@@ -17,6 +20,7 @@ spec:
       endpoint: https://api.openai.com/v1
       apiKeySecretRef:
         name: openai
+      fallbacks: [llama]
     - name: llama
       endpoint: http://vllm.models.svc:8000/v1
       upstreamModel: meta-llama/Llama-3.1-8B-Instruct

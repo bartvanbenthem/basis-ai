@@ -76,15 +76,26 @@ func assertModelGateway(r *render) {
 		}
 		// Token metrics for the Project's cost, an access log, the caller upstream.
 		pm := r.live(s + "-podmonitor")
-		check(equal(get(pm, "spec", "podMetricsEndpoints"), L{M{"targetPort": 1064, "path": "/metrics", "interval": "30s"}}),
-			"%s: token metrics from the extproc sidecar: %s", s, repr(pm))
+		eps := list(pm, "spec", "podMetricsEndpoints")
+		check(len(eps) == 2 && equal(get(eps[0], "targetPort"), 1064) && str(eps[1], "port") == "metrics",
+			"%s: Agent Router's metrics from the extproc sidecar and Envoy's: %s", s, repr(eps))
+		check(str(r.live(s+"-prometheusrule"), "kind") == "PrometheusRule", "%s: latency and error alerts", s)
 		check(str(ep, "spec", "telemetry", "accessLog", "settings", 0, "format", "json", "basis") == "gateway", "%s: access log", s)
 		check(str(r.live(s+"-securitypolicy"), "spec", "apiKeyAuth", "forwardClientIDHeader") == "x-basis-client", "%s: client header", s)
 		rl := r.live(s + "-ratelimit")
 		if kase == "minimal" {
 			rules := list(rl, "spec", "rateLimit", "global", "rules")
-			check(len(rules) == 2 && str(rl, "spec", "targetRefs", 0, "kind") == "HTTPRoute",
-				"%s: monthly caps for support-bot and the gateway: %s", s, repr(rl))
+			check(len(rules) == 3 && str(rl, "spec", "targetRefs", 0, "kind") == "HTTPRoute",
+				"%s: monthly caps for support-bot and the gateway, and requests per minute: %s", s, repr(rl))
+			retry := get(r.live(s+"-backendtraffic"), "spec", "retry")
+			check(equal(get(retry, "numAttemptsPerPriority"), 2) && equal(get(retry, "numRetries"), 3),
+				"%s: 2 attempts on the model and on its fallback: %s", s, repr(retry))
+			for _, rule := range list(r.live(s+"-route"), "spec", "rules") {
+				if str(rule, "matches", 0, "headers", 0, "value") == "gpt-4o-mini" {
+					refs := list(rule, "backendRefs")
+					check(len(refs) == 2 && equal(get(refs[1], "priority"), 1), "%s: llama as gpt-4o-mini's fallback: %s", s, repr(refs))
+				}
+			}
 		} else {
 			check(rl == nil, "%s: no rate limits without monthlyTokens", s)
 		}

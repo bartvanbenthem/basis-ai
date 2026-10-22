@@ -32,6 +32,7 @@ describe('gatewayForm', () => {
     expect(toGatewaySpec(form)).toEqual({
       replicas: 2,
       recovery: { enabled: false, replicas: 1 },
+      retry: { attempts: 2 },
       clients: [{ name: 'apps' }, { name: 'coding-agent' }],
       models: [{ name: 'claude', endpoint: 'https://api.anthropic.com/v1', schema: 'Anthropic', apiKeySecretRef: { name: 'anthropic', key: 'apiKey' } }],
     });
@@ -126,5 +127,31 @@ describe('gatewayForm', () => {
     });
     expect(back.clientSettings.apps.monthlyTokens).toBe('5');
     expect(back.monthlyTokens).toBe('9');
+  });
+
+  it('retries, falls back and caps requests per minute', () => {
+    const f = {
+      ...form,
+      retryAttempts: 3,
+      requestsPerMinute: '600',
+      clientSettings: { apps: { owner: '', monthlyTokens: '', expiresAt: '', tokensPerMinute: '20000' } },
+      models: [
+        { ...form.models[0], fallbacks: 'llama' },
+        { ...form.models[0], name: 'llama', endpoint: 'http://vllm.models.svc:8000/v1', keySource: 'none' as const },
+      ],
+    };
+    const spec = toGatewaySpec(f) as Record<string, any>;
+    expect(spec.retry).toEqual({ attempts: 3 });
+    expect(spec.rateLimit).toEqual({ requestsPerMinute: 600 });
+    expect(spec.clients[0]).toEqual({ name: 'apps', tokensPerMinute: 20000 });
+    expect(spec.models[0].fallbacks).toEqual(['llama']);
+    expect(validateGateway({ ...f, models: [{ ...f.models[0], fallbacks: 'nope' }, f.models[1]] }).modelRows?.[0]).toContain('Fallback nope');
+    // An unchanged gateway patches nothing, though its spec had no retry.
+    const back = fromGateway({
+      apiVersion: 'ai.cndev.nl/v1alpha1', kind: 'ModelGateway', metadata: { name: 'llm', namespace: 'demo' },
+      spec: { models: [{ name: 'a', endpoint: 'https://x/v1', fallbacks: ['b'] }, { name: 'b', endpoint: 'https://y/v1' }] },
+    });
+    expect(back.retryAttempts).toBe(2);
+    expect(back.models[0].fallbacks).toBe('b');
   });
 });

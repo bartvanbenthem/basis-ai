@@ -288,3 +288,81 @@ func TestGovernance(t *testing.T) {
 		t.Error("rate limits without monthlyTokens")
 	}
 }
+
+func TestResilience(t *testing.T) {
+	NewKey = func() string { return "generated" }
+	spec := `{"models":[
+		{"name":"primary","endpoint":"https://api.openai.com/v1","upstreamModel":"gpt-4o","fallbacks":["backup","local","primary","nope"]},
+		{"name":"backup","endpoint":"https://api.mistral.ai/v1","upstreamModel":"mistral-large"},
+		{"name":"local","endpoint":"http://vllm.models.svc:8000/v1"}],
+		"retry":{"attempts":2,"retryOn":[429,503],"perTryTimeout":"60s"},
+		"rateLimit":{"requestsPerMinute":600},
+		"clients":[{"name":"apps","tokensPerMinute":20000}],
+		"alerts":{"latencySeconds":30}}`
+	out, err := Compose(Input{XR: xr(t, spec, `{}`), Required: required(false)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A model's fallbacks, a priority each, with their own upstream names;
+	// itself and unknown names skipped.
+	rules := dig(manifest(out.Composed["protected-route"]), "spec", "rules").([]any)
+	var primary []any
+	for _, r := range rules {
+		if dig(r, "matches").([]any)[0].(Object)["headers"].([]any)[0].(Object)["value"] == "primary" {
+			primary = r.(Object)["backendRefs"].([]any)
+		}
+	}
+	refs, _ := json.Marshal(primary)
+	if string(refs) != `[{"modelNameOverride":"gpt-4o","name":"llm-model-`+sha1hex("primary")[:8]+`"},`+
+		`{"modelNameOverride":"mistral-large","name":"llm-model-`+sha1hex("backup")[:8]+`","priority":1},`+
+		`{"modelNameOverride":"local","name":"llm-model-`+sha1hex("local")[:8]+`","priority":2}]` {
+		t.Errorf("primary's backends %s", refs)
+	}
+
+	// 2 attempts on each of 3 priorities: 5 retries, moving on after 2.
+	retry, _ := json.Marshal(dig(manifest(out.Composed["protected-backendtraffic"]), "spec", "retry"))
+	for _, want := range []string{`"numRetries":5`, `"numAttemptsPerPriority":2`, `"httpStatusCodes":[429,503]`, `"timeout":"60s"`} {
+		if !strings.Contains(string(retry), want) {
+			t.Errorf("retry lacks %s: %s", want, retry)
+		}
+	}
+	// The buffers stay where they were.
+	if b := dig(manifest(out.Composed["protected-backendtraffic"]), "spec", "connection", "bufferLimit"); b != "50Mi" {
+		t.Errorf("buffer %v", b)
+	}
+
+	// Per-minute caps: requests for the gateway, tokens for apps.
+	limits, _ := json.Marshal(manifest(out.Composed["protected-ratelimit"]))
+	for _, want := range []string{`{"limit":{"requests":600,"unit":"Minute"},"shared":true}`,
+		`"limit":{"requests":20000,"unit":"Minute"}`, `"value":"apps"`} {
+		if !strings.Contains(string(limits), want) {
+			t.Errorf("limits lack %s: %s", want, limits)
+		}
+	}
+
+	// Metrics labelled with gateway and model; alerts; the dashboard.
+	pm, _ := json.Marshal(manifest(out.Composed["protected-podmonitor"]))
+	for _, want := range []string{`"targetLabel":"gateway"`, `"port":"metrics","relabelings"`,
+		`"regex":"httproute/ai/llm/rule/0","replacement":"backup","sourceLabels":["envoy_cluster_name"],"targetLabel":"model"`} {
+		if !strings.Contains(string(pm), want) {
+			t.Errorf("podmonitor lacks %s: %s", want, pm)
+		}
+	}
+	slow := dig(manifest(out.Composed["protected-prometheusrule"]), "spec", "groups").([]any)[0].(Object)["rules"].([]any)[0].(Object)
+	if !strings.HasSuffix(slow["expr"].(string), `rate(gen_ai_server_request_duration_seconds_bucket{namespace="ai",gateway="llm"}[10m]))) > 30`) {
+		t.Errorf("latency alert %v", slow["expr"])
+	}
+	if d := out.Composed["dashboard"]; d.Object["kind"] != "GrafanaDashboard" || !d.Ready {
+		t.Errorf("dashboard %v", d.Object["kind"])
+	}
+
+	// One attempt and no fallbacks: no retry; alerts off: no rule.
+	out, _ = Compose(Input{XR: xr(t, `{`+models+`,"retry":{"attempts":1},"alerts":{"disabled":true}}`, `{}`), Required: required(false)})
+	if r := dig(manifest(out.Composed["protected-backendtraffic"]), "spec", "retry"); r != nil {
+		t.Errorf("retry %v", r)
+	}
+	if _, ok := out.Composed["protected-prometheusrule"]; ok {
+		t.Error("alerts though disabled")
+	}
+}

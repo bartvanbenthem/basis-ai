@@ -54,6 +54,10 @@ type Spec struct {
 		Expose Object `json:"expose"`
 		// MonthlyTokens caps the stack's own gateway per month.
 		MonthlyTokens int64 `json:"monthlyTokens"`
+		// Retry, RateLimit and Alerts go to the stack's own gateway as they are.
+		Retry     Object `json:"retry"`
+		RateLimit Object `json:"rateLimit"`
+		Alerts    Object `json:"alerts"`
 	} `json:"gateway"`
 }
 

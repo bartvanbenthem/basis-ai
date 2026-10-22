@@ -69,6 +69,8 @@ spec:
               x-kubernetes-validations:
                 - rule: "!has(self.activeSite) || self.activeSite == 'protected' || (has(self.recovery) && has(self.recovery.enabled) && self.recovery.enabled)"
                   message: activeSite can only be recovery with recovery.enabled
+                - rule: "!has(self.models) || self.models.all(m, !has(m.fallbacks) || m.fallbacks.all(f, f != m.name && self.models.exists(o, o.name == f)))"
+                  message: a model's fallbacks must name other models of this gateway
               properties:
                 replicas:
                   type: integer
@@ -128,12 +130,84 @@ spec:
                           past it, the gateway answers 429 until the month ends. Needs Envoy Gateway's
                           rate limit service in the location (deps/README.md).
                         minimum: 1
+                      requestsPerMinute:
+                        type: integer
+                        description: Requests this client may send per minute in each site; past it, 429.
+                        minimum: 1
+                      tokensPerMinute:
+                        type: integer
+                        description: Tokens (input and output) this client may use per minute in each site; past it, 429.
+                        minimum: 1
                       expiresAt:
                         type: string
                         format: date
                         description: >-
                           The key's last day (YYYY-MM-DD). After it the key is revoked; a later date makes
                           a new key.
+                retry:
+                  type: object
+                  description: >-
+                    How a failed request is retried: attempts per model on the provider's retried
+                    statuses and on connection failures (with backoff), then the model's fallbacks, the
+                    same number each. Before anything is sent back, so not halfway a streamed answer.
+                  properties:
+                    attempts:
+                      type: integer
+                      description: Attempts per model, the first included; 1 retries nothing.
+                      minimum: 1
+                      maximum: 5
+                      default: 2
+                    retryOn:
+                      type: array
+                      description: The provider's HTTP statuses that are retried.
+                      default: [429, 500, 502, 503, 504]
+                      maxItems: 10
+                      items:
+                        type: integer
+                        minimum: 400
+                        maximum: 599
+                    perTryTimeout:
+                      type: string
+                      description: How long one attempt may take, e.g. 60s; unset, as long as the request may.
+                      pattern: '^[0-9]+(ms|s|m)$'
+                rateLimit:
+                  type: object
+                  description: >-
+                    Per-minute caps for all clients together, in each site; past one, 429. Per client:
+                    clients[].requestsPerMinute and tokensPerMinute. Need Envoy Gateway's rate limit
+                    service in the location (deps/README.md).
+                  properties:
+                    requestsPerMinute:
+                      type: integer
+                      minimum: 1
+                    tokensPerMinute:
+                      type: integer
+                      description: Input and output tokens.
+                      minimum: 1
+                alerts:
+                  type: object
+                  description: >-
+                    Thresholds of the gateway's alerts in the Project's Prometheus (per site, per
+                    model): the 95th percentile of the request duration and of the time to first token
+                    (streamed requests), and the share of failed requests.
+                  properties:
+                    latencySeconds:
+                      type: number
+                      minimum: 0
+                      default: 60
+                    timeToFirstTokenSeconds:
+                      type: number
+                      minimum: 0
+                      default: 10
+                    errorRatePercent:
+                      type: number
+                      minimum: 0
+                      maximum: 100
+                      default: 5
+                    disabled:
+                      type: boolean
+                      description: No alerts for this gateway.
+                      default: false
                 monthlyTokens:
                   type: integer
                   description: >-
@@ -173,6 +247,14 @@ spec:
                         type: string
                         description: The model name at the provider, when it differs from name.
                         maxLength: 200
+                      fallbacks:
+                        type: array
+                        description: >-
+                          Other models of this gateway (by name) to try, in order, when this one fails after
+                          retry.attempts: the request goes to the next one, with that model's name and key.
+                        maxItems: 5
+                        items:
+                          type: string
                       apiKeySecretRef:
                         type: object
                         description: Secret in this namespace holding the provider's API key; none for an endpoint without auth.
@@ -248,6 +330,9 @@ spec:
                 keysSecret:
                   type: string
                   description: Secret in this namespace with an API key per client.
+                dashboardUid:
+                  type: string
+                  description: The gateway's dashboard in the Project's Grafana, at <grafana>/d/<uid>.
                 expiredClients:
                   type: array
                   description: Clients past their expiresAt; their keys are revoked.

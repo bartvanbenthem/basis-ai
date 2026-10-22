@@ -27,6 +27,8 @@ export interface ModelRow {
   /** The Secret in the project namespace, with keySource "stored" or "secret". */
   secretName: string;
   secretKey: string;
+  /** Other models to try, in order, comma-separated. */
+  fallbacks?: string;
 }
 
 export const emptyModel = (): ModelRow => ({
@@ -38,6 +40,7 @@ export const emptyModel = (): ModelRow => ({
   apiKey: '',
   secretName: '',
   secretKey: PROVIDER_KEY_FIELD,
+  fallbacks: '',
 });
 
 /** A model as the form shows it; `owner` is the stack or gateway, for the Secrets the portal wrote. */
@@ -54,8 +57,15 @@ export const fromModel = (m: GatewayModel, owner: string): ModelRow => {
     apiKey: '',
     secretName: ref?.name ?? '',
     secretKey: ref?.key ?? PROVIDER_KEY_FIELD,
+    fallbacks: (m.fallbacks ?? []).join(', '),
   };
 };
+
+/** A row's fallbacks, comma-separated in the form. */const fallbackList = (m: ModelRow) =>
+  (m.fallbacks ?? '')
+    .split(',')
+    .map(f => f.trim())
+    .filter(Boolean);
 
 /** The rows as the XRD's models; `owner` names the Secrets the portal writes keys into. */
 export const toModels = (rows: ModelRow[], owner: string) =>
@@ -74,8 +84,10 @@ export const toModels = (rows: ModelRow[], owner: string) =>
         schema: m.schema,
         ...(m.upstreamModel.trim() ? { upstreamModel: m.upstreamModel.trim() } : {}),
         ...(ref ? { apiKeySecretRef: ref } : {}),
+        ...(fallbackList(m).length ? { fallbacks: fallbackList(m) } : {}),
       };
     });
+
 
 /**
  * The keys entered in the form, by model name: what the portal writes into Secrets. Without
@@ -98,7 +110,9 @@ const SECRET_KEY = /^[-._a-zA-Z0-9]+$/;
 export function validateModels(rows: ModelRow[]): Record<number, string> {
   const errors: Record<number, string> = {};
   const seen = new Set<string>();
+  const names = new Set(rows.map(m => m.name.trim()));
   rows.forEach((m, i) => {
+    const unknown = fallbackList(m).find(f => f === m.name.trim() || !names.has(f));
     if (!m.name.trim()) errors[i] = 'Give the model the name clients send.';
     else if (seen.has(m.name)) errors[i] = `Model ${m.name} is listed twice.`;
     else if (!ENDPOINT.test(m.endpoint)) errors[i] = 'The endpoint is a URL, e.g. https://api.openai.com/v1.';
@@ -107,7 +121,7 @@ export function validateModels(rows: ModelRow[]): Record<number, string> {
     // A pasted token passes the XRD's character rule (a JWT does), not this.
     else if (m.keySource === 'secret' && (!SECRET_KEY.test(m.secretKey) || m.secretKey.length > 63)) {
       errors[i] = 'The key in the Secret is a name like apiKey, not the token itself.';
-    }
+    } else if (unknown) errors[i] = `Fallback ${unknown}: name another model of this gateway.`;
     seen.add(m.name);
   });
   return errors;
@@ -171,6 +185,13 @@ export const ModelFields = ({
               value={model.upstreamModel}
               onChange={set('upstreamModel')}
               description="When it differs from the model name, e.g. openai/gpt-oss-120b."
+            />
+            <TextField
+              label="Fallbacks"
+              value={model.fallbacks ?? ''}
+              onChange={set('fallbacks')}
+              placeholder="none"
+              description="Other models of this gateway to try, in order, when this one fails, e.g. llama, mistral-large."
             />
             <Select
               label="Provider API key"

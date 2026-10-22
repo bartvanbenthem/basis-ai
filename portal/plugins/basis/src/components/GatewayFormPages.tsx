@@ -142,6 +142,36 @@ const GatewayFormFields = ({
       </Section>
 
       <Section
+        title="Resilience"
+        description="A failed request (a provider's 429 or 5xx, a broken connection) is retried with backoff, then goes to the model's fallbacks (set per model below), as many attempts each. Per-minute caps protect the providers' quotas; past one, clients get 429."
+      >
+        <NumberField
+          label="Attempts per model"
+          minValue={1}
+          maxValue={5}
+          value={form.retryAttempts}
+          onChange={set('retryAttempts')}
+          description="1 retries nothing."
+        />
+        <TextField
+          label="Requests per minute (all clients)"
+          value={form.requestsPerMinute}
+          onChange={set('requestsPerMinute')}
+          placeholder="no cap"
+          description={err('requestsPerMinute') ?? 'Per site.'}
+          isInvalid={Boolean(err('requestsPerMinute'))}
+        />
+        <TextField
+          label="Tokens per minute (all clients)"
+          value={form.tokensPerMinute}
+          onChange={set('tokensPerMinute')}
+          placeholder="no cap"
+          description={err('tokensPerMinute') ?? 'Input and output, per site.'}
+          isInvalid={Boolean(err('tokensPerMinute'))}
+        />
+      </Section>
+
+      <Section
         title="Clients"
         description="Who may call the gateway: apps, agents, coding assistants. Each gets an API key in Secret <name>-keys; removing one revokes its key. A GenAI stack sharing this gateway is a client named after the stack."
       >
@@ -167,12 +197,24 @@ const GatewayFormFields = ({
           const setClient = (key: keyof ClientSettings) => (v: string) =>
             setForm(f => ({ ...f, clientSettings: { ...f.clientSettings, [client]: { ...s, [key]: v } } }));
           return (
-            <Grid.Root key={client} columns={{ initial: '1', sm: '3' }} gap="2" style={{ gridColumn: '1 / -1' }}>
+            <Grid.Root key={client} columns={{ initial: '1', sm: '5' }} gap="2" style={{ gridColumn: '1 / -1' }}>
               <TextField label={`${client}: owner`} value={s.owner} onChange={setClient('owner')} placeholder="who to ask" />
               <TextField
                 label={`${client}: monthly tokens`}
                 value={s.monthlyTokens}
                 onChange={setClient('monthlyTokens')}
+                placeholder="no cap"
+              />
+              <TextField
+                label={`${client}: requests/minute`}
+                value={s.requestsPerMinute ?? ''}
+                onChange={setClient('requestsPerMinute')}
+                placeholder="no cap"
+              />
+              <TextField
+                label={`${client}: tokens/minute`}
+                value={s.tokensPerMinute ?? ''}
+                onChange={setClient('tokensPerMinute')}
                 placeholder="no cap"
               />
               <TextField

@@ -229,6 +229,10 @@ func TestCompose(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if out, _ := Compose(Input{XR: xr(t, `{"gateway":{"retry":{"attempts":3},"alerts":{"latencySeconds":20}}}`, `{}`), Required: required(false, RequiredCacheSecret)}); dig(out.Composed["gateway"].Object, "spec", "retry", "attempts") != 3.0 ||
+			dig(out.Composed["gateway"].Object, "spec", "alerts", "latencySeconds") != 20.0 {
+			t.Errorf("gateway retry/alerts %v", dig(out.Composed["gateway"].Object, "spec"))
+		}
 		if out, _ := Compose(Input{XR: xr(t, `{"gateway":{"monthlyTokens":1000}}`, `{}`), Required: required(false, RequiredCacheSecret)}); dig(out.Composed["gateway"].Object, "spec", "monthlyTokens") != int64(1000) {
 			t.Errorf("gateway monthlyTokens %v", dig(out.Composed["gateway"].Object, "spec", "monthlyTokens"))
 		}

@@ -99,8 +99,65 @@ OPENAI_API_KEY=<the client's key>
 | `schema` | `OpenAI` (default; also every OpenAI-compatible server) or `Anthropic` |
 | `upstreamModel` | The model's name at the provider, when it differs |
 | `apiKeySecretRef` | Secret in the Project with the provider's key (`key`, default `apiKey`); none for an endpoint without auth |
+| `fallbacks` | Other models of the gateway to try, in order, when this one fails (see [Resilience](#resilience)) |
 
 HTTPS endpoints are verified against the system CAs.
+
+## Resilience
+
+When a provider fails (a 429 or 5xx, or a broken connection), the gateway retries with backoff. If
+the model keeps failing, the gateway moves on to its `fallbacks`, giving each the same number of
+attempts. A fallback gets the request under its own model name and with its own provider key, so a
+hosted model can fall back to a self-hosted one, or to another provider:
+
+```yaml
+spec:
+  models:
+    - name: gpt-oss-120b
+      endpoint: https://api.openai-compat.model-serving.eu01.onstackit.cloud/v1
+      upstreamModel: openai/gpt-oss-120b
+      apiKeySecretRef: {name: stackit}
+      fallbacks: [llama]            # tried when gpt-oss-120b keeps failing
+    - name: llama
+      endpoint: http://vllm.models.svc:8000/v1
+  retry:
+    attempts: 2                     # per model, the first included (default 2; 1 retries nothing)
+    retryOn: [429, 500, 502, 503, 504]
+    perTryTimeout: 60s
+  rateLimit:                        # per minute for all clients, per site; past one, 429
+    requestsPerMinute: 600
+    tokensPerMinute: 200000
+  clients:
+    - name: support-bot
+      requestsPerMinute: 60         # and per client
+```
+
+- **When retries stop:** a request is retried only before anything has gone back to the client,
+  so never halfway through a streamed answer.
+- **What rate limits need:** the per-minute caps, like the monthly ones, need the rate limit store
+  in the location. Without it, everything else still works, but the caps aren't enforced.
+
+## Latency and errors
+
+Each gateway gets a dashboard in the project's Grafana (folder *Model gateways*; the **Dashboard**
+button on the gateway's page) with these panels, per model and site:
+- requests per second and the share that fails
+- request duration (p50, p95)
+- time to first token and time per output token (streamed requests)
+- tokens per second
+- retries and recovered requests
+- responses to clients by status class, and rate-limited requests
+
+The project's Prometheus alerts per model (thresholds in `alerts`):
+
+| Alert | When (default) |
+|---|---|
+| `BasisGatewaySlow` | 95% of requests take longer than `latencySeconds` (60) for 15 minutes |
+| `BasisGatewaySlowFirstToken` | 95% of streamed requests wait longer than `timeToFirstTokenSeconds` (10) for the first token, for 15 minutes |
+| `BasisGatewayErrors` | More than `errorRatePercent` (5) of requests fail for 10 minutes |
+| `BasisGatewayMetricsMissing` | No metrics from the gateway's proxies in a site for 10 minutes |
+
+`alerts.disabled: true` turns them off for a gateway.
 
 ## Settings
 
@@ -112,6 +169,10 @@ HTTPS endpoints are verified against the system CAs.
 | `activeSite` | `protected` | The site with the full replicas (a stack sets it to where its database's primary is) |
 | `expose.enabled`, `.hostname`, `.loadBalancerSourceRanges` | off | HTTPS at `https://<hostname>/v1` for clients outside the location; both required when on |
 | `expose.issuer`, `.annotations` | `basis`, none | The cert-manager ClusterIssuer; annotations on the LoadBalancer Service |
+| `retry.attempts`, `.retryOn`, `.perTryTimeout` | `2`, `[429, 500, 502, 503, 504]`, none | See [Resilience](#resilience) |
+| `rateLimit.requestsPerMinute`, `.tokensPerMinute` | none | Per-minute caps for all clients; per client too (`clients[]`) |
+| `monthlyTokens` | none | A monthly token cap for all clients; per client too (`clients[]`) |
+| `alerts.latencySeconds`, `.timeToFirstTokenSeconds`, `.errorRatePercent`, `.disabled` | `60`, `10`, `5`, off | See [Latency and errors](#latency-and-errors) |
 
 ## Troubleshooting
 

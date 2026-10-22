@@ -19,7 +19,7 @@ The platform currently provides these building blocks, separately or wired toget
 
 | Layer | Component |
 |---|---|
-| Model gateway | `ModelGateway`: [Agent Router](https://github.com/theagentrouter/agent-router) (formerly Envoy AI Gateway) on [Envoy Gateway](https://gateway.envoyproxy.io) (CNCF), an internal, OpenAI-compatible endpoint that routes to hosted and self-hosted models, with provider keys kept in the platform and an API key per client; a stack's own or shared by stacks and agents |
+| Model gateway | `ModelGateway`: [Agent Router](https://github.com/theagentrouter/agent-router) (formerly Envoy AI Gateway) on [Envoy Gateway](https://gateway.envoyproxy.io) (CNCF), an internal, OpenAI-compatible endpoint that routes to hosted and self-hosted models, with provider keys kept in the platform and an API key per client, retries and fallbacks between models, rate limits, and a latency dashboard with alerts; a stack's own or shared by stacks and agents |
 | Context / RAG | PostgreSQL on [CloudNativePG](https://cloudnative-pg.io/) (CNPG) with [pgvector](https://github.com/pgvector/pgvector), VectorChord and pg_search |
 | Cache | Exact and semantic caches on [Valkey](https://valkey.io/), run by the [valkey-io operator](https://github.com/valkey-io/valkey-operator), with valkey-search for vector (KNN) lookups |
 | Observability | [Prometheus](https://prometheus.io/) and [Grafana](https://grafana.com/) per Project, with metrics, alerts and dashboards for every database and cache |

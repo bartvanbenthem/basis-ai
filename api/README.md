@@ -417,9 +417,21 @@ See [`examples/modelgateway.yaml`](examples/modelgateway.yaml) and
 | `SecurityPolicy`, `ClientTrafficPolicy`, `BackendTrafficPolicy`, `Secret <name>-keys` (copy) | each site's location | Client API key auth on `Authorization: Bearer`, not forwarded; prompts (also over HTTP/2: images) and responses (embeddings, long completions) up to 50Mi |
 | `AIGatewayRoute <name>` | each site's location | A rule per model on the request's `model` |
 | `Backend`, `AIServiceBackend`, `BackendTLSPolicy`, `BackendSecurityPolicy`, `Secret` per model | each site's location | The provider's endpoint (TLS for https), its key copied from the Project's Secret under `apiKey` |
-| `PodMonitor <name>-tokens` | each site's location | Agent Router's token metrics per model (`gen_ai_client_token_usage`), which the Project's cost rules price |
+| `PodMonitor <name>-tokens` | each site's location | Agent Router's metrics (latency, time to first token and per output token, tokens, errors) and a few of Envoy's (retries, responses, rate-limited requests), every series labelled with `gateway` and Envoy's with `model`; the Project's cost rules price the tokens |
+| `PrometheusRule <name>-gateway-alerts` | each site's location | `BasisGatewaySlow`, `BasisGatewaySlowFirstToken`, `BasisGatewayErrors` (per model, thresholds in `spec.alerts`), `BasisGatewayMetricsMissing` |
+| `GrafanaDashboard <name>-gateway` | control plane | The gateway's dashboard in the Project's Grafana (`status.dashboardUid`) |
 | `BackendTrafficPolicy <name>-limits` | each site's location, with a `monthlyTokens` | Monthly token caps: per client (`clients[].monthlyTokens`) and for the whole gateway (`spec.monthlyTokens`). Envoy Gateway global rate limits on the route, charged with each response's total tokens; past a cap, 429 until the month ends. Each site counts on its own; needs the rate limit store ([`deps/`](../deps/README.md#7-envoy-gateway--agent-router-locations-with-model-gateways)) |
 | `Certificate <name>-tls`, `Gateway <name>-external` + `EnvoyProxy <name>-external` | each site's location, with `spec.expose` | HTTPS only at `expose.hostname`, LoadBalancer Service `<name>-external` limited to `expose.loadBalancerSourceRanges`; certificate from the cert-manager ClusterIssuer `expose.issuer` (`basis`); the route and key auth cover both Gateways |
+
+**Resilience.**
+- **Fallbacks:** `models[].fallbacks` names other models of the gateway to try, in order. They go
+  into the model's route rule as backends of lower priority.
+- **Retries:** `spec.retry` (`attempts` per model, default 2, on 429/5xx and connection failures,
+  with backoff) is on the Gateways' BackendTrafficPolicy. After `attempts` on one model, a retry
+  moves to the next fallback.
+- **Per-minute caps:** `spec.rateLimit` and `clients[].requestsPerMinute`/`tokensPerMinute` sit
+  next to the monthly caps, on the route.
+- **More:** see [Model gateways](../portal/catalog/docs/ai/model-gateways.md#resilience).
 
 **Clients and the audit trail.**
 - **Caller identity.** The caller's client name goes upstream in header `x-basis-client`, and each

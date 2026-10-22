@@ -314,6 +314,26 @@ const StackFormFields = ({
           />
         )}
         {form.gatewayEnabled && !form.gatewayRef && (
+          <NumberField
+            label="Attempts per model"
+            minValue={1}
+            maxValue={5}
+            value={form.gatewayRetryAttempts}
+            onChange={set('gatewayRetryAttempts')}
+            description="A failed request is retried, then goes to the model's fallbacks (set per model). 1 retries nothing."
+          />
+        )}
+        {form.gatewayEnabled && !form.gatewayRef && (
+          <TextField
+            label="Requests per minute"
+            value={form.gatewayRequestsPerMinute}
+            onChange={set('gatewayRequestsPerMinute')}
+            placeholder="no cap"
+            description={err('gatewayRequestsPerMinute') ?? 'All of the stack\'s requests through its gateway, per site; past it, 429.'}
+            isInvalid={Boolean(err('gatewayRequestsPerMinute'))}
+          />
+        )}
+        {form.gatewayEnabled && !form.gatewayRef && (
           <ExposeFields
             label="Expose the gateway over HTTPS"
             value={form.gatewayExpose}

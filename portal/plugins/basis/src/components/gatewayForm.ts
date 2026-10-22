@@ -27,6 +27,11 @@ export interface GatewayForm {
   clientSettings: Record<string, ClientSettings>;
   /** Tokens all clients together may use per month; empty for no cap. */
   monthlyTokens: string;
+  /** spec.retry.attempts: per model, then each fallback. */
+  retryAttempts: number;
+  /** spec.rateLimit, per minute for all clients; empty for no cap. */
+  requestsPerMinute: string;
+  tokensPerMinute: string;
   models: ModelRow[];
   /** spec.expose: HTTPS at a hostname for clients outside the location. */
   expose: ExposeFields;
@@ -36,9 +41,19 @@ export interface ClientSettings {
   owner: string;
   monthlyTokens: string;
   expiresAt: string;
+  requestsPerMinute?: string;
+  tokensPerMinute?: string;
 }
 
-export const emptyClientSettings = (): ClientSettings => ({ owner: '', monthlyTokens: '', expiresAt: '' });
+export const emptyClientSettings = (): ClientSettings => ({
+  owner: '',
+  monthlyTokens: '',
+  expiresAt: '',
+  requestsPerMinute: '',
+  tokensPerMinute: '',
+});
+
+const num = (v?: number) => (v ? String(v) : '');
 
 export const defaultGatewayForm = (): GatewayForm => ({
   name: '',
@@ -50,6 +65,9 @@ export const defaultGatewayForm = (): GatewayForm => ({
   clients: ['apps'],
   clientSettings: {},
   monthlyTokens: '',
+  retryAttempts: 2,
+  requestsPerMinute: '',
+  tokensPerMinute: '',
   models: [emptyModel()],
   expose: defaultExpose(),
 });
@@ -68,10 +86,19 @@ export function fromGateway(gw: ModelGateway): GatewayForm {
     clientSettings: Object.fromEntries(
       (spec.clients ?? []).map(c => [
         c.name,
-        { owner: c.owner ?? '', monthlyTokens: c.monthlyTokens ? String(c.monthlyTokens) : '', expiresAt: c.expiresAt ?? '' },
+        {
+          owner: c.owner ?? '',
+          monthlyTokens: num(c.monthlyTokens),
+          expiresAt: c.expiresAt ?? '',
+          requestsPerMinute: num(c.requestsPerMinute),
+          tokensPerMinute: num(c.tokensPerMinute),
+        },
       ]),
     ),
     monthlyTokens: spec.monthlyTokens ? String(spec.monthlyTokens) : '',
+    retryAttempts: spec.retry?.attempts ?? d.retryAttempts,
+    requestsPerMinute: num(spec.rateLimit?.requestsPerMinute),
+    tokensPerMinute: num(spec.rateLimit?.tokensPerMinute),
     models: (spec.models ?? []).map(m => fromModel(m, metadata.name)),
     expose: fromExpose(spec.expose),
   };
@@ -101,9 +128,13 @@ export function validateGateway(f: GatewayForm): GatewayErrors {
   for (const c of clients) {
     const s = f.clientSettings[c];
     if (s?.monthlyTokens && !TOKENS.test(s.monthlyTokens)) e.clientSettings = `Client ${c}: tokens per month, a whole number.`;
+    else if (s?.requestsPerMinute && !TOKENS.test(s.requestsPerMinute)) e.clientSettings = `Client ${c}: requests per minute, a whole number.`;
+    else if (s?.tokensPerMinute && !TOKENS.test(s.tokensPerMinute)) e.clientSettings = `Client ${c}: tokens per minute, a whole number.`;
     else if (s?.expiresAt && !DATE.test(s.expiresAt)) e.clientSettings = `Client ${c}: expires as YYYY-MM-DD.`;
   }
   if (f.monthlyTokens && !TOKENS.test(f.monthlyTokens)) e.monthlyTokens = 'A whole number, e.g. 10000000.';
+  if (f.requestsPerMinute && !TOKENS.test(f.requestsPerMinute)) e.requestsPerMinute = 'A whole number, e.g. 600.';
+  if (f.tokensPerMinute && !TOKENS.test(f.tokensPerMinute)) e.tokensPerMinute = 'A whole number, e.g. 200000.';
   const rows = validateModels(f.models);
   if (Object.keys(rows).length) e.modelRows = rows;
   const expose = validateExpose(f.expose);
@@ -128,11 +159,22 @@ export function toGatewaySpec(f: GatewayForm): Record<string, unknown> {
           ...(s.owner.trim() ? { owner: s.owner.trim() } : {}),
           ...(s.monthlyTokens ? { monthlyTokens: Number(s.monthlyTokens) } : {}),
           ...(s.expiresAt ? { expiresAt: s.expiresAt } : {}),
+          ...(s.requestsPerMinute ? { requestsPerMinute: Number(s.requestsPerMinute) } : {}),
+          ...(s.tokensPerMinute ? { tokensPerMinute: Number(s.tokensPerMinute) } : {}),
         };
       }),
     models: toModels(f.models, f.name),
     ...(f.expose.enabled ? { expose: toExpose(f.expose) } : {}),
     ...(f.monthlyTokens ? { monthlyTokens: Number(f.monthlyTokens) } : {}),
+    retry: { attempts: f.retryAttempts },
+    ...(f.requestsPerMinute || f.tokensPerMinute
+      ? {
+          rateLimit: {
+            ...(f.requestsPerMinute ? { requestsPerMinute: Number(f.requestsPerMinute) } : {}),
+            ...(f.tokensPerMinute ? { tokensPerMinute: Number(f.tokensPerMinute) } : {}),
+          },
+        }
+      : {}),
   };
 }
 

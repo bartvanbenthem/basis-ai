@@ -30,6 +30,7 @@ import {
 } from '@internal/backstage-plugin-basis-common';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import useAsync from 'react-use/esm/useAsync';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
 import { basisApiRef } from '../api';
@@ -267,6 +268,12 @@ export const GatewayDetailPage = () => {
   const { allowed: canUpdate } = usePermission({ permission: basisGatewayUpdatePermission });
   const [deleting, setDeleting] = useState(false);
   const { value, error, retry } = useAsyncRetry(() => api.getGateway(namespace, name), [api, namespace, name]);
+  // The project's Grafana, for the gateway's dashboard; the page works without it.
+  const { value: grafanaUrl } = useAsync(
+    () => api.getProject(namespace).then(p => p.summary.grafanaUrl).catch(() => undefined),
+    [api, namespace],
+  );
+  const dashboardUid = value?.resource.status?.dashboardUid;
   useInterval(retry, 10_000);
   const stack = value?.summary.stack;
 
@@ -278,6 +285,11 @@ export const GatewayDetailPage = () => {
         customActions={
           <Flex gap="3" align="center">
             {value && <GatewayHealthBadge gateway={value.summary} />}
+            {grafanaUrl && dashboardUid && (
+              <ButtonLink href={`${grafanaUrl.replace(/\/$/, '')}/d/${dashboardUid}`} target="_blank" variant="secondary">
+                Dashboard
+              </ButtonLink>
+            )}
             {stack && stackLink && (
               <ButtonLink href={stackLink({ namespace, name: stack })} variant="secondary">
                 Part of stack {stack}

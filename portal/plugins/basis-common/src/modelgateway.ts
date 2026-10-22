@@ -29,6 +29,21 @@ export interface GatewayModel {
   schema?: ModelSchema;
   upstreamModel?: string;
   apiKeySecretRef?: { name: string; key?: string };
+  /** Other models of the gateway to try, in order, when this one fails. */
+  fallbacks?: string[];
+}
+
+/** spec.retry: attempts per model, then its fallbacks. */
+export interface GatewayRetry {
+  attempts?: number;
+  retryOn?: number[];
+  perTryTimeout?: string;
+}
+
+/** Per-minute caps, for the gateway (spec.rateLimit) or a client. */
+export interface GatewayPerMinute {
+  requestsPerMinute?: number;
+  tokensPerMinute?: number;
 }
 
 /** spec.expose: HTTPS at hostname on a LoadBalancer of its own, for clients outside the location. */
@@ -51,9 +66,12 @@ export interface ModelGatewaySpec {
   expose?: GatewayExpose;
   /** Tokens all clients together may use per month (per site); 429 past it. */
   monthlyTokens?: number;
+  retry?: GatewayRetry;
+  rateLimit?: GatewayPerMinute;
+  alerts?: { latencySeconds?: number; timeToFirstTokenSeconds?: number; errorRatePercent?: number; disabled?: boolean };
 }
 
-export interface GatewayClient {
+export interface GatewayClient extends GatewayPerMinute {
   name: string;
   /** Who to ask about the key. */
   owner?: string;
@@ -95,6 +113,8 @@ export interface ModelGateway {
     sites?: GatewaySiteStatus[];
     /** Clients past their expiresAt: their keys are revoked. */
     expiredClients?: string[];
+    /** The gateway's dashboard in the project's Grafana: <grafana>/d/<uid>. */
+    dashboardUid?: string;
     conditions?: Condition[];
   };
 }

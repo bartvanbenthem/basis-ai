@@ -4,7 +4,7 @@
  * what the portal reads or sends.
  */
 
-import type { GatewayExpose, GatewayModel } from './modelgateway';
+import type { GatewayExpose, GatewayModel, GatewayPerMinute, GatewayRetry } from './modelgateway';
 import type { PromotionMode, PromotionRequest } from './promotion';
 import type { CacheMode, EvictionPolicy } from './valkey';
 import type { Condition, Project, Site } from './types';
@@ -54,6 +54,9 @@ export interface GenAIStackSpec {
     expose?: GatewayExpose;
     /** The stack's own gateway's monthly token cap (per site). */
     monthlyTokens?: number;
+    /** The stack's own gateway's retry and per-minute caps (its ModelGateway's). */
+    retry?: GatewayRetry;
+    rateLimit?: GatewayPerMinute;
   };
 }
 
