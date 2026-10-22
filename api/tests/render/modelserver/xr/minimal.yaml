@@ -1,0 +1,10 @@
+# A model from Hugging Face on one GPU in the protected location, with
+# prefix-cache-aware routing (the defaults).
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelServer
+metadata:
+  name: llama
+  namespace: ai-team
+spec:
+  model:
+    uri: hf://meta-llama/Llama-3.1-8B-Instruct

@@ -13,13 +13,14 @@ import { basisKubernetesServiceRef } from './service/BasisKubernetesService';
 import { locationServiceRef } from './service/LocationService';
 import { gatewayServiceRef } from './service/GatewayService';
 import { providerKeyServiceRef } from './service/ProviderKeyService';
+import { serverServiceRef } from './service/ServerService';
 import { stackServiceRef } from './service/StackService';
 import { valkeyServiceRef } from './service/ValkeyService';
 import { volumeServiceRef } from './service/VolumeService';
 
 /**
  * REST API for the BASIS portal: list / inspect / create / update / delete
- * the BASIS APIs (GenAIStacks, ModelGateways, PostgresClusters, ValkeyCaches,
+ * the BASIS APIs (GenAIStacks, ModelGateways, ModelServers, PostgresClusters, ValkeyCaches,
  * Projects and Locations). Mounted at /api/basis.
  *
  * @public
@@ -43,6 +44,7 @@ export const basisPlugin = createBackendPlugin({
         valkey: valkeyServiceRef,
         stacks: stackServiceRef,
         gateways: gatewayServiceRef,
+        servers: serverServiceRef,
         providerKeys: providerKeyServiceRef,
         actionsRegistry: actionsRegistryServiceRef,
       },
@@ -61,6 +63,7 @@ export const basisPlugin = createBackendPlugin({
         valkey,
         stacks,
         gateways,
+        servers,
         providerKeys,
         actionsRegistry,
       }) {
@@ -79,12 +82,13 @@ export const basisPlugin = createBackendPlugin({
             valkey,
             stacks,
             gateways,
+            servers,
             providerKeys,
           }),
         );
         httpRouter.addAuthPolicy({ path: '/health', allow: 'unauthenticated' });
         // The same, as MCP tools for agents (plugin-mcp-actions-backend).
-        registerActions({ actionsRegistry, permissions, k8s, stacks, gateways });
+        registerActions({ actionsRegistry, permissions, k8s, stacks, gateways, servers });
       },
     });
   },

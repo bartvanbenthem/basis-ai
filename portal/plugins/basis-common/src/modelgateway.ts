@@ -24,8 +24,10 @@ export type ModelSchema = (typeof MODEL_SCHEMAS)[number];
 export interface GatewayModel {
   /** What clients send as "model". */
   name: string;
-  /** Base URL of the provider's API, its path the API prefix. */
-  endpoint: string;
+  /** Base URL of the provider's API, its path the API prefix; a hosted model's. */
+  endpoint?: string;
+  /** A ModelServer in the project instead of an endpoint: a self-hosted model. */
+  server?: string;
   schema?: ModelSchema;
   upstreamModel?: string;
   apiKeySecretRef?: { name: string; key?: string };

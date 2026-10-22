@@ -20,6 +20,7 @@ import {
   basisKubernetesServiceRef,
 } from '../service/BasisKubernetesService';
 import { GatewayService, gatewayServiceRef } from '../service/GatewayService';
+import { ServerService, serverServiceRef } from '../service/ServerService';
 import { StackService, stackServiceRef } from '../service/StackService';
 import { ValkeyService, valkeyServiceRef } from '../service/ValkeyService';
 import {
@@ -30,6 +31,8 @@ import {
   GATEWAY_ANNOTATION,
   GenAIStack,
   ModelGateway,
+  ModelServer,
+  serverGPUs,
   PostgresCluster,
   STACK_ANNOTATION,
   summarizeStack,
@@ -39,6 +42,7 @@ import {
   summarize,
   summarizeCache,
   summarizeGateway,
+  summarizeServer,
   summarizeProject,
   ValkeyCache,
 } from '@internal/backstage-plugin-basis-common';
@@ -56,12 +60,14 @@ import {
  *   "<namespace>--<name>.valkey", owned and linked the same way.
  * - a ModelGateway becomes a Resource of type "model-gateway" named
  *   "<namespace>--<name>.gateway", owned and linked the same way.
+ * - a ModelServer becomes a Resource of type "model-server" named
+ *   "<namespace>--<name>.server", owned and linked the same way.
  * - a GenAIStack becomes a Resource of type "genai-stack" named
  *   "<namespace>--<name>.stack", dependsOn its project, database, caches and
  *   gateway.
  *
  * Project names can't contain "--" (enforced by the XRD), and cluster,
- * cache and gateway names no ".", so none of them collide.
+ * cache, gateway and server names no ".", so none of them collide.
  */
 export class PostgresClusterEntityProvider implements EntityProvider {
   #connection?: EntityProviderConnection;
@@ -74,6 +80,7 @@ export class PostgresClusterEntityProvider implements EntityProvider {
     private readonly valkey?: Pick<ValkeyService, 'list'>,
     private readonly stacks?: Pick<StackService, 'list'>,
     private readonly gateways?: Pick<GatewayService, 'list'>,
+    private readonly servers?: Pick<ServerService, 'list'>,
   ) {}
 
   getProviderName() {
@@ -90,12 +97,13 @@ export class PostgresClusterEntityProvider implements EntityProvider {
 
   async refresh() {
     if (!this.#connection) return;
-    const [clusters, projects, caches, stacks, gateways] = await Promise.all([
+    const [clusters, projects, caches, stacks, gateways, servers] = await Promise.all([
       this.k8s.list(),
       this.k8s.listProjects(),
       this.valkey?.list() ?? Promise.resolve([]),
       this.stacks?.list() ?? Promise.resolve([]),
       this.gateways?.list() ?? Promise.resolve([]),
+      this.servers?.list() ?? Promise.resolve([]),
     ]);
     const byName = new Map(projects.map(p => [p.metadata.name, summarizeProject(p)]));
     const entities = [
@@ -104,13 +112,14 @@ export class PostgresClusterEntityProvider implements EntityProvider {
       ...caches.map(c => this.toCacheEntity(c, byName.get(c.metadata.namespace))),
       ...stacks.map(s => this.toStackEntity(s, byName.get(s.metadata.namespace))),
       ...gateways.map(g => this.toGatewayEntity(g, byName.get(g.metadata.namespace))),
+      ...servers.map(s => this.toServerEntity(s, byName.get(s.metadata.namespace))),
     ];
     await this.#connection.applyMutation({
       type: 'full',
       entities: entities.map(entity => ({ entity, locationKey: this.getProviderName() })),
     });
     this.logger.debug(
-      `Synced ${projects.length} Projects, ${clusters.length} PostgresClusters, ${caches.length} ValkeyCaches, ${gateways.length} ModelGateways and ${stacks.length} GenAIStacks into the catalog`,
+      `Synced ${projects.length} Projects, ${clusters.length} PostgresClusters, ${caches.length} ValkeyCaches, ${gateways.length} ModelGateways, ${servers.length} ModelServers and ${stacks.length} GenAIStacks into the catalog`,
     );
   }
 
@@ -286,6 +295,46 @@ export class PostgresClusterEntityProvider implements EntityProvider {
     };
   }
 
+  /** `project`: the Project whose namespace the server is in, if any. */
+  toServerEntity(server: ModelServer, project?: ProjectSummary): Entity {
+    const { name, namespace, labels = {} } = server.metadata;
+    const s = summarizeServer(server);
+    const location = `basis:server/${namespace}/${name}`;
+    const links = [
+      {
+        url: `${this.options.appBaseUrl.replace(/\/$/, '')}/basis/servers/${namespace}/${name}`,
+        title: 'BASIS portal',
+      },
+    ];
+    const grafanaUrl = project?.grafanaUrl ?? this.options.grafanaUrl?.replace(/\{namespace\}/g, namespace);
+    if (s.dashboardUid && grafanaUrl) {
+      links.push({ url: `${grafanaUrl.replace(/\/$/, '')}/d/${s.dashboardUid}`, title: 'Grafana dashboard' });
+    }
+    return {
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Resource',
+      metadata: {
+        name: `${namespace}--${name}.server`.slice(0, 63),
+        title: `${name} (${namespace})`,
+        description: `Model server (vLLM on KServe): ${s.model} from ${s.uri}, ${s.replicas} replica(s)${s.gpus ? `, ${serverGPUs(s)} GPU(s) in all` : ', CPU only'}${s.prefixCacheAware ? ', prefix-cache-aware routing' : ''}`,
+        annotations: {
+          [ANNOTATION_LOCATION]: location,
+          [ANNOTATION_ORIGIN_LOCATION]: location,
+          'backstage.io/kubernetes-namespace': namespace,
+          'backstage.io/kubernetes-label-selector': `app.kubernetes.io/name=${name},app.kubernetes.io/part-of=llminferenceservice`,
+        },
+        tags: ['genai', 'llm', 'vllm', 'self-hosted'],
+        links,
+      },
+      spec: {
+        type: 'model-server',
+        owner: labels['backstage.io/owner'] ?? this.options.defaultOwner,
+        ...(labels['backstage.io/system'] ? { system: labels['backstage.io/system'] } : {}),
+        ...(project ? { dependsOn: [`resource:default/${project.name}`] } : {}),
+      },
+    };
+  }
+
   /** `project`: the Project whose namespace the cache is in, if any. */
   toCacheEntity(cache: ValkeyCache, project?: ProjectSummary): Entity {
     const { name, namespace, labels = {} } = cache.metadata;
@@ -359,8 +408,9 @@ export const catalogModuleBasis = createBackendModule({
         valkey: valkeyServiceRef,
         stacks: stackServiceRef,
         gateways: gatewayServiceRef,
+        servers: serverServiceRef,
       },
-      async init({ catalog, config, logger, scheduler, k8s, valkey, stacks, gateways }) {
+      async init({ catalog, config, logger, scheduler, k8s, valkey, stacks, gateways, servers }) {
         const seconds = config.getOptionalNumber('basis.catalog.refreshSeconds') ?? 30;
         catalog.addEntityProvider(
           new PostgresClusterEntityProvider(
@@ -374,6 +424,7 @@ export const catalogModuleBasis = createBackendModule({
             valkey,
             stacks,
             gateways,
+            servers,
           ),
         );
       },

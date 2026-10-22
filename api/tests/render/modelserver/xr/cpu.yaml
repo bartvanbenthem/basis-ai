@@ -1,0 +1,18 @@
+# A small model on CPU only (vLLM's CPU image), balanced round robin.
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelServer
+metadata:
+  name: opt
+  namespace: ai-team
+spec:
+  model:
+    uri: hf://facebook/opt-125m
+  resources:
+    cpu: "2"
+    memory: 8Gi
+    gpus: 0
+  image: docker.io/vllm/vllm-openai-cpu:v0.23.0
+  routing:
+    prefixCacheAware: false
+  alerts:
+    disabled: true

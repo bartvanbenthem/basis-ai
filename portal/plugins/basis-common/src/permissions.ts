@@ -261,6 +261,30 @@ export const basisGatewayCredentialsReadPermission = createPermission({
   attributes: { action: 'read' },
 });
 
+/** List and inspect ModelServers (self-hosted models) and their pods. */
+export const basisServerReadPermission = createPermission({
+  name: 'basis.server.read',
+  attributes: { action: 'read' },
+});
+
+/** Create a server: it takes GPUs in the project's location(s). */
+export const basisServerCreatePermission = createPermission({
+  name: 'basis.server.create',
+  attributes: { action: 'create' },
+});
+
+/** Change a server: its model, replicas and GPUs. */
+export const basisServerUpdatePermission = createPermission({
+  name: 'basis.server.update',
+  attributes: { action: 'update' },
+});
+
+/** Delete a server: the gateways' models on it stop answering. */
+export const basisServerDeletePermission = createPermission({
+  name: 'basis.server.delete',
+  attributes: { action: 'delete' },
+});
+
 export const basisPermissions = [
   basisClusterReadPermission,
   basisClusterCreatePermission,
@@ -298,4 +322,8 @@ export const basisPermissions = [
   basisGatewayUpdatePermission,
   basisGatewayDeletePermission,
   basisGatewayCredentialsReadPermission,
+  basisServerReadPermission,
+  basisServerCreatePermission,
+  basisServerUpdatePermission,
+  basisServerDeletePermission,
 ];

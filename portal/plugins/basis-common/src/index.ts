@@ -17,4 +17,5 @@ export * from './audit';
 export * from './valkey';
 export * from './genaistack';
 export * from './modelgateway';
+export * from './modelserver';
 export * from './governance';

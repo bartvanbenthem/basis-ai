@@ -100,8 +100,10 @@ func (c Client) expired() bool {
 }
 
 type Model struct {
-	Name            string     `json:"name"`
-	Endpoint        string     `json:"endpoint"`
+	Name     string `json:"name"`
+	Endpoint string `json:"endpoint"`
+	// Server is a ModelServer in the namespace, instead of an endpoint.
+	Server          string     `json:"server"`
 	Schema          string     `json:"schema"`
 	UpstreamModel   string     `json:"upstreamModel"`
 	APIKeySecretRef *SecretKey `json:"apiKeySecretRef"`

@@ -1,0 +1,30 @@
+# Both sites: three replicas of a gated model over two GPUs each in the
+# protected site, a stopped standby in the recovery site; a served name of
+# its own, a Hugging Face token, extra vLLM flags and GPU nodes.
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelServer
+metadata:
+  name: llama-70b
+  namespace: ai-team
+spec:
+  model:
+    uri: hf://meta-llama/Llama-3.1-70B-Instruct
+    name: meta-llama/Llama-3.1-70B-Instruct
+    tokenSecretRef:
+      name: hf-token
+  replicas: 3
+  resources:
+    cpu: "16"
+    memory: 200Gi
+    gpus: 2
+  args: [--max-model-len=32768, --gpu-memory-utilization=0.92]
+  scheduling:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    tolerations:
+      - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+  recovery:
+    enabled: true
+    replicas: 0
+  alerts:
+    waitingRequests: 20

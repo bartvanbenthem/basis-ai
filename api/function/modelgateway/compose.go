@@ -72,11 +72,6 @@ type Requirement struct {
 	APIVersion, Kind, Namespace, Name string
 }
 
-// Requirements: the Project (its sites).
-func Requirements(namespace string) map[string]Requirement {
-	return map[string]Requirement{RequiredProject: {"platform.cndev.nl/v1alpha1", "Project", "", namespace}}
-}
-
 type Input struct {
 	XR       Object
 	Observed map[string]Object
@@ -157,6 +152,8 @@ type composition struct {
 	name, ns string
 	observed map[string]Object
 	labels   map[string]string
+	// servers are the ModelServers of self-hosted models (servers.go).
+	servers map[string]server
 }
 
 // Compose renders the desired state of a ModelGateway.
@@ -169,6 +166,7 @@ func Compose(in Input) (*Output, error) {
 		"app.kubernetes.io/part-of":    "basis",
 		"ai.cndev.nl/modelgateway":     c.name,
 	}
+	c.resolveServers(in.Required)
 	// Owned by a GenAIStack: the same label on everything it composes, so
 	// the stack's objects are found together.
 	if stack := xr.Metadata.Labels["ai.cndev.nl/genaistack"]; stack != "" {
@@ -238,7 +236,7 @@ func Compose(in Input) (*Output, error) {
 			allReady = false
 			continue
 		}
-		objects, err := c.siteObjects(replicas)
+		objects, err := c.siteObjects(s, replicas)
 		if err != nil {
 			return nil, err
 		}
@@ -272,6 +270,7 @@ func Compose(in Input) (*Output, error) {
 	}
 
 	status.Ready = allReady
+	notes := c.serverNotes(sites)
 	cond := Condition{Status: allReady, Reason: "Available"}
 	switch {
 	case len(problems) > 0:
@@ -287,6 +286,9 @@ func Compose(in Input) (*Output, error) {
 		status.Message = fmt.Sprintf("Gateway %s is ready, without models: add some to spec.models", c.name)
 	default:
 		status.Message = fmt.Sprintf("Gateway %s is ready with %d model(s); active site %s", c.name, len(spec.Models), active)
+	}
+	if len(notes) > 0 {
+		status.Message += "; " + strings.Join(notes, "; ")
 	}
 	cond.Message = status.Message
 	out.Status, out.Condition = status, cond
@@ -323,7 +325,7 @@ func liveReady(o Object, t string) bool { return conditionTrue(live(o), t) }
 
 // siteObjects are what runs in a site's location, by composition resource
 // name (without the site prefix).
-func (c *composition) siteObjects(replicas int) (map[string]object, error) {
+func (c *composition) siteObjects(site string, replicas int) (map[string]object, error) {
 	spec := c.spec
 	out := map[string]object{}
 	out["envoyproxy"] = object{ready: reported, manifest: Object{
@@ -418,12 +420,24 @@ func (c *composition) siteObjects(replicas int) (map[string]object, error) {
 	}}
 
 	var rules []any
-	models := sortedModels(spec.Models)
+	routes := c.routes(site)
 	byName := map[string]Model{}
-	for _, m := range models {
-		byName[m.Name] = m
+	for _, r := range routes {
+		byName[r.Name] = r.Model
 	}
-	for _, m := range models {
+	models := make([]Model, len(routes))
+	for i, r := range routes {
+		models[i] = r.Model
+		m := r.Model
+		if r.pool != "" {
+			// A self-hosted model's InferencePool: its endpoint picker chooses
+			// the replica (servers.go).
+			rules = append(rules, Object{
+				"matches":     []any{Object{"headers": []any{Object{"type": "Exact", "name": "x-ai-eg-model", "value": m.Name}}}},
+				"backendRefs": []any{Object{"group": "inference.networking.k8s.io", "kind": "InferencePool", "name": r.pool}},
+			})
+			continue
+		}
 		id := "model-" + sha1hex(m.Name)[:8]
 		obj := c.modelObject(m.Name)
 		u, err := url.Parse(m.Endpoint)

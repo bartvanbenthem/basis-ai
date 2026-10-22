@@ -366,3 +366,106 @@ func TestResilience(t *testing.T) {
 		t.Error("alerts though disabled")
 	}
 }
+
+func TestSelfHosted(t *testing.T) {
+	NewKey = func() string { return "generated" }
+	modelServer := func(name, spec string) Object {
+		var o Object
+		if err := json.Unmarshal([]byte(`{"apiVersion":"ai.cndev.nl/v1alpha1","kind":"ModelServer",
+			"metadata":{"name":"`+name+`","namespace":"ai"},"spec":`+spec+`}`), &o); err != nil {
+			t.Fatal(err)
+		}
+		return o
+	}
+	rules := func(out *Output, site string) map[string][]any {
+		got := map[string][]any{}
+		for _, r := range dig(manifest(out.Composed[site+"-route"]), "spec", "rules").([]any) {
+			got[dig(r.(Object)["matches"].([]any)[0], "headers").([]any)[0].(Object)["value"].(string)] = r.(Object)["backendRefs"].([]any)
+		}
+		return got
+	}
+
+	t.Run("asks for the ModelServers it names", func(t *testing.T) {
+		reqs := Requirements(xr(t, `{"models":[{"name":"llama","server":"llama"},{"name":"gpt","endpoint":"https://api.openai.com/v1"}]}`, `{}`))
+		if r := reqs["server-llama"]; r.Kind != "ModelServer" || r.Namespace != "ai" || r.Name != "llama" || len(reqs) != 2 {
+			t.Errorf("requirements %+v", reqs)
+		}
+	})
+
+	t.Run("the InferencePool, where the server runs", func(t *testing.T) {
+		required := required(true)
+		required["server-llama"] = []Object{modelServer("llama", `{"model":{"uri":"hf://x/y"}}`)}
+		out, err := Compose(Input{XR: xr(t, `{"recovery":{"enabled":true},"models":[{"name":"llama","server":"llama"}]}`, `{}`), Required: required})
+		if err != nil {
+			t.Fatal(err)
+		}
+		refs := rules(out, "protected")["llama"]
+		if len(refs) != 1 || refs[0].(Object)["kind"] != "InferencePool" || refs[0].(Object)["name"] != "llama-inference-pool" ||
+			refs[0].(Object)["group"] != "inference.networking.k8s.io" {
+			t.Errorf("backendRefs %v", refs)
+		}
+		for key := range out.Composed {
+			if strings.Contains(key, "-model-") {
+				t.Errorf("%s: no backend objects for a pool", key)
+			}
+		}
+		if _, ok := out.Composed["recovery-route"]; ok {
+			t.Error("the server doesn't run in the recovery site")
+		}
+		if !strings.Contains(out.Status.Message, "ModelServer llama doesn't run in the recovery site") {
+			t.Errorf("message %q", out.Status.Message)
+		}
+	})
+
+	t.Run("the Service: another served name, fallbacks, no prefix-cache routing", func(t *testing.T) {
+		required := required(false)
+		required["server-llama"] = []Object{modelServer("llama", `{"model":{"uri":"hf://x/y","name":"meta-llama/Llama-3.1-8B-Instruct"}}`)}
+		required["server-qwen"] = []Object{modelServer("qwen", `{"model":{"uri":"hf://x/q"},"routing":{"prefixCacheAware":false}}`)}
+		required["server-mistral"] = []Object{modelServer("mistral", `{"model":{"uri":"hf://x/m"}}`)}
+		out, err := Compose(Input{XR: xr(t, `{"models":[{"name":"llama","server":"llama"},{"name":"qwen","server":"qwen"},
+			{"name":"mistral","server":"mistral","fallbacks":["gpt"]},{"name":"gpt","endpoint":"https://api.openai.com/v1"}]}`, `{}`), Required: required})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := rules(out, "protected")
+		if ref := got["llama"][0].(Object); ref["kind"] != nil || ref["modelNameOverride"] != "meta-llama/Llama-3.1-8B-Instruct" {
+			t.Errorf("llama: the Service, renamed: %v", ref)
+		}
+		if ref := got["qwen"][0].(Object); ref["kind"] != nil {
+			t.Errorf("qwen: the Service: %v", ref)
+		}
+		if refs := got["mistral"]; len(refs) != 2 || refs[0].(Object)["kind"] != nil {
+			t.Errorf("mistral: the Service, then its fallback: %v", refs)
+		}
+		backend := manifest(out.Composed["protected-"+"model-"+sha1hex("llama")[:8]+"-backend"])
+		if ep := dig(backend, "spec", "endpoints").([]any)[0]; !equalJSON(ep, `{"fqdn":{"hostname":"llama-kserve-workload-svc.ai.svc","port":8000}}`) {
+			t.Errorf("backend %v", ep)
+		}
+		if _, ok := out.Composed["protected-model-"+sha1hex("llama")[:8]+"-apikey"]; ok {
+			t.Error("no provider key for a self-hosted model")
+		}
+	})
+
+	t.Run("a server that isn't there (yet)", func(t *testing.T) {
+		out, _ := Compose(Input{XR: xr(t, `{"models":[{"name":"llama","server":"llama"}]}`, `{}`), Required: required(false)})
+		if refs := rules(out, "protected")["llama"]; refs[0].(Object)["kind"] != "InferencePool" || strings.Contains(out.Status.Message, "llama") {
+			t.Errorf("unresolved: routed to the pool it will have, no note: %v %q", refs, out.Status.Message)
+		}
+		required := required(false)
+		required["server-llama"] = []Object{}
+		out, _ = Compose(Input{XR: xr(t, `{"models":[{"name":"llama","server":"llama"}]}`, `{}`), Required: required})
+		if !strings.Contains(out.Status.Message, "no ModelServer llama in ai") {
+			t.Errorf("message %q", out.Status.Message)
+		}
+	})
+}
+
+func equalJSON(v any, want string) bool {
+	got, _ := json.Marshal(v)
+	var a, b any
+	_ = json.Unmarshal(got, &a)
+	_ = json.Unmarshal([]byte(want), &b)
+	x, _ := json.Marshal(a)
+	y, _ := json.Marshal(b)
+	return string(x) == string(y)
+}

@@ -19,9 +19,10 @@ portal shows the same, plus events and pod logs from the location.
 
 ## Stacks, gateways and caches
 
-`kubectl describe genaistack|modelgateway|valkeycache <name> -n <project>`, or the page in the
+`kubectl describe genaistack|modelgateway|modelserver|valkeycache <name> -n <project>`, or the page in the
 portal. The common causes: [GenAI stacks](../ai/genai-stacks.md#troubleshooting),
 [Model gateways](../ai/model-gateways.md#troubleshooting),
+[Model servers](../ai/model-servers.md#troubleshooting),
 [Valkey caches](../caches/valkey.md#troubleshooting).
 
 A change to a stack's database, cache or gateway refused with *... belongs to GenAIStack ...*: they

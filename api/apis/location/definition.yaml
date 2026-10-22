@@ -148,3 +148,6 @@ spec:
                     agentRouter:
                       type: boolean
                       description: Agent Router on Envoy Gateway, which GenAIStacks' gateways need (optional).
+                    kserve:
+                      type: boolean
+                      description: KServe's LLMInferenceService controller, which ModelServers need (optional).

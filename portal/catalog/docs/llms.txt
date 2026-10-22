@@ -35,7 +35,14 @@
   apiKeySecretRef {name, key=apiKey}}; clients[] {name} = [apps]; replicas=2;
   recovery {enabled, replicas=1}; activeSite; expose {enabled, hostname, loadBalancerSourceRanges
   (both required when enabled), issuer=basis, annotations}: https://<hostname>/v1 outside the
-  location, on a LoadBalancer with a cert-manager certificate.
+  location, on a LoadBalancer with a cert-manager certificate. A model with server: <ModelServer>
+  instead of endpoint is self-hosted (no schema, upstreamModel or apiKeySecretRef).
+- ModelServer (`ai.cndev.nl/v1alpha1`, short `msrv`): a self-hosted model, vLLM on KServe with
+  llm-d's prefix-cache-aware routing; reached through a gateway model {name, server}. spec:
+  model {uri (hf://, pvc://, oci://, s3://), name (served name; default the ModelServer's name),
+  tokenSecretRef {name, key=HF_TOKEN}}; replicas=1 (0 = stopped); resources {cpu=4, memory=16Gi,
+  gpus=1, gpuResource=nvidia.com/gpu}; image; args[] (--flag=value); routing {prefixCacheAware=true};
+  scheduling {nodeSelector, tolerations}; recovery {enabled, replicas=1}; alerts.
 - PostgresCluster (`postgres.cndev.nl/v1alpha1`, short `pgc`): highly available PostgreSQL on
   CloudNativePG. spec: size (catalog), instances, storage {size}, profile (vector = pgvector,
   VectorChord, pg_search; needs postgresVersion 18), postgresVersion, database {extensions},
@@ -53,5 +60,6 @@
 - [Getting started](getting-started.md): a Project, a GenAI stack, connecting an app
 - [GenAI stacks](ai/genai-stacks.md): settings, the connection Secret, sharing a gateway, switching sites
 - [Model gateways](ai/model-gateways.md): models, clients and keys
+- [Model servers](ai/model-servers.md): self-hosted models, prefix-cache-aware routing, GPUs
 - [Agents and MCP](ai/agents.md): the MCP tools and the API for agents
 - [API reference](api.md): every field, its default and rules (OpenAPI, generated from the XRDs)

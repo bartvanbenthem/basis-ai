@@ -1,0 +1,274 @@
+# ModelServer: a namespaced Crossplane v2 composite resource for a
+# self-hosted model: vLLM on KServe (LLMInferenceService), with llm-d's
+# inference scheduler routing each request to the replica most likely to
+# hold its prompt's prefix in its KV cache (prefix-cache-aware routing).
+#
+# It runs in the Project's protected location and, with
+# spec.recovery.enabled, in its recovery location too. Clients reach it
+# through a ModelGateway (or a GenAIStack's gateway) whose model names it
+# (spec.models[].server): Agent Router hands each request to the server's
+# InferencePool, whose endpoint picker chooses the replica. Apps in the
+# location can also call it directly at status.endpoint (OpenAI-compatible,
+# no key, no prefix-cache-aware routing).
+#
+# Composed by function-basis (../../function/modelserver). Needs KServe's
+# LLMInferenceService controller and the Gateway API Inference Extension in
+# the location (deps/README.md).
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: modelservers.ai.cndev.nl
+spec:
+  group: ai.cndev.nl
+  scope: Namespaced
+  names:
+    kind: ModelServer
+    plural: modelservers
+    shortNames: [msrv]
+    categories: [crossplane, basis, ai]
+  defaultCompositionRef:
+    name: modelserver
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: Model
+          type: string
+          jsonPath: .status.model
+        - name: Replicas
+          type: integer
+          jsonPath: .spec.replicas
+        - name: GPUs
+          type: integer
+          jsonPath: .spec.resources.gpus
+        - name: Recovery
+          type: boolean
+          jsonPath: .spec.recovery.enabled
+        - name: Endpoint
+          type: string
+          jsonPath: .status.endpoint
+          priority: 1
+        - name: URI
+          type: string
+          jsonPath: .spec.model.uri
+          priority: 1
+        # Crossplane appends SYNCED, READY, COMPOSITION and AGE itself.
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: A self-hosted model (vLLM on KServe, llm-d routing) in its Project's site(s).
+          x-kubernetes-validations:
+            # The LLMInferenceService is <name>; KServe names its InferencePool
+            # <name>-inference-pool and its Service <name>-kserve-workload-svc.
+            - rule: "self.metadata.name.matches('^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$')"
+              message: ModelServer names are lowercase letters, digits and "-", start with a letter, max 40 characters
+          properties:
+            spec:
+              type: object
+              required: [model]
+              properties:
+                model:
+                  type: object
+                  required: [uri]
+                  properties:
+                    uri:
+                      type: string
+                      description: >-
+                        Where the weights come from: hf://<org>/<model> (Hugging Face),
+                        pvc://<claim>/<path> (a PersistentVolumeClaim in the Project's namespace in
+                        the location, already filled), oci://<image> (a modelcar image) or
+                        s3://<bucket>/<path>. hf:// and s3:// are downloaded at every pod start.
+                      maxLength: 1000
+                      pattern: '^(hf|pvc|oci|s3)://.+'
+                    name:
+                      type: string
+                      description: >-
+                        The name vLLM serves the model as: what clients send as "model", and the
+                        model name of a gateway that routes to this server. The ModelServer's name
+                        when unset.
+                      minLength: 1
+                      maxLength: 200
+                    tokenSecretRef:
+                      type: object
+                      description: >-
+                        Secret in this namespace with a Hugging Face token, for gated or private hf://
+                        models. Copied to the location; only the download uses it.
+                      required: [name]
+                      properties:
+                        name:
+                          type: string
+                        key:
+                          type: string
+                          default: HF_TOKEN
+                          pattern: '^[-._a-zA-Z0-9]+$'
+                replicas:
+                  type: integer
+                  description: >-
+                    vLLM replicas in the protected site; 0 stops the server and frees its GPUs. With
+                    more than one, the scheduler spreads requests by prefix-cache affinity and load.
+                  minimum: 0
+                  maximum: 20
+                  default: 1
+                resources:
+                  type: object
+                  description: Per replica. memory is request and limit.
+                  default: {}
+                  properties:
+                    cpu:
+                      type: string
+                      pattern: '^[0-9]+(\.[0-9]+)?m?$'
+                      default: "4"
+                    memory:
+                      type: string
+                      description: Mi or Gi.
+                      pattern: '^[0-9]+(Mi|Gi)$'
+                      default: 16Gi
+                    gpus:
+                      type: integer
+                      description: >-
+                        GPUs per replica. More than one shards the model over them (tensor
+                        parallelism). 0 for a CPU-only vLLM image (spec.image), for small models.
+                      minimum: 0
+                      maximum: 8
+                      default: 1
+                    gpuResource:
+                      type: string
+                      description: The extended resource GPUs are requested as, e.g. amd.com/gpu or a MIG profile.
+                      default: nvidia.com/gpu
+                      pattern: '^[a-z0-9]([-.a-z0-9]*[a-z0-9])?/[-._a-zA-Z0-9]+$'
+                image:
+                  type: string
+                  description: >-
+                    The vLLM image; KServe's default (llm-d's CUDA build) when unset. For GPUs of
+                    another vendor or CPU only, e.g. vllm/vllm-openai-cpu:<version> with gpus 0.
+                  maxLength: 500
+                args:
+                  type: array
+                  description: >-
+                    Extra vllm serve arguments, one flag per item, e.g. [--max-model-len=8192,
+                    --gpu-memory-utilization=0.9]. The model, its served name, the port and the
+                    tensor parallelism are set already.
+                  maxItems: 40
+                  items:
+                    type: string
+                    maxLength: 500
+                    pattern: '^--[a-z0-9][-a-z0-9]*(=.*)?$'
+                routing:
+                  type: object
+                  default: {}
+                  properties:
+                    prefixCacheAware:
+                      type: boolean
+                      description: >-
+                        Route through llm-d's inference scheduler (an endpoint picker next to the
+                        server, behind an InferencePool): each request goes to the replica that most
+                        likely has its prompt's prefix in its KV cache, weighed against the replicas'
+                        load. Off, a gateway balances the replicas round robin.
+                      default: true
+                scheduling:
+                  type: object
+                  description: Where the vLLM pods may run, e.g. on GPU nodes with a taint.
+                  properties:
+                    nodeSelector:
+                      type: object
+                      additionalProperties:
+                        type: string
+                    tolerations:
+                      type: array
+                      maxItems: 20
+                      items:
+                        type: object
+                        properties:
+                          key:
+                            type: string
+                          operator:
+                            type: string
+                            enum: [Exists, Equal]
+                          value:
+                            type: string
+                          effect:
+                            type: string
+                            enum: [NoSchedule, PreferNoSchedule, NoExecute]
+                          tolerationSeconds:
+                            type: integer
+                recovery:
+                  type: object
+                  description: >-
+                    The same server in the Project's recovery location (the Project needs one), for a
+                    gateway's standby there. Weights are loaded there from spec.model.uri as well.
+                  default: {}
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    replicas:
+                      type: integer
+                      description: >-
+                        vLLM replicas in the recovery site. 0 keeps it defined but stopped (no GPUs
+                        held); raise it to serve there.
+                      minimum: 0
+                      maximum: 20
+                      default: 1
+                alerts:
+                  type: object
+                  description: >-
+                    Thresholds of the server's alerts in the Project's Prometheus (per site): requests
+                    waiting for a slot, the KV cache's use, and the 95th percentile of the time to
+                    first token. A server without ready replicas always alerts.
+                  default: {}
+                  properties:
+                    waitingRequests:
+                      type: integer
+                      minimum: 1
+                      default: 10
+                    kvCacheUsagePercent:
+                      type: number
+                      minimum: 1
+                      maximum: 100
+                      default: 95
+                    timeToFirstTokenSeconds:
+                      type: number
+                      minimum: 0
+                      default: 10
+                    disabled:
+                      type: boolean
+                      description: No alerts for this server.
+                      default: false
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                message:
+                  type: string
+                model:
+                  type: string
+                  description: The name the model is served as (spec.model.name, else the ModelServer's name).
+                endpoint:
+                  type: string
+                  description: >-
+                    Base URL in each site's location for OpenAI clients that call the server directly,
+                    without a gateway (no key, round robin over the replicas).
+                inferencePool:
+                  type: string
+                  description: The InferencePool a gateway routes to, with prefix-cache-aware routing.
+                dashboardUid:
+                  type: string
+                  description: The server's dashboard in the Project's Grafana, at <grafana>/d/<uid>.
+                sites:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      site:
+                        type: string
+                      location:
+                        type: string
+                      replicas:
+                        type: integer
+                      ready:
+                        type: boolean
+                      message:
+                        type: string
+                        description: What KServe reports when the site isn't ready.

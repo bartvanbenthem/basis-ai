@@ -16,8 +16,8 @@
 #  3. `crossplane resource validate` of every rendered object against the
 #     real CRD schemas: CNPG + Barman Cloud from ../../../deps/cnpg/charts,
 #     Prometheus Operator, grafana-operator, provider-kubernetes, the Valkey
-#     operator's ValkeyCluster and
-#     Crossplane's ClusterUsage from ../crds. The manifest inside each provider-kubernetes Object (what goes
+#     operator's ValkeyCluster, KServe's LLMInferenceService, Agent Router's
+#     and Envoy Gateway's and Crossplane's ClusterUsage from ../crds. The manifest inside each provider-kubernetes Object (what goes
 #     to a remote location) is validated too. Core kinds (Namespace,
 #     RoleBinding, ...) have no CRD and are skipped.
 #  4. Semantic assertions (rendertest/<api>.go).
@@ -41,7 +41,7 @@ API_ROOT="$(cd "${HERE}/../.." && pwd)"
 OPERATOR_CHARTS="$(cd "${API_ROOT}/../deps/cnpg/charts" && pwd)"
 # Built from ../../function by this script; never pulled.
 FUNCTION_IMAGE="${FUNCTION_IMAGE:-localhost/function-basis:render}"
-read -r -a APIS <<<"${RENDER_APIS:-postgrescluster project location valkeycache modelgateway genaistack}"
+read -r -a APIS <<<"${RENDER_APIS:-postgrescluster project location valkeycache modelserver modelgateway genaistack}"
 
 if [[ -z "${DOCKER_HOST:-}" && -S "/run/user/${UID}/podman/podman.sock" ]]; then
   export DOCKER_HOST="unix:///run/user/${UID}/podman/podman.sock"

@@ -6,14 +6,17 @@ import {
   basisGatewayCreatePermission,
   basisGatewayReadPermission,
   basisProjectReadPermission,
+  basisServerReadPermission,
   basisStackCreatePermission,
   basisStackReadPermission,
   summarizeGateway,
   summarizeProject,
+  summarizeServer,
   summarizeStack,
 } from '@internal/backstage-plugin-basis-common';
 import { BasisKubernetesService } from './service/BasisKubernetesService';
 import { GatewayService } from './service/GatewayService';
+import { ServerService } from './service/ServerService';
 import { StackService } from './service/StackService';
 
 const NAME = /^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$/;
@@ -22,7 +25,8 @@ const STACK_NAME = /^[a-z]([-a-z0-9]{0,26}[a-z0-9])?$/;
 /**
  * The platform as MCP tools (through @backstage/plugin-mcp-actions-backend),
  * for agents such as Claude Code or Codex: find a project, see what runs in
- * it, and create a GenAI stack or a model gateway. Each action checks the
+ * it (stacks, gateways, self-hosted model servers), and create a GenAI stack or
+ * a model gateway. Each action checks the
  * same basis.* permission as the REST API, as the calling user. Creating
  * validates only (dryRun) unless asked otherwise, so an agent can show the
  * plan first. No action hands out credentials: an app mounts the stack's
@@ -34,8 +38,9 @@ export function registerActions(options: {
   k8s: Pick<BasisKubernetesService, 'listProjects'>;
   stacks: Pick<StackService, 'list' | 'get' | 'apply'>;
   gateways: Pick<GatewayService, 'list' | 'apply'>;
+  servers: Pick<ServerService, 'list'>;
 }) {
-  const { actionsRegistry, permissions, k8s, stacks, gateways } = options;
+  const { actionsRegistry, permissions, k8s, stacks, gateways, servers } = options;
   const authorize = async (credentials: BackstageCredentials, permission: BasicPermission) => {
     const [decision] = await permissions.authorize([{ permission }], { credentials });
     if (decision.result !== AuthorizeResult.ALLOW) throw new NotAllowedError(`Missing permission ${permission.name}`);
@@ -179,10 +184,62 @@ export function registerActions(options: {
     },
   });
 
+  actionsRegistry.register({
+    name: 'list-model-servers',
+    title: 'List model servers',
+    description:
+      'Lists model servers (ai.cndev.nl ModelServer): self-hosted models, vLLM on KServe on the project\'s GPUs, with ' +
+      'prefix-cache-aware routing. A gateway or stack uses one as a model {name: <its model>, server: <its name>}.',
+    attributes: { readOnly: true },
+    schema: {
+      input: z => z.object({ project: z.string().optional().describe('Only this project') }),
+      output: z =>
+        z.object({
+          servers: z.array(
+            z.object({
+              name: z.string(),
+              project: z.string(),
+              ready: z.boolean(),
+              model: z.string().describe('The served name: name the gateway model so for prefix-cache-aware routing'),
+              uri: z.string(),
+              replicas: z.number(),
+              gpus: z.number().describe('GPUs per replica'),
+              sites: z.array(z.string()),
+            }),
+          ),
+        }),
+    },
+    action: async ({ input, credentials }) => {
+      await authorize(credentials, basisServerReadPermission);
+      const items = (await servers.list(input.project)).map(s => summarizeServer(s));
+      return {
+        output: {
+          servers: items.map(s => ({
+            name: s.name,
+            project: s.namespace,
+            ready: s.ready,
+            model: s.model,
+            uri: s.uri,
+            replicas: s.replicas,
+            gpus: s.gpus,
+            sites: s.sites.map(site => site.site),
+          })),
+        },
+      };
+    },
+  });
+
   const modelSchema = (z: any) =>
     z.object({
       name: z.string().describe('What clients send as "model"'),
-      endpoint: z.string().describe('Base URL of the provider API, e.g. https://api.anthropic.com/v1 or http://vllm.models.svc:8000/v1'),
+      endpoint: z
+        .string()
+        .optional()
+        .describe('Base URL of the provider API, e.g. https://api.anthropic.com/v1; or server instead'),
+      server: z
+        .string()
+        .optional()
+        .describe('Instead of endpoint: a ModelServer in the project (list-model-servers); name the model as it serves it'),
       schema: z.enum(['OpenAI', 'Anthropic']).optional().describe('OpenAI (default; also every OpenAI-compatible server) or Anthropic'),
       upstreamModel: z.string().optional().describe('The model name at the provider, when it differs'),
       apiKeySecret: z.string().optional().describe('Secret in the project holding the provider key under "apiKey"'),

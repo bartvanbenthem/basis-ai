@@ -42,7 +42,6 @@ spec:
         endpoint: https://api.openai.com/v1
         apiKeySecretRef:
           name: openai
-      # A self-hosted, OpenAI-compatible server (vLLM, KServe, Ollama, ...).
+      # Self-hosted: ModelServer llama in this Project (examples/modelserver.yaml).
       - name: llama
-        endpoint: http://vllm.models.svc:8000/v1
-        upstreamModel: meta-llama/Llama-3.1-8B-Instruct
+        server: llama

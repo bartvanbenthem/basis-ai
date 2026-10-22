@@ -1,0 +1,38 @@
+# A self-hosted model: vLLM on KServe in the Project's location, with llm-d's
+# scheduler sending each request to the replica most likely to have its
+# prompt's prefix in the KV cache (long system prompts, RAG context and agent
+# loops repeat theirs). Needs KServe and GPUs in the location
+# (deps/README.md step 8), and for a gated model a Hugging Face token:
+#
+#   kubectl -n demo create secret generic hf-token --from-literal=HF_TOKEN=hf_...
+#
+# Clients call it through a gateway: a ModelGateway (examples/modelgateway.yaml)
+# or a GenAIStack's gateway with the model
+#
+#   - name: llama
+#     server: llama
+#
+# The model's name there is the one the server serves (spec.model.name, else
+# the ModelServer's name), so the gateway can route to its InferencePool.
+# Apps in the location may also call status.endpoint directly (no key, no
+# prefix-cache-aware routing).
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelServer
+metadata:
+  name: llama
+  namespace: demo
+spec:
+  model:
+    uri: hf://meta-llama/Llama-3.1-8B-Instruct   # or pvc://<claim>/<path>, oci://<modelcar image>, s3://...
+    tokenSecretRef:
+      name: hf-token
+  replicas: 2                  # the scheduler spreads by prefix-cache affinity and load
+  resources:
+    cpu: "8"
+    memory: 32Gi
+    gpus: 1                    # more than one: tensor parallel
+  args: [--max-model-len=16384]
+  scheduling:
+    tolerations:
+      - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+  # recovery: {enabled: true, replicas: 0}   # defined in the recovery site, stopped until needed

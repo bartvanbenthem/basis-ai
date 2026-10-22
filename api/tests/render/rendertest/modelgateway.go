@@ -6,6 +6,10 @@ import (
 )
 
 func assertModelGateway(r *render) {
+	if r.kase == "selfhosted" {
+		assertSelfHostedGateway(r)
+		return
+	}
 	kase, state, status, name, ns, composed := r.kase, r.state, r.status, r.name, r.ns, r.composed
 	check := r.check
 	exposed := kase == "exposed"
@@ -128,4 +132,44 @@ func assertModelGateway(r *render) {
 	}
 	check(str(status, "externalEndpoint") == wantExternal, "status.externalEndpoint %q", str(status, "externalEndpoint"))
 	check(str(r.conds["GatewayReady"], "type") == "GatewayReady", "GatewayReady condition missing")
+}
+
+// assertSelfHostedGateway: models on ModelServers (required/selfhosted.yaml):
+// llama on its InferencePool in both sites, qwen (served under another name)
+// through its Service and in the protected site only, and as the hosted
+// model's fallback there.
+func assertSelfHostedGateway(r *render) {
+	check, status := r.check, r.status
+	rules := func(site string) map[string]L {
+		out := map[string]L{}
+		for _, rule := range list(r.live(site+"-route"), "spec", "rules") {
+			out[str(rule, "matches", 0, "headers", 0, "value")] = list(rule, "backendRefs")
+		}
+		return out
+	}
+	for _, site := range []string{"protected", "recovery"} {
+		got := rules(site)
+		llama := got["llama"]
+		check(len(llama) == 1 && str(llama[0], "kind") == "InferencePool" && str(llama[0], "group") == "inference.networking.k8s.io" &&
+			str(llama[0], "name") == "llama-inference-pool", "%s: llama on its InferencePool: %s", site, repr(llama))
+		gpt := got["gpt-4o-mini"]
+		if site == "protected" {
+			qwen := got["qwen"]
+			check(len(qwen) == 1 && !has(qwen[0], "kind") && str(qwen[0], "modelNameOverride") == "Qwen/Qwen3-0.6B",
+				"%s: qwen through its Service, renamed: %s", site, repr(qwen))
+			check(len(gpt) == 2 && equal(get(gpt[1], "priority"), 1), "%s: qwen as gpt-4o-mini's fallback: %s", site, repr(gpt))
+		} else {
+			check(!has(got, "qwen") && len(gpt) == 1, "%s: no qwen where its server doesn't run: %s", site, repr(got))
+		}
+	}
+	var backends []string
+	for key := range r.composed {
+		if strings.HasSuffix(key, "-backend") {
+			backends = append(backends, str(r.live(key), "spec", "endpoints", 0, "fqdn", "hostname"))
+		}
+	}
+	check(strings.Contains(strings.Join(backends, ","), "qwen-small-kserve-workload-svc.ai-team.svc"),
+		"qwen's Service as a backend: %v", backends)
+	check(strings.Contains(str(status, "message"), "model qwen: ModelServer qwen-small doesn't run in the recovery site"),
+		"status.message %q", str(status, "message"))
 }

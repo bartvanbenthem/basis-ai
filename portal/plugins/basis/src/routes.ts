@@ -194,3 +194,27 @@ export const editGatewayRouteRef = createSubRouteRef({
   parent: rootRouteRef,
   path: '/gateways/:namespace/:name/edit',
 });
+
+/** /basis/servers -- the model servers (self-hosted models). */
+export const serversRouteRef = createSubRouteRef({
+  parent: rootRouteRef,
+  path: '/servers',
+});
+
+/** /basis/servers/create -- the create-server form. */
+export const createServerRouteRef = createSubRouteRef({
+  parent: rootRouteRef,
+  path: '/servers/create',
+});
+
+/** /basis/servers/:namespace/:name -- one server. */
+export const serverRouteRef = createSubRouteRef({
+  parent: rootRouteRef,
+  path: '/servers/:namespace/:name',
+});
+
+/** /basis/servers/:namespace/:name/edit -- change a server's model, replicas and GPUs. */
+export const editServerRouteRef = createSubRouteRef({
+  parent: rootRouteRef,
+  path: '/servers/:namespace/:name/edit',
+});

@@ -37,7 +37,7 @@ import { createProjectRouteRef, stackRouteRef } from '../routes';
 import { ErrorAlert, ManifestPanel, Section } from './common';
 import { auditOptions } from './form';
 import { ExposeFields } from './ExposeFields';
-import { ModelFields } from './ModelFields';
+import { ModelFields, useProjectServers } from './ModelFields';
 import {
   defaultStackForm,
   emptyModel,
@@ -80,6 +80,7 @@ const StackFormFields = ({
   extensions: ClusterExtension[];
 }) => {
   const set = <K extends keyof StackForm>(key: K) => (value: StackForm[K]) => setForm(f => ({ ...f, [key]: value }));
+  const servers = useProjectServers(form.namespace);
   const err = (key: Exclude<keyof StackErrors, 'modelRows'>) => (touched ? errors[key] : undefined);
   const project = projects?.find(p => p.name === form.namespace);
   const recoveryLocation = project?.recoveryLocation;
@@ -356,6 +357,7 @@ const StackFormFields = ({
               index={i}
               namespace={form.namespace}
               owner={form.name}
+              servers={servers}
               error={touched ? errors.modelRows?.[i] : undefined}
               onChange={model => setForm(f => ({ ...f, models: f.models.map((x, j) => (j === i ? model : x)) }))}
               onRemove={() => setForm(f => ({ ...f, models: f.models.filter((_, j) => j !== i) }))}

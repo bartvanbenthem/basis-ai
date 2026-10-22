@@ -8,6 +8,7 @@ import type {
   ValkeyCacheSummary,
   GenAIStackSummary,
   ModelGatewaySummary,
+  ModelServerSummary,
 } from '@internal/backstage-plugin-basis-common';
 import { ReactNode } from 'react';
 
@@ -69,6 +70,13 @@ export function gatewayHealth(g: ModelGatewaySummary): Health {
   return g.ready ? 'healthy' : 'progressing';
 }
 
+/** A server is healthy once vLLM serves in every one of its sites; degraded when KServe can't take it. */
+export function serverHealth(s: ModelServerSummary): Health {
+  if (s.deleting) return 'deleting';
+  if (s.ready) return 'healthy';
+  return s.message?.includes("can't apply") ? 'degraded' : 'progressing';
+}
+
 /** `label` replaces the health's own word, e.g. "Reachable" for healthy. */
 export const StatusDot = ({ health: h, label }: { health: Health; label?: string }) => {
   const { color } = HEALTH[h];
@@ -96,6 +104,8 @@ export const StackHealthBadge = ({ stack }: { stack: GenAIStackSummary }) => <St
 export const GatewayHealthBadge = ({ gateway }: { gateway: ModelGatewaySummary }) => (
   <StatusDot health={gatewayHealth(gateway)} />
 );
+
+export const ServerHealthBadge = ({ server }: { server: ModelServerSummary }) => <StatusDot health={serverHealth(server)} />;
 
 export const ProjectHealthBadge = ({ project }: { project: ProjectSummary }) => (
   <StatusDot health={projectHealth(project)} />

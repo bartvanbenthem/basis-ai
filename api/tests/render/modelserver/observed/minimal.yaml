@@ -1,0 +1,29 @@
+# Observed state for xr/minimal.yaml: KServe reports the LLMInferenceService
+# ready in the location.
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: llama-protected-server
+  namespace: ai-team
+  annotations:
+    crossplane.io/composition-resource-name: protected-server
+spec:
+  forProvider:
+    manifest: {}
+status:
+  conditions:
+    - type: Synced
+      status: "True"
+      reason: ReconcileSuccess
+  atProvider:
+    manifest:
+      apiVersion: serving.kserve.io/v1alpha2
+      kind: LLMInferenceService
+      status:
+        conditions:
+          - type: Ready
+            status: "True"
+          - type: MainWorkloadReady
+            status: "True"
+          - type: RouterReady
+            status: "True"

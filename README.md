@@ -20,6 +20,7 @@ The platform currently provides these building blocks, separately or wired toget
 | Layer | Component |
 |---|---|
 | Model gateway | `ModelGateway`: [Agent Router](https://github.com/theagentrouter/agent-router) (formerly Envoy AI Gateway) on [Envoy Gateway](https://gateway.envoyproxy.io) (CNCF), an internal, OpenAI-compatible endpoint that routes to hosted and self-hosted models, with provider keys kept in the platform and an API key per client, retries and fallbacks between models, rate limits, and a latency dashboard with alerts; a stack's own or shared by stacks and agents |
+| Self-hosted models | `ModelServer`: [vLLM](https://docs.vllm.ai/) on [KServe](https://kserve.github.io/website/) in the Project's site(s), GPUs per replica, with [llm-d](https://llm-d.ai/)'s prefix-cache-aware routing behind a gateway, and metrics, alerts and a dashboard |
 | Context / RAG | PostgreSQL on [CloudNativePG](https://cloudnative-pg.io/) (CNPG) with [pgvector](https://github.com/pgvector/pgvector), VectorChord and pg_search |
 | Cache | Exact and semantic caches on [Valkey](https://valkey.io/), run by the [valkey-io operator](https://github.com/valkey-io/valkey-operator), with valkey-search for vector (KNN) lookups |
 | Observability | [Prometheus](https://prometheus.io/) and [Grafana](https://grafana.com/) per Project, with metrics, alerts and dashboards for every database and cache |
@@ -35,6 +36,10 @@ What a team gets:
   admission policy refuses changing it directly.
 - **Model gateways:** a `ModelGateway` shares one set of models and provider keys between stacks,
   apps and agents, with a key per client (see [ModelGateway](api/README.md#the-modelgateway-api)).
+- **Self-hosted models:** a `ModelServer` runs an open model (from Hugging Face, a volume or an
+  image) on the Project's GPUs with vLLM; a gateway's model names it, and llm-d's scheduler sends
+  each request to the replica that has its prompt's prefix cached (see
+  [ModelServer](api/README.md#the-modelserver-api)).
 - **For agents:** the portal serves the platform as MCP tools (list projects, stacks and gateways;
   create stacks and gateways, validated first), within the caller's permissions, and the docs
   publish an `llms.txt`.
@@ -107,9 +112,9 @@ See [Locations](api/README.md#locations) for how to configure this.
 
 | Folder | What | Built with |
 |---|---|---|
-| [`deps/`](deps/) | Every operator the platform builds on: cert-manager, Prometheus Operator, grafana-operator, ingress, CloudNativePG with the Barman Cloud plugin and image catalog ([`deps/cnpg/`](deps/cnpg/), charts **vendored in this repo**), the Valkey operator, Envoy Gateway + Agent Router; the `demo` Project | Helm, kubectl |
-| [`api/`](api/) | Three levels of APIs. **Product:** `GenAIStack` (`ai.cndev.nl/v1alpha1`): database, caches, gateway and wiring per site. **Building blocks:** `ModelGateway` (`ai.cndev.nl/v1alpha1`): an OpenAI-compatible gateway with a key per client; `PostgresCluster` (`postgres.cndev.nl/v1alpha1`): everything a production CNPG cluster needs, including metrics, alerts and the CNPG Grafana dashboard; `ValkeyCache` (`cache.cndev.nl/v1alpha1`): an exact or semantic Valkey cache. **Platform:** `Project` (`platform.cndev.nl/v1alpha1`): a namespace with its own Prometheus and Grafana, RoleBindings, an optional quota and deletion protection; `Location`: a cluster workloads run in. Everything in the locations is placed through provider-kubernetes; every composition is Go, in one composition function, function-basis ([`api/function/`](api/function/)) | Crossplane v2, Go |
-| [`portal/`](portal/) | Portal to create projects, GenAI stacks, model gateways, clusters and caches and to inspect them; catalog integration, Software Templates and MCP tools for agents | Backstage (new frontend + backend system) |
+| [`deps/`](deps/) | Every operator the platform builds on: cert-manager, Prometheus Operator, grafana-operator, ingress, CloudNativePG with the Barman Cloud plugin and image catalog ([`deps/cnpg/`](deps/cnpg/), charts **vendored in this repo**), the Valkey operator, Envoy Gateway + Agent Router, KServe; the `demo` Project | Helm, kubectl |
+| [`api/`](api/) | Three levels of APIs. **Product:** `GenAIStack` (`ai.cndev.nl/v1alpha1`): database, caches, gateway and wiring per site. **Building blocks:** `ModelGateway` (`ai.cndev.nl/v1alpha1`): an OpenAI-compatible gateway with a key per client; `ModelServer` (`ai.cndev.nl/v1alpha1`): a self-hosted model, vLLM on KServe with llm-d's routing; `PostgresCluster` (`postgres.cndev.nl/v1alpha1`): everything a production CNPG cluster needs, including metrics, alerts and the CNPG Grafana dashboard; `ValkeyCache` (`cache.cndev.nl/v1alpha1`): an exact or semantic Valkey cache. **Platform:** `Project` (`platform.cndev.nl/v1alpha1`): a namespace with its own Prometheus and Grafana, RoleBindings, an optional quota and deletion protection; `Location`: a cluster workloads run in. Everything in the locations is placed through provider-kubernetes; every composition is Go, in one composition function, function-basis ([`api/function/`](api/function/)) | Crossplane v2, Go |
+| [`portal/`](portal/) | Portal to create projects, GenAI stacks, model gateways, model servers, clusters and caches and to inspect them; catalog integration, Software Templates and MCP tools for agents | Backstage (new frontend + backend system) |
 
 ## Install
 
@@ -120,8 +125,9 @@ Operator from [`deps/`](deps/README.md), then CloudNativePG from [`deps/cnpg/`](
 KUBECONFIG=dc-a.kubeconfig deps/cnpg/install.sh   # CNPG 1.30 + barman-cloud plugin + ClusterImageCatalog
 ```
 
-Locations that run caches also get the Valkey operator, and those that run model gateways (and so
-GenAI stacks) also Envoy Gateway + Agent Router ([`deps/`](deps/README.md)).
+Locations that run caches also get the Valkey operator, those that run model gateways (and so
+GenAI stacks) also Envoy Gateway + Agent Router, and those that run self-hosted models also KServe
+([`deps/`](deps/README.md)).
 
 **The control plane**: the Prometheus Operator and grafana-operator from
 [`deps/`](deps/README.md) (each Project's Grafana and the Prometheus its locations write to
@@ -159,7 +165,7 @@ geo replication. The portal also runs on the control plane: see
 | Command | Needs | Covers |
 |---|---|---|
 | `deps/cnpg/verify.sh` | helm | vendored charts lint and render with the production values |
-| `make -C api test` | Go, crossplane CLI, Docker/podman | function-basis's unit tests (the switchover state machine, the guards that refuse to tear down a running database, parameter precedence); every composition renders (PostgresCluster: 23 cases incl. sizes and extensions from their catalogs, geo-replicated, switchover, failover, draining, pinned sites, no Project, the Project's COSI backup bucket, restores from the bucket and from a store of its own; Project: 9 incl. both sites, a COSI bucket with its inventory of backup folders, one with a name too long for S3, a second grant waiting for the first, an unregistered location, and governance with the price catalog (labels, cost rules, budget alerts); Location: 3 incl. the optional Valkey operator; ValkeyCache: 4 incl. semantic, recovery site and no Project; ModelGateway: 3 incl. a standby that serves, an exposed one and monthly token caps; GenAIStack: 2 incl. geo after a switchover; empty and observed); output, and the manifests inside provider-kubernetes Objects, validated against the real CRD schemas; status/readiness/dashboard/alert/project-wiring/topology assertions |
+| `make -C api test` | Go, crossplane CLI, Docker/podman | function-basis's unit tests (the switchover state machine, the guards that refuse to tear down a running database, parameter precedence); every composition renders (PostgresCluster: 23 cases incl. sizes and extensions from their catalogs, geo-replicated, switchover, failover, draining, pinned sites, no Project, the Project's COSI backup bucket, restores from the bucket and from a store of its own; Project: 9 incl. both sites, a COSI bucket with its inventory of backup folders, one with a name too long for S3, a second grant waiting for the first, an unregistered location, and governance with the price catalog (labels, cost rules, budget alerts); Location: 3 incl. the optional Valkey operator, Agent Router and KServe; ValkeyCache: 4 incl. semantic, recovery site and no Project; ModelServer: 3 incl. both sites with a stopped standby and a Hugging Face token, and CPU only; ModelGateway: 4 incl. a standby that serves, an exposed one, monthly token caps and self-hosted models; GenAIStack: 2 incl. geo after a switchover; empty and observed); output, and the manifests inside provider-kubernetes Objects, validated against the real CRD schemas; status/readiness/dashboard/alert/project-wiring/topology assertions |
 | `cd portal && yarn tsc && yarn test:all` | node 22 | backend (REST API incl. caches, permissions, catalog provider, scaffolder action) and frontend (forms, list page) |
 | `hack/e2e-kind.sh` | kind, helm, Docker/podman, `fs.inotify.max_user_instances` ≥ 512 | a control plane and one location on kind, installed as documented: Project goes Ready in both, a PostgresCluster in it goes Ready in the location (no CNPG on the control plane), `psql` through PgBouncer, the location's Prometheus scrapes it and remote-writes to the project's Prometheus on the control plane, its Grafana has the dashboard, then a ValkeyCache with the Valkey operator in the location: Ready, password required, metrics on both Prometheuses, alerts, its dashboard in Grafana; deletion guardrails hold, deletes cascade |
 | `hack/e2e-locations.sh` | kind, helm, Docker/podman, `fs.inotify.max_user_instances` ≥ 512 | a control plane, a protected and a recovery location, MinIO as the shared object store: a Project with both sites, a geo-replicated PostgresCluster, a row written in the protected site shows up in the recovery site, a point-in-time restore into a new cluster stops at the target time and archives to a folder of its own, a switchover promotes it (writes work, the old primary follows), turning geo replication off switches back first and loses nothing, the policy and XRD rules reject what they should |

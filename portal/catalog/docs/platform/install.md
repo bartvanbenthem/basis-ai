@@ -13,6 +13,7 @@ order; each says where it runs.
 | Ingress controller (e.g. HAProxy) | yes: Grafana and the remote-write endpoint | – |
 | Valkey operator | – | only where caches (and stacks) run |
 | Envoy Gateway + Agent Router | – | only where model gateways (and stacks) run |
+| KServe (LLMInferenceService, with llm-d's scheduler) and GPU nodes | – | only where model servers run |
 | ClusterIssuer `basis` (cert-manager) and LoadBalancer Services | – | only where gateways are exposed (`spec.expose`) |
 
 The exact commands are in `deps/README.md`.

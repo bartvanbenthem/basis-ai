@@ -4,8 +4,9 @@
 #
 #   1. model residency: a ModelGateway's or GenAIStack's models must use an
 #      endpoint from the basis-models catalog (apis/modelgateway/models.yaml)
-#      whose residency the Project's classification allows. Without the
-#      catalog, every endpoint is allowed.
+#      whose residency the Project's classification allows; a self-hosted
+#      model (a ModelServer) is residency self-hosted. Without the catalog,
+#      every endpoint is allowed.
 #   2. confidential exposure: in a confidential Project nothing opens to
 #      0.0.0.0/0 or ::/0 (a PostgresCluster's, ModelGateway's or GenAIStack's
 #      expose.loadBalancerSourceRanges).
@@ -52,16 +53,20 @@ spec:
       expression: >-
         has(params.data.classifications) && variables.classification in params.data.classifications
         ? params.data.classifications[variables.classification] : []
+    # A self-hosted model (server: a ModelServer of the Project) is in the
+    # platform's own clusters: residency self-hosted.
     - name: refused
       expression: >-
-        variables.models.filter(m, !has(params.data.providers) || !params.data.providers.exists(p,
-          m.endpoint.startsWith(p.prefix) && p.residency in variables.allowed))
+        variables.models.filter(m, has(m.server)
+          ? !('self-hosted' in variables.allowed)
+          : (!has(params.data.providers) || !params.data.providers.exists(p,
+            m.endpoint.startsWith(p.prefix) && p.residency in variables.allowed)))
   validations:
     - expression: "(oldObject != null && variables.models == variables.oldModels) || size(variables.refused) == 0"
       messageExpression: >-
         'project ' + namespaceObject.metadata.name + ' is ' + variables.classification + ' and may only use models with residency '
         + variables.allowed.join(', ') + ' from the basis-models catalog; not allowed: '
-        + variables.refused.map(m, m.name + ' (' + m.endpoint + ')').join(', ')
+        + variables.refused.map(m, m.name + ' (' + (has(m.server) ? 'ModelServer ' + m.server : m.endpoint) + ')').join(', ')
       reason: Forbidden
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -147,7 +152,7 @@ spec:
         operations: [CREATE]
       - apiGroups: [ai.cndev.nl]
         apiVersions: ["*"]
-        resources: [modelgateways, genaistacks]
+        resources: [modelgateways, modelservers, genaistacks]
         operations: [CREATE]
   validations:
     # Crossplane may still compose the parts of what exists (a stack's database).

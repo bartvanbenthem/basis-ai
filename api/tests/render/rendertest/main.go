@@ -6,7 +6,8 @@
 //	    the objects to schema-validate: no Function Results, no core kinds, plus
 //	    the manifest inside every provider-kubernetes Object
 //	rendertest assert <api> <case> <empty|observed> <render-output.yaml> [dashboard.json]
-//	    semantic assertions on `crossplane render` output (postgrescluster.go, project.go, location.go, valkeycache.go, modelgateway.go, genaistack.go)
+//	    semantic assertions on `crossplane render` output (postgrescluster.go, project.go, location.go, valkeycache.go,
+//	    modelserver.go, modelgateway.go, genaistack.go)
 package main
 
 import (
@@ -268,6 +269,12 @@ func assert(api, kase, state, path string, rest []string) int {
 			assertModelGateway(r)
 			return r.report(fmt.Sprintf("FAIL modelgateway/%s (%s):", kase, state),
 				fmt.Sprintf("ok   modelgateway/%s (%s)", kase, state))
+		}
+	case "modelserver":
+		if r, err = loadRender(kase, state, path, "ModelServer"); err == nil {
+			assertModelServer(r)
+			return r.report(fmt.Sprintf("FAIL modelserver/%s (%s):", kase, state),
+				fmt.Sprintf("ok   modelserver/%s (%s)", kase, state))
 		}
 	case "valkeycache":
 		if r, err = loadRender(kase, state, path, "ValkeyCache"); err == nil {

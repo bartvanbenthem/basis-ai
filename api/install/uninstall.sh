@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Removes the PostgresCluster, ValkeyCache, Project and Location APIs from the
-# control plane. Refuses while PostgresClusters, ValkeyCaches or Projects exist, because deleting an
-# XRD cascade-deletes every object of that kind (and with it the databases in
+# Removes the PostgresCluster, ValkeyCache, ModelServer, ModelGateway,
+# GenAIStack, Project and Location APIs from the control plane. Refuses while
+# objects of those (but Locations) exist, because deleting an XRD
+# cascade-deletes every object of that kind (and with it the databases in
 # the locations). Locations go with their XRD: their ClusterProviderConfigs
 # too, but not their kubeconfig Secrets or what the platform installed in
 # those clusters.
@@ -39,6 +40,15 @@ if kubectl get crd modelgateways.ai.cndev.nl >/dev/null 2>&1; then
   fi
 fi
 
+if kubectl get crd modelservers.ai.cndev.nl >/dev/null 2>&1; then
+  remaining="$(kubectl get modelservers.ai.cndev.nl -A --no-headers 2>/dev/null | wc -l)"
+  if [[ "${remaining}" -gt 0 ]]; then
+    echo "ERROR: ${remaining} ModelServer(s) still exist; delete them first:" >&2
+    kubectl get modelservers.ai.cndev.nl -A >&2
+    exit 1
+  fi
+fi
+
 if kubectl get crd valkeycaches.cache.cndev.nl >/dev/null 2>&1; then
   remaining="$(kubectl get valkeycaches.cache.cndev.nl -A --no-headers 2>/dev/null | wc -l)"
   if [[ "${remaining}" -gt 0 ]]; then
@@ -63,6 +73,9 @@ kubectl delete -f "${API_DIR}/genaistack/definition.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/modelgateway/policies.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/modelgateway/composition.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/modelgateway/definition.yaml" --ignore-not-found
+kubectl delete -f "${API_DIR}/modelserver/policies.yaml" --ignore-not-found
+kubectl delete -f "${API_DIR}/modelserver/composition.yaml" --ignore-not-found
+kubectl delete -f "${API_DIR}/modelserver/definition.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/valkeycache/policies.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/valkeycache/composition.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/valkeycache/definition.yaml" --ignore-not-found

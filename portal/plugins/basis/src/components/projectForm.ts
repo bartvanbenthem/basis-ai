@@ -69,6 +69,7 @@ const RESERVED = [
   'caches',
   'stacks',
   'gateways',
+  'servers',
   'crossplane-system',
   'cnpg-system',
   'basis-locations',

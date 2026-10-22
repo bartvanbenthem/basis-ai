@@ -1,0 +1,32 @@
+# The Project (both sites) and the ModelServers the self-hosted models name:
+# llama in both sites, qwen-small (served as Qwen/Qwen3-0.6B) in the
+# protected site only.
+apiVersion: platform.cndev.nl/v1alpha1
+kind: Project
+metadata:
+  name: ai-team
+spec:
+  locations:
+    protected: si-ske-demo
+    recovery: onprem-ams
+---
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelServer
+metadata:
+  name: llama
+  namespace: ai-team
+spec:
+  model:
+    uri: hf://meta-llama/Llama-3.1-8B-Instruct
+  recovery:
+    enabled: true
+---
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelServer
+metadata:
+  name: qwen-small
+  namespace: ai-team
+spec:
+  model:
+    uri: hf://Qwen/Qwen3-0.6B
+    name: Qwen/Qwen3-0.6B

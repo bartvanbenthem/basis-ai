@@ -270,7 +270,12 @@ spec:
                       x-kubernetes-list-map-keys: [name]
                       items:
                         type: object
-                        required: [name, endpoint]
+                        required: [name]
+                        x-kubernetes-validations:
+                          - rule: "has(self.endpoint) != has(self.server)"
+                            message: a model has an endpoint (a provider's API) or a server (a ModelServer in this namespace), not both
+                          - rule: "!has(self.server) || (!has(self.apiKeySecretRef) && !has(self.upstreamModel) && self.schema == 'OpenAI')"
+                            message: a self-hosted model (server) takes no apiKeySecretRef, upstreamModel or schema; its ModelServer serves it
                         properties:
                           name:
                             type: string
@@ -284,6 +289,14 @@ spec:
                               https://api.openai.com/v1, https://api.anthropic.com/v1 or
                               http://vllm.models.svc:8000/v1 (self-hosted, OpenAI-compatible).
                             pattern: '^https?://[^/:]+(:[0-9]+)?(/.*)?$'
+                          server:
+                            type: string
+                            description: >-
+                              A ModelServer in this namespace (self-hosted: vLLM on KServe) instead of an endpoint. The
+                              gateway routes to it with prefix-cache-aware routing when the model's name is the one
+                              the server serves (its spec.model.name) and it has no fallbacks, nor is one; otherwise
+                              round robin over its replicas. Only in the sites the server runs in.
+                            pattern: '^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$'
                           schema:
                             type: string
                             description: >-

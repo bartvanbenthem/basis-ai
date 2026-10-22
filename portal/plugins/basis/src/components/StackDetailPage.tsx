@@ -37,7 +37,15 @@ import { useNavigate, useParams } from 'react-router-dom';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
 import { basisApiRef } from '../api';
-import { cacheRouteRef, clusterRouteRef, editStackRouteRef, gatewayRouteRef, projectRouteRef, stacksRouteRef } from '../routes';
+import {
+  cacheRouteRef,
+  clusterRouteRef,
+  editStackRouteRef,
+  gatewayRouteRef,
+  projectRouteRef,
+  serverRouteRef,
+  stacksRouteRef,
+} from '../routes';
 import { StaticTable } from './ClusterDetails';
 import { age, ErrorAlert, Fields, Mono, Panel, StackHealthBadge, stackHealth } from './common';
 
@@ -309,6 +317,7 @@ export const StackDetails = ({
   const clusterLink = useRouteRef(clusterRouteRef);
   const cacheLink = useRouteRef(cacheRouteRef);
   const gatewayLink = useRouteRef(gatewayRouteRef);
+  const serverLink = useRouteRef(serverRouteRef);
   const projectLink = useRouteRef(projectRouteRef);
   const h = stackHealth(summary);
   const ns = summary.namespace;
@@ -420,8 +429,17 @@ export const StackDetails = ({
             empty="No models yet: add them in Edit."
             columns={[
               { id: 'name', label: 'Model', isRowHeader: true, cell: m => <CellText title={m.name} description={m.upstreamModel ? `→ ${m.upstreamModel}` : undefined} /> },
-              { id: 'schema', label: 'API', cell: m => <CellText title={m.schema ?? 'OpenAI'} /> },
-              { id: 'endpoint', label: 'Endpoint', cell: m => <CellText title={m.endpoint} /> },
+              { id: 'schema', label: 'API', cell: m => <CellText title={m.server ? 'OpenAI (vLLM)' : m.schema ?? 'OpenAI'} /> },
+              {
+                id: 'endpoint',
+                label: 'Endpoint',
+                cell: m =>
+                  m.server ? (
+                    <CellText title={`Model server ${m.server}`} href={serverLink?.({ namespace: ns, name: m.server })} description="self-hosted" />
+                  ) : (
+                    <CellText title={m.endpoint ?? '-'} />
+                  ),
+              },
               { id: 'key', label: 'API key', cell: m => <CellText title={m.apiKeySecretRef ? `Secret ${m.apiKeySecretRef.name}` : 'none'} /> },
             ]}
           />

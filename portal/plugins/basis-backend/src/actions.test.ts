@@ -14,6 +14,16 @@ function setup(allow = true) {
     apply: jest.fn(async () => ({})),
   };
   const gateways = { list: jest.fn(async () => []), apply: jest.fn(async () => ({})) };
+  const servers = {
+    list: jest.fn(async () => [
+      {
+        apiVersion: 'ai.cndev.nl/v1alpha1',
+        kind: 'ModelServer',
+        metadata: { name: 'llama', namespace: 'demo' },
+        spec: { model: { uri: 'hf://meta-llama/Llama-3.1-8B-Instruct' }, replicas: 2, recovery: { enabled: true } },
+      },
+    ]),
+  };
   registerActions({
     actionsRegistry: { register: (a: any) => actions.set(a.name, a) },
     permissions: mockServices.permissions.mock({
@@ -22,12 +32,13 @@ function setup(allow = true) {
     k8s: { listProjects: jest.fn(async () => []) } as any,
     stacks: stacks as any,
     gateways: gateways as any,
+    servers: servers as any,
   });
   const run = (name: string, input: unknown) => {
     const a = actions.get(name);
     return a.action({ input: a.schema.input(z).parse(input), credentials: mockCredentials.user(), logger: mockServices.logger.mock() });
   };
-  return { actions, stacks, gateways, run };
+  return { actions, stacks, gateways, servers, run };
 }
 
 describe('MCP actions', () => {
@@ -37,8 +48,31 @@ describe('MCP actions', () => {
       'create-model-gateway',
       'list-genai-stacks',
       'list-model-gateways',
+      'list-model-servers',
       'list-projects',
     ]);
+  });
+
+  it('lists model servers with the name to give their gateway models', async () => {
+    const { output } = await setup().run('list-model-servers', {});
+    expect(output.servers[0]).toEqual({
+      name: 'llama',
+      project: 'demo',
+      ready: false,
+      model: 'llama',
+      uri: 'hf://meta-llama/Llama-3.1-8B-Instruct',
+      replicas: 2,
+      gpus: 1,
+      sites: ['protected', 'recovery'],
+    });
+  });
+
+  it('a gateway model on a model server', async () => {
+    const { run, gateways } = setup();
+    await run('create-model-gateway', { project: 'demo', name: 'llm', models: [{ name: 'llama', server: 'llama' }] });
+    expect(gateways.apply).toHaveBeenLastCalledWith(
+      expect.objectContaining({ spec: expect.objectContaining({ models: [{ name: 'llama', server: 'llama' }] }) }),
+    );
   });
 
   it('lists stacks with the gateway they use', async () => {

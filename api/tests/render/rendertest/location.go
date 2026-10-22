@@ -13,7 +13,7 @@ func assertLocation(r *render) {
 	check := r.check
 	ref := mp(r.xr, "spec", "credentials", "secretRef")
 
-	check(sameKeys(composed, set("providerconfig", "prometheus-role", "cnpg", "prometheus-operator", "valkey", "agent-router")),
+	check(sameKeys(composed, set("providerconfig", "prometheus-role", "cnpg", "prometheus-operator", "valkey", "agent-router", "kserve")),
 		"composed resources %v", r.keys())
 
 	// --- the ClusterProviderConfig the Project/PostgresCluster compositions use
@@ -29,7 +29,7 @@ func assertLocation(r *render) {
 		"credentials %s", repr(get(pc, "spec", "credentials")))
 
 	// --- Objects in the location
-	for _, k := range []string{"prometheus-role", "cnpg", "prometheus-operator", "valkey", "agent-router"} {
+	for _, k := range []string{"prometheus-role", "cnpg", "prometheus-operator", "valkey", "agent-router", "kserve"} {
 		obj := composed[k]
 		check(str(obj, "kind") == "Object", "%s: must be an Object", k)
 		check(equal(get(obj, "metadata", "namespace"), get(ref, "namespace")), "%s: not next to the kubeconfig Secret", k)
@@ -50,7 +50,7 @@ func assertLocation(r *render) {
 	check(err == nil && equal(get(role, "spec", "forProvider", "manifest", "rules"), get(installed, "rules")),
 		"ClusterRole rules differ from install/project-prometheus-role.yaml")
 	for _, pair := range [][2]string{{"cnpg", "v1.postgresql.cnpg.io"}, {"prometheus-operator", "v1.monitoring.coreos.com"},
-		{"valkey", "v1alpha1.valkey.io"}, {"agent-router", "v1beta1.aigateway.envoyproxy.io"}} {
+		{"valkey", "v1alpha1.valkey.io"}, {"agent-router", "v1beta1.aigateway.envoyproxy.io"}, {"kserve", "v1alpha2.serving.kserve.io"}} {
 		obj := composed[pair[0]]
 		check(equal(get(obj, "spec", "managementPolicies"), L{"Observe"}), "%s: must only observe", pair[0])
 		check(str(obj, "spec", "forProvider", "manifest", "metadata", "name") == pair[1], "%s: APIService", pair[0])
@@ -64,10 +64,10 @@ func assertLocation(r *render) {
 		"unreachable/empty": creating,
 		"ready/empty":       creating,
 		"minimal/observed": {"ready": false, "connected": true, "providerConfig": name,
-			"operators": M{"cloudnativepg": true, "prometheusOperator": false, "valkey": false, "agentRouter": false},
+			"operators": M{"cloudnativepg": true, "prometheusOperator": false, "valkey": false, "agentRouter": false, "kserve": false},
 			"message":   "Connected; the Prometheus Operator CRDs not installed (install it there, see deps/README.md)"},
 		"ready/observed": {"ready": true, "connected": true, "providerConfig": name,
-			"operators": M{"cloudnativepg": true, "prometheusOperator": true, "valkey": false, "agentRouter": false},
+			"operators": M{"cloudnativepg": true, "prometheusOperator": true, "valkey": false, "agentRouter": false, "kserve": false},
 			"message":   fmt.Sprintf("Location %s is ready", name)},
 		"unreachable/observed": {"ready": false, "connected": false, "providerConfig": name, "operators": nil,
 			"message": "Can't reach the cluster: connect failed: dial tcp 10.0.0.9:6443: i/o timeout"},

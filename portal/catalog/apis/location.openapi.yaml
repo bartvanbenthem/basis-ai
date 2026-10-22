@@ -199,6 +199,9 @@ components:
                   type: boolean
                 cloudnativepg:
                   type: boolean
+                kserve:
+                  description: KServe's LLMInferenceService controller, which ModelServers need (optional).
+                  type: boolean
                 prometheusOperator:
                   type: boolean
                 valkey:

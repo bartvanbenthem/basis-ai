@@ -6,6 +6,7 @@ Crossplane **v2** composite resources on three levels:
 |---|---|---|
 | Product | `ai.cndev.nl/v1alpha1 GenAIStack` | Retrieval, cache, model gateway and wiring for an AI service, per site. See [The GenAIStack API](#the-genaistack-api) |
 | Building blocks | `ai.cndev.nl/v1alpha1 ModelGateway` | An OpenAI-compatible gateway to hosted and self-hosted models, a key per client. See [The ModelGateway API](#the-modelgateway-api) |
+| | `ai.cndev.nl/v1alpha1 ModelServer` | A self-hosted model: vLLM on KServe, with llm-d's prefix-cache-aware routing. See [The ModelServer API](#the-modelserver-api) |
 | | `postgres.cndev.nl/v1alpha1 PostgresCluster` | ~10 lines of YAML into a production CloudNativePG setup (below) |
 | | `cache.cndev.nl/v1alpha1 ValkeyCache` | An exact or semantic cache. See [The ValkeyCache API](#the-valkeycache-api) |
 | Platform | `platform.cndev.nl/v1alpha1 Project`, `Location` | A team's namespace with its own Prometheus and Grafana, and the clusters workloads run in. See [The Project API](#the-project-api), [Locations](#locations) |
@@ -381,6 +382,67 @@ context construction; include the model ID and system-prompt version in the key;
 thresholds strict (about 0.9) and measure hits against wrong answers; and purge or shorten TTLs when
 source data changes. This is not the inference engine's KV/prefix cache (vLLM, LMCache).
 
+## The ModelServer API
+
+A self-hosted model, on infrastructure the Project owns: [vLLM](https://docs.vllm.ai/) run by
+[KServe](https://kserve.github.io/website/)'s `LLMInferenceService`, with [llm-d](https://llm-d.ai/)'s
+inference scheduler in front of the replicas. Clients reach it through a gateway, like any other
+model:
+
+```yaml
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelServer
+metadata:
+  name: llama
+  namespace: demo
+spec:
+  model:
+    uri: hf://meta-llama/Llama-3.1-8B-Instruct   # pvc://, oci:// (modelcar), s3:// too
+    tokenSecretRef: {name: hf-token}              # gated models: Secret in the Project, key HF_TOKEN
+  replicas: 2
+  resources: {cpu: "8", memory: 32Gi, gpus: 1}
+---
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelGateway
+metadata:
+  name: llm
+  namespace: demo
+spec:
+  models:
+    - name: llama                               # what the server serves (its spec.model.name or name)
+      server: llama
+```
+
+See [`examples/modelserver.yaml`](examples/modelserver.yaml) and
+[`apis/modelserver/definition.yaml`](apis/modelserver/definition.yaml).
+
+**Prefix-cache-aware routing.** With `routing.prefixCacheAware` (the default) KServe runs llm-d's
+endpoint picker next to the server, behind the Gateway API Inference Extension `InferencePool`
+`<name>-inference-pool`. The gateway hands each request to it, and it picks the replica most likely
+to hold the prompt's prefix in its KV cache, weighed against the replicas' load (KServe's default
+scheduler configuration). Repeated prefixes (system prompts, RAG context, an agent's growing
+conversation) then skip most of their prefill. Agent Router can't rename a model for a pool, nor put
+one next to other backends in a route rule, so a gateway uses the server's Service instead (round
+robin) for a model named differently from what the server serves, with fallbacks, or used as another
+model's fallback. Off, a gateway always uses the Service.
+
+| Composed resource | Where | Notes |
+|---|---|---|
+| `LLMInferenceService <name>` | each site's location (Object) | vLLM serving `model.uri` as `model.name` (the ModelServer's name by default), `replicas` (`recovery.replicas` in the recovery site), `resources` per replica (GPUs as `gpuResource`, tensor parallel over more than one), `image`, extra `args`, `scheduling`; `router.scheduler` with `routing.prefixCacheAware`. KServe creates the Deployment, the Service `<name>-kserve-workload-svc:8000` (`status.endpoint`) and, with the scheduler, the endpoint picker and `InferencePool <name>-inference-pool` (`status.inferencePool`) |
+| `Secret <name>-model-token`, `ServiceAccount <name>-model` | each site's location, with `model.tokenSecretRef` | The Hugging Face token, copied from the Project's Secret (never in an Object spec); KServe hands it to the model download through the ServiceAccount |
+| `PodMonitor <name>-vllm` | each site's location | vLLM's metrics (`vllm:*`), every series labelled with `server` |
+| `PrometheusRule <name>-server-alerts` | each site's location with replicas | `BasisModelServerDown` (no replica up for 15 minutes), `BasisModelServerQueueing`, `BasisModelServerKVCacheFull`, `BasisModelServerSlowFirstToken` (thresholds in `spec.alerts`) |
+| `GrafanaDashboard <name>-server` | control plane | Requests running and waiting, KV cache use per replica, prefix cache hit rate, time to first token, inter-token latency, request duration, tokens and preemptions, per site (`status.dashboardUid`) |
+
+It runs in the Project's protected location and, with `recovery.enabled`, in its recovery location
+too (`recovery.replicas`, 0 to keep it defined but stopped); a gateway routes a self-hosted model
+only in the sites its server runs in. Weights are loaded from `model.uri` in each site: `hf://` and
+`s3://` at every pod start, so use `pvc://` (a volume filled beforehand) or `oci://` (a modelcar
+image) for large models. `replicas: 0` stops a server and frees its GPUs.
+[`apis/modelserver/policies.yaml`](apis/modelserver/policies.yaml) refuses a server without a Project
+location, and the model residency policy counts a self-hosted model as `self-hosted`. Needs KServe in
+the location ([`deps/`](../deps/README.md#8-kserve--llm-d-locations-with-self-hosted-models)).
+
 ## The ModelGateway API
 
 One OpenAI-compatible entry point to a Project's models, hosted and self-hosted, on
@@ -402,9 +464,8 @@ spec:
       schema: Anthropic
       upstreamModel: claude-sonnet-5-5
       apiKeySecretRef: {name: anthropic}        # Secret in the Project, key apiKey
-    - name: llama                               # self-hosted, OpenAI-compatible
-      endpoint: http://vllm.models.svc:8000/v1
-      upstreamModel: meta-llama/Llama-3.1-8B-Instruct
+    - name: llama                               # self-hosted: a ModelServer in the Project
+      server: llama
 ```
 
 See [`examples/modelgateway.yaml`](examples/modelgateway.yaml) and
@@ -416,7 +477,7 @@ See [`examples/modelgateway.yaml`](examples/modelgateway.yaml) and
 | `Gateway <name>` + `EnvoyProxy <name>` | each site's location (Object) | Internal Service `<name>` (ClusterIP): `http://<name>.<namespace>.svc/v1`; `replicas` in the active site, `recovery.replicas` in the standby |
 | `SecurityPolicy`, `ClientTrafficPolicy`, `BackendTrafficPolicy`, `Secret <name>-keys` (copy) | each site's location | Client API key auth on `Authorization: Bearer`, not forwarded; prompts (also over HTTP/2: images) and responses (embeddings, long completions) up to 50Mi |
 | `AIGatewayRoute <name>` | each site's location | A rule per model on the request's `model` |
-| `Backend`, `AIServiceBackend`, `BackendTLSPolicy`, `BackendSecurityPolicy`, `Secret` per model | each site's location | The provider's endpoint (TLS for https), its key copied from the Project's Secret under `apiKey` |
+| `Backend`, `AIServiceBackend`, `BackendTLSPolicy`, `BackendSecurityPolicy`, `Secret` per model | each site's location | The provider's endpoint (TLS for https), its key copied from the Project's Secret under `apiKey`. A self-hosted model (`server`) is a rule to its ModelServer's `InferencePool` instead, or its Service (see [The ModelServer API](#the-modelserver-api)) |
 | `PodMonitor <name>-tokens` | each site's location | Agent Router's metrics (latency, time to first token and per output token, tokens, errors) and a few of Envoy's (retries, responses, rate-limited requests), every series labelled with `gateway` and Envoy's with `model`; the Project's cost rules price the tokens |
 | `PrometheusRule <name>-gateway-alerts` | each site's location | `BasisGatewaySlow`, `BasisGatewaySlowFirstToken`, `BasisGatewayErrors` (per model, thresholds in `spec.alerts`), `BasisGatewayMetricsMissing` |
 | `GrafanaDashboard <name>-gateway` | control plane | The gateway's dashboard in the Project's Grafana (`status.dashboardUid`) |
@@ -471,9 +532,8 @@ spec:
       - name: gpt-4o-mini                       # what apps send as "model"
         endpoint: https://api.openai.com/v1
         apiKeySecretRef: {name: openai}         # Secret in the Project, key apiKey
-      - name: llama                             # self-hosted, OpenAI-compatible
-        endpoint: http://vllm.models.svc:8000/v1
-        upstreamModel: meta-llama/Llama-3.1-8B-Instruct
+      - name: llama                             # self-hosted: a ModelServer in the Project
+        server: llama
 ```
 
 See [`examples/genaistack.yaml`](examples/genaistack.yaml),
@@ -796,6 +856,10 @@ apis/modelgateway/definition.yaml          ModelGateway XRD (namespaced): models
 apis/modelgateway/composition.yaml         one pipeline step: function-basis
 apis/modelgateway/policies.yaml            gateways only in a Project's open locations
 function/modelgateway/                     the ModelGateway composition in Go: client keys, Agent Router per site
+apis/modelserver/definition.yaml           ModelServer XRD (namespaced): a self-hosted model (vLLM on KServe, llm-d)
+apis/modelserver/composition.yaml          one pipeline step: function-basis
+apis/modelserver/policies.yaml             servers only in a Project's open locations
+function/modelserver/                      the ModelServer composition in Go: LLMInferenceService, token, monitoring per site
 apis/valkeycache/definition.yaml           ValkeyCache XRD (namespaced): an exact or semantic Valkey cache
 apis/valkeycache/composition.yaml          one pipeline step: function-basis
 function/valkeycache/                      the ValkeyCache composition in Go: password Secret, ValkeyCluster,
@@ -813,8 +877,8 @@ install/                                   Crossplane, function-basis, provider-
                                            install/uninstall, add-location.sh, migrate-locations.sh,
                                            migrate-to-basis.sh (from the cnpg names)
 examples/                                  PostgresClusters (incl. a geo-replicated and a restored one), a Project, the
-                                           project-defaults EnvironmentConfig, a ValkeyCache, a ModelGateway,
-                                           GenAIStacks (single site and geo)
+                                           project-defaults EnvironmentConfig, a ValkeyCache, a ModelServer, a
+                                           ModelGateway, GenAIStacks (single site and geo)
 tests/render/<api>/                        offline render + schema validation tests per API
 tests/render/rendertest/                   their assertions (one Go file per API)
 ```

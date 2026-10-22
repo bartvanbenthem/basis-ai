@@ -1,7 +1,8 @@
 # Model gateways
 
 A `ModelGateway` (`ai.cndev.nl/v1alpha1`) is one OpenAI-compatible endpoint to your Project's models:
-hosted ones (Anthropic, OpenAI, Mistral, ...) and self-hosted ones (vLLM, KServe, Ollama). It runs
+hosted ones (Anthropic, OpenAI, Mistral, ...) and self-hosted ones ([model servers](model-servers.md),
+or another OpenAI-compatible server such as Ollama). It runs
 [Agent Router](https://aigateway.envoyproxy.io/) (on Envoy Gateway) in your Project's location.
 
 - **Provider keys stay in the platform.** Clients never see them; the gateway swaps the client's key
@@ -46,9 +47,8 @@ spec:
       upstreamModel: claude-sonnet-5-5
       apiKeySecretRef:
         name: anthropic
-    - name: llama
-      endpoint: http://vllm.models.svc:8000/v1
-      upstreamModel: meta-llama/Llama-3.1-8B-Instruct
+    - name: llama                # a ModelServer in the Project
+      server: llama
 ```
 
 ## Call it
@@ -96,6 +96,7 @@ OPENAI_API_KEY=<the client's key>
 |---|---|
 | `name` | What clients send as `model` |
 | `endpoint` | The provider's base URL; its path is the API prefix, e.g. `https://api.openai.com/v1` |
+| `server` | Instead of `endpoint`: a [ModelServer](model-servers.md) in the Project, routed to with prefix-cache-aware routing (see [How the gateway routes to it](model-servers.md#how-the-gateway-routes-to-it)); takes no `schema`, `upstreamModel` or `apiKeySecretRef` |
 | `schema` | `OpenAI` (default; also every OpenAI-compatible server) or `Anthropic` |
 | `upstreamModel` | The model's name at the provider, when it differs |
 | `apiKeySecretRef` | Secret in the Project with the provider's key (`key`, default `apiKey`); none for an endpoint without auth |
@@ -119,7 +120,7 @@ spec:
       apiKeySecretRef: {name: stackit}
       fallbacks: [llama]            # tried when gpt-oss-120b keeps failing
     - name: llama
-      endpoint: http://vllm.models.svc:8000/v1
+      server: llama                 # a ModelServer; as a fallback, through its Service
   retry:
     attempts: 2                     # per model, the first included (default 2; 1 retries nothing)
     retryOn: [429, 500, 502, 503, 504]

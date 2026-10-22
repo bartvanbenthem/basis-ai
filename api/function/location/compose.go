@@ -13,11 +13,12 @@
 //	                     by Crossplane: removing the Location leaves it
 //	cnpg,                observe-only Objects for the APIServices
 //	prometheus-operator, v1.postgresql.cnpg.io, v1.monitoring.coreos.com,
-//	valkey, agent-router v1alpha1.valkey.io and v1beta1.aigateway.envoyproxy.io,
-//	                     which the API server registers for every CRD group:
-//	                     small, unlike the CRDs, whose schemas would land in the
-//	                     Object's status. The Valkey operator and Agent Router
-//	                     are optional and never make a Location unready
+//	valkey, agent-router, v1alpha1.valkey.io, v1beta1.aigateway.envoyproxy.io
+//	kserve               and v1alpha2.serving.kserve.io, which the API server
+//	                     registers for every CRD group: small, unlike the CRDs,
+//	                     whose schemas would land in the Object's status. The
+//	                     Valkey operator, Agent Router and KServe are optional
+//	                     and never make a Location unready
 //
 // The Objects live in the namespace of the kubeconfig Secret. Whether the
 // role Object syncs says whether Crossplane reaches the cluster
@@ -53,6 +54,7 @@ type Operators struct {
 	PrometheusOperator bool `json:"prometheusOperator"`
 	Valkey             bool `json:"valkey"`
 	AgentRouter        bool `json:"agentRouter"`
+	KServe             bool `json:"kserve"`
 }
 
 type Status struct {
@@ -80,6 +82,7 @@ var operators = []operator{
 	{"prometheus-operator", "v1.monitoring.coreos.com", false},
 	{"valkey", "v1alpha1.valkey.io", true},
 	{"agent-router", "v1beta1.aigateway.envoyproxy.io", true},
+	{"kserve", "v1alpha2.serving.kserve.io", true},
 }
 
 // Compose renders the desired state of a Location.
@@ -176,7 +179,7 @@ func Compose(in Input) *Output {
 	if connected {
 		out.Status.Operators = &Operators{
 			CloudNativePG: installed["cnpg"], PrometheusOperator: installed["prometheus-operator"],
-			Valkey: installed["valkey"], AgentRouter: installed["agent-router"],
+			Valkey: installed["valkey"], AgentRouter: installed["agent-router"], KServe: installed["kserve"],
 		}
 	}
 	reason := "Connecting"

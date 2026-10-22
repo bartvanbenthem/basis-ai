@@ -17,6 +17,7 @@ databases run in. Each component goes where its column says.
 | HAProxy Ingress | Grafana from outside, and the remote-write endpoint the locations' Prometheus send to | yes | no |
 | Valkey operator | `ValkeyCache` (exact and semantic caches) | no | where caches run |
 | Envoy Gateway + Agent Router | `ModelGateway` (an internal, OpenAI-compatible endpoint per gateway and site, optionally exposed over HTTPS; every GenAIStack has one) | no | where gateways and stacks run |
+| KServe (LLMInferenceService) + llm-d's scheduler | `ModelServer` (vLLM, prefix-cache-aware routing behind an InferencePool) | no | where self-hosted models run (GPU nodes) |
 
 Install them in the order below, each in the clusters its row says.
 
@@ -200,7 +201,59 @@ charts and images keep their `envoyproxy` names after the project's rename.
 Agent Router has no response cache: a stack's cache is used by the app, through
 the connection Secret ([`api`](../api/README.md#the-genaistack-api)).
 
-## 8. Platform settings: `project-defaults` (after `api/`)
+## 8. KServe + llm-d (locations with self-hosted models)
+
+A `ModelServer` is vLLM run by [KServe](https://kserve.github.io/website/)'s
+`LLMInferenceService` controller (Apache-2.0), with
+[llm-d](https://llm-d.ai/)'s inference scheduler (an endpoint picker behind a
+Gateway API Inference Extension `InferencePool`) for prefix-cache-aware
+routing. Install KServe's LLMInferenceService charts in every location
+self-hosted models run in, after step 7 (Agent Router routes to the
+servers), and let Envoy Gateway route to InferencePools there:
+
+```sh
+# CRDs (LLMInferenceService), then the controller with the InferencePool and
+# llm-d CRDs, then its configuration presets (vLLM, the scheduler).
+helm upgrade -i kserve-llmisvc-crd oci://ghcr.io/kserve/charts/kserve-llmisvc-crd \
+  --version v0.21.0 -n kserve --create-namespace --wait
+helm upgrade -i kserve-llmisvc-resources oci://ghcr.io/kserve/charts/kserve-llmisvc-resources \
+  --version v0.21.0 -n kserve --set kserve.version=v0.21.0 --wait
+kubectl -n kserve wait certificate/llmisvc-serving-cert --for=condition=Ready --timeout=3m
+kubectl -n kserve rollout restart deploy/llmisvc-controller-manager   # mounts its webhook certificate
+kubectl -n kserve rollout status deploy/llmisvc-controller-manager --timeout=5m
+helm upgrade -i kserve-runtime-configs oci://ghcr.io/kserve/charts/kserve-runtime-configs \
+  --version v0.21.0 -n kserve --set kserve.version=v0.21.0 \
+  --set kserve.servingruntime.enabled=false --set kserve.llmisvcConfigs.enabled=true --wait
+
+# Envoy Gateway (step 7) with InferencePool backends: Agent Router hands a
+# self-hosted model's requests to its server's endpoint picker.
+helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
+  --version v1.9.2 -n envoy-gateway-system \
+  -f agent-router/envoy-gateway-values.yaml -f agent-router/envoy-gateway-values-inferencepool.yaml
+kubectl -n envoy-gateway-system rollout status deploy/envoy-gateway --timeout=5m
+```
+
+Verify:
+
+```sh
+kubectl get crd llminferenceservices.serving.kserve.io inferencepools.inference.networking.k8s.io
+kubectl get llminferenceserviceconfigs -n kserve | grep config-llm-scheduler   # the presets
+kubectl get location <name> -o jsonpath='{.status.operators.kserve}'           # on the control plane: true
+```
+
+The GPUs are the cluster's: the NVIDIA (or AMD) GPU Operator and its device
+plugin, so nodes offer `nvidia.com/gpu` (`ModelServer` `spec.resources.gpuResource`
+for another). Taint GPU nodes and give the servers tolerations
+(`spec.scheduling`) to keep other workloads off them. Without GPUs, small models
+run on vLLM's CPU image (`gpus: 0`).
+
+The platform leaves KServe's TLS between gateway and server off (the
+default: `enableLLMInferenceServiceTLS` in KServe's `inferenceservice-config`):
+servers are reached in the Project's namespace only, through its gateway.
+Multi-node servers (LeaderWorkerSet) and KEDA autoscaling are KServe options the
+`ModelServer` API doesn't use yet.
+
+## 9. Platform settings: `project-defaults` (after `api/`)
 
 [`control-plane/project-defaults.yaml`](control-plane/project-defaults.yaml)
 is the `EnvironmentConfig` every Project's composition reads: one per control
@@ -226,7 +279,7 @@ documents every key. Projects pick up a change on their next reconcile.
 kubectl apply -f control-plane/project-defaults.yaml
 ```
 
-## 9. The `demo` Project (after `api/`)
+## 10. The `demo` Project (after `api/`)
 
 A namespace with its own Prometheus and Grafana is a **Project**
 (`platform.cndev.nl/v1alpha1`, see
@@ -237,7 +290,7 @@ and after registering the location the demo databases run in
 run against that location first). `demo/project.yaml` names it
 `si-ske-demo`: change that to your location's name.
 
-It needs the platform settings of step 8.
+It needs the platform settings of step 9.
 [`demo/project.yaml`](demo/project.yaml) is the `demo` Project. Crossplane
 creates the namespace on the control plane and in the location, a Prometheus
 in the location that scrapes every `PodMonitor` and `PrometheusRule` in it

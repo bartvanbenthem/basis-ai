@@ -15,6 +15,7 @@ import (
 	"github.com/bartvanbenthem/basis-ai/api/function/genaistack"
 	"github.com/bartvanbenthem/basis-ai/api/function/location"
 	"github.com/bartvanbenthem/basis-ai/api/function/modelgateway"
+	"github.com/bartvanbenthem/basis-ai/api/function/modelserver"
 	"github.com/bartvanbenthem/basis-ai/api/function/postgrescluster"
 	"github.com/bartvanbenthem/basis-ai/api/function/project"
 	"github.com/bartvanbenthem/basis-ai/api/function/valkeycache"
@@ -25,6 +26,7 @@ var (
 	valkeyCacheGVK     = schema.GroupVersionKind{Group: "cache.cndev.nl", Version: "v1alpha1", Kind: "ValkeyCache"}
 	genAIStackGVK      = schema.GroupVersionKind{Group: "ai.cndev.nl", Version: "v1alpha1", Kind: "GenAIStack"}
 	modelGatewayGVK    = schema.GroupVersionKind{Group: "ai.cndev.nl", Version: "v1alpha1", Kind: "ModelGateway"}
+	modelServerGVK     = schema.GroupVersionKind{Group: "ai.cndev.nl", Version: "v1alpha1", Kind: "ModelServer"}
 	projectGVK         = schema.GroupVersionKind{Group: "platform.cndev.nl", Version: "v1alpha1", Kind: "Project"}
 	locationGVK        = schema.GroupVersionKind{Group: "platform.cndev.nl", Version: "v1alpha1", Kind: "Location"}
 )
@@ -56,6 +58,8 @@ func (f *Function) RunFunction(_ context.Context, req *fnv1.RunFunctionRequest) 
 		f.genAIStack(req, rsp, oxr)
 	case modelGatewayGVK:
 		f.modelGateway(req, rsp, oxr)
+	case modelServerGVK:
+		f.modelServer(req, rsp, oxr)
 	case projectGVK:
 		f.project(req, rsp, oxr)
 	case locationGVK:
@@ -160,7 +164,7 @@ func (f *Function) genAIStack(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctio
 
 func (f *Function) modelGateway(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionResponse, oxr *resource.Composite) {
 	reqs := map[string]requirement{}
-	for key, r := range modelgateway.Requirements(oxr.Resource.GetNamespace()) {
+	for key, r := range modelgateway.Requirements(oxr.Resource.UnstructuredContent()) {
 		reqs[key] = requirement{apiVersion: r.APIVersion, kind: r.Kind, namespace: r.Namespace, name: r.Name}
 	}
 	compose(req, rsp, oxr, reqs, func(xr map[string]any, observed map[string]map[string]any, required map[string][]map[string]any) (*composed, error) {
@@ -169,6 +173,26 @@ func (f *Function) modelGateway(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunct
 			return nil, err
 		}
 		c := &composed{status: out.Status, conditionType: "GatewayReady"}
+		c.resources = make(map[string]composedResource, len(out.Composed))
+		for name, r := range out.Composed {
+			c.resources[name] = composedResource{r.Object, r.Ready}
+		}
+		c.condition.status, c.condition.reason, c.condition.message = out.Condition.Status, out.Condition.Reason, out.Condition.Message
+		return c, nil
+	})
+}
+
+func (f *Function) modelServer(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionResponse, oxr *resource.Composite) {
+	reqs := map[string]requirement{}
+	for key, r := range modelserver.Requirements(oxr.Resource.GetNamespace()) {
+		reqs[key] = requirement{apiVersion: r.APIVersion, kind: r.Kind, namespace: r.Namespace, name: r.Name}
+	}
+	compose(req, rsp, oxr, reqs, func(xr map[string]any, observed map[string]map[string]any, required map[string][]map[string]any) (*composed, error) {
+		out, err := modelserver.Compose(modelserver.Input{XR: xr, Observed: observed, Required: required})
+		if err != nil {
+			return nil, err
+		}
+		c := &composed{status: out.Status, conditionType: "ServerReady"}
 		c.resources = make(map[string]composedResource, len(out.Composed))
 		for name, r := range out.Composed {
 			c.resources[name] = composedResource{r.Object, r.Ready}

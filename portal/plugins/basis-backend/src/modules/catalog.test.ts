@@ -133,6 +133,30 @@ describe('PostgresClusterEntityProvider', () => {
     ]);
   });
 
+  it('maps a ModelServer to a model-server Resource linked to its dashboard', () => {
+    const server = {
+      apiVersion: 'ai.cndev.nl/v1alpha1',
+      kind: 'ModelServer',
+      metadata: { name: 'llama', namespace: 'payments', labels: { 'backstage.io/owner': 'team-ai' } },
+      spec: { model: { uri: 'hf://meta-llama/Llama-3.1-8B-Instruct' }, replicas: 2 },
+      status: { dashboardUid: 'basis-ms-abc' },
+    };
+    const entity = make().toServerEntity(server);
+    expect(entity).toMatchObject({
+      kind: 'Resource',
+      metadata: {
+        name: 'payments--llama.server',
+        description: expect.stringContaining('2 replica(s), 2 GPU(s) in all, prefix-cache-aware routing'),
+        tags: ['genai', 'llm', 'vllm', 'self-hosted'],
+      },
+      spec: { type: 'model-server', owner: 'team-ai' },
+    });
+    expect(entity.metadata.links).toEqual([
+      { url: 'https://portal.example.com/basis/servers/payments/llama', title: 'BASIS portal' },
+      { url: 'https://grafana.example.com/d/basis-ms-abc', title: 'Grafana dashboard' },
+    ]);
+  });
+
   it('maps a GenAIStack to a genai-stack Resource that depends on its parts', () => {
     const entity = make().toStackEntity(
       {

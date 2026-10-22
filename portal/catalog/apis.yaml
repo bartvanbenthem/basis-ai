@@ -1925,6 +1925,9 @@ spec:
                       type: boolean
                     cloudnativepg:
                       type: boolean
+                    kserve:
+                      description: KServe's LLMInferenceService controller, which ModelServers need (optional).
+                      type: boolean
                     prometheusOperator:
                       type: boolean
                     valkey:
@@ -2362,6 +2365,10 @@ spec:
                       type: object
                     models:
                       items:
+                        description: |-
+                          Rules:
+                          - a model has an endpoint (a provider's API) or a server (a ModelServer in this namespace), not both
+                          - a self-hosted model (server) takes no apiKeySecretRef, upstreamModel or schema; its ModelServer serves it
                         properties:
                           apiKeySecretRef:
                             description: Secret in this namespace holding the provider's API key; none for an endpoint without auth.
@@ -2397,13 +2404,16 @@ spec:
                               - OpenAI
                               - Anthropic
                             type: string
+                          server:
+                            description: 'A ModelServer in this namespace (self-hosted: vLLM on KServe) instead of an endpoint. The gateway routes to it with prefix-cache-aware routing when the model''s name is the one the server serves (its spec.model.name) and it has no fallbacks, nor is one; otherwise round robin over its replicas. Only in the sites the server runs in.'
+                            pattern: ^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$
+                            type: string
                           upstreamModel:
                             description: The model name at the provider, when it differs from name.
                             maxLength: 200
                             type: string
                         required:
                           - name
-                          - endpoint
                         type: object
                       maxItems: 30
                       type: array
@@ -2879,6 +2889,7 @@ spec:
                 Rules:
                 - activeSite can only be recovery with recovery.enabled
                 - a model's fallbacks must name other models of this gateway
+                - a model's fallbacks must name other models of this gateway
               properties:
                 activeSite:
                   default: protected
@@ -3044,6 +3055,10 @@ spec:
                   type: object
                 models:
                   items:
+                    description: |-
+                      Rules:
+                      - a model has an endpoint (a provider's API) or a server (a ModelServer in this namespace), not both
+                      - a self-hosted model (server) takes no apiKeySecretRef, upstreamModel or schema; its ModelServer serves it
                     properties:
                       apiKeySecretRef:
                         description: Secret in this namespace holding the provider's API key; none for an endpoint without auth.
@@ -3064,6 +3079,7 @@ spec:
                       fallbacks:
                         description: 'Other models of this gateway (by name) to try, in order, when this one fails after retry.attempts: the request goes to the next one, with that model''s name and key.'
                         items:
+                          maxLength: 200
                           type: string
                         maxItems: 5
                         type: array
@@ -3079,13 +3095,16 @@ spec:
                           - OpenAI
                           - Anthropic
                         type: string
+                      server:
+                        description: 'A ModelServer in this namespace (self-hosted: vLLM on KServe) instead of an endpoint. The gateway routes to it with prefix-cache-aware routing when the model''s name is the one the server serves (its spec.model.name) and it has no fallbacks, nor is one; otherwise round robin over its replicas. Only in the sites the server runs in.'
+                        pattern: ^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$
+                        type: string
                       upstreamModel:
                         description: The model name at the provider, when it differs from name.
                         maxLength: 200
                         type: string
                     required:
                       - name
-                      - endpoint
                     type: object
                   maxItems: 30
                   type: array
@@ -3472,6 +3491,564 @@ spec:
     tags:
       - description: An OpenAI-compatible gateway to a Project's models (Agent Router), in its site(s).
         name: ModelGateway
+  lifecycle: experimental
+  owner: guests
+  system: basis
+  type: openapi
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  description: 'A self-hosted model: vLLM on KServe with llm-d''s prefix-cache-aware routing, in a Project''s site(s) (ai.cndev.nl/v1alpha1)'
+  name: modelserver
+  tags:
+    - kubernetes
+    - crossplane
+  title: ModelServer API
+spec:
+  definition: |
+    components:
+      schemas:
+        ModelServer:
+          description: |-
+            A self-hosted model (vLLM on KServe, llm-d routing) in its Project's site(s).
+
+            Rules:
+            - ModelServer names are lowercase letters, digits and "-", start with a letter, max 40 characters
+          properties:
+            apiVersion:
+              enum:
+                - ai.cndev.nl/v1alpha1
+              type: string
+            kind:
+              enum:
+                - ModelServer
+              type: string
+            metadata:
+              $ref: '#/components/schemas/ObjectMeta'
+            spec:
+              properties:
+                alerts:
+                  default: {}
+                  description: 'Thresholds of the server''s alerts in the Project''s Prometheus (per site): requests waiting for a slot, the KV cache''s use, and the 95th percentile of the time to first token. A server without ready replicas always alerts.'
+                  properties:
+                    disabled:
+                      default: false
+                      description: No alerts for this server.
+                      type: boolean
+                    kvCacheUsagePercent:
+                      default: 95
+                      maximum: 100
+                      minimum: 1
+                      type: number
+                    timeToFirstTokenSeconds:
+                      default: 10
+                      minimum: 0
+                      type: number
+                    waitingRequests:
+                      default: 10
+                      minimum: 1
+                      type: integer
+                  type: object
+                args:
+                  description: Extra vllm serve arguments, one flag per item, e.g. [--max-model-len=8192, --gpu-memory-utilization=0.9]. The model, its served name, the port and the tensor parallelism are set already.
+                  items:
+                    maxLength: 500
+                    pattern: ^--[a-z0-9][-a-z0-9]*(=.*)?$
+                    type: string
+                  maxItems: 40
+                  type: array
+                crossplane:
+                  description: 'Set by Crossplane: how it composes this resource. Leave it out; the platform''s composition (modelserver) is the only one, and Crossplane fills in the rest.'
+                  properties:
+                    compositionRef:
+                      description: 'The Composition that composes this resource (default: modelserver).'
+                      properties:
+                        name:
+                          type: string
+                      required:
+                        - name
+                      type: object
+                    compositionRevisionRef:
+                      description: The Composition revision in use; Crossplane sets it.
+                      properties:
+                        name:
+                          type: string
+                      required:
+                        - name
+                      type: object
+                    compositionRevisionSelector:
+                      description: Selects the Composition revision by labels (with compositionUpdatePolicy Manual).
+                      properties:
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      required:
+                        - matchLabels
+                      type: object
+                    compositionSelector:
+                      description: Selects a Composition by labels instead of compositionRef.
+                      properties:
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      required:
+                        - matchLabels
+                      type: object
+                    compositionUpdatePolicy:
+                      default: Automatic
+                      description: 'Automatic: move to a new Composition revision as soon as there is one. Manual: stay on compositionRevisionRef.'
+                      enum:
+                        - Automatic
+                        - Manual
+                      type: string
+                    resourceRefs:
+                      description: The resources Crossplane composed for this one (read-only).
+                      items:
+                        properties:
+                          apiVersion:
+                            description: ""
+                            type: string
+                          kind:
+                            description: ""
+                            type: string
+                          name:
+                            description: ""
+                            type: string
+                        required:
+                          - apiVersion
+                          - kind
+                        type: object
+                      type: array
+                  type: object
+                image:
+                  description: The vLLM image; KServe's default (llm-d's CUDA build) when unset. For GPUs of another vendor or CPU only, e.g. vllm/vllm-openai-cpu:<version> with gpus 0.
+                  maxLength: 500
+                  type: string
+                model:
+                  properties:
+                    name:
+                      description: 'The name vLLM serves the model as: what clients send as "model", and the model name of a gateway that routes to this server. The ModelServer''s name when unset.'
+                      maxLength: 200
+                      minLength: 1
+                      type: string
+                    tokenSecretRef:
+                      description: Secret in this namespace with a Hugging Face token, for gated or private hf:// models. Copied to the location; only the download uses it.
+                      properties:
+                        key:
+                          default: HF_TOKEN
+                          pattern: ^[-._a-zA-Z0-9]+$
+                          type: string
+                        name:
+                          type: string
+                      required:
+                        - name
+                      type: object
+                    uri:
+                      description: 'Where the weights come from: hf://<org>/<model> (Hugging Face), pvc://<claim>/<path> (a PersistentVolumeClaim in the Project''s namespace in the location, already filled), oci://<image> (a modelcar image) or s3://<bucket>/<path>. hf:// and s3:// are downloaded at every pod start.'
+                      maxLength: 1000
+                      pattern: ^(hf|pvc|oci|s3)://.+
+                      type: string
+                  required:
+                    - uri
+                  type: object
+                recovery:
+                  default: {}
+                  description: The same server in the Project's recovery location (the Project needs one), for a gateway's standby there. Weights are loaded there from spec.model.uri as well.
+                  properties:
+                    enabled:
+                      default: false
+                      type: boolean
+                    replicas:
+                      default: 1
+                      description: vLLM replicas in the recovery site. 0 keeps it defined but stopped (no GPUs held); raise it to serve there.
+                      maximum: 20
+                      minimum: 0
+                      type: integer
+                  type: object
+                replicas:
+                  default: 1
+                  description: vLLM replicas in the protected site; 0 stops the server and frees its GPUs. With more than one, the scheduler spreads requests by prefix-cache affinity and load.
+                  maximum: 20
+                  minimum: 0
+                  type: integer
+                resources:
+                  default: {}
+                  description: Per replica. memory is request and limit.
+                  properties:
+                    cpu:
+                      default: "4"
+                      pattern: ^[0-9]+(\.[0-9]+)?m?$
+                      type: string
+                    gpuResource:
+                      default: nvidia.com/gpu
+                      description: The extended resource GPUs are requested as, e.g. amd.com/gpu or a MIG profile.
+                      pattern: ^[a-z0-9]([-.a-z0-9]*[a-z0-9])?/[-._a-zA-Z0-9]+$
+                      type: string
+                    gpus:
+                      default: 1
+                      description: GPUs per replica. More than one shards the model over them (tensor parallelism). 0 for a CPU-only vLLM image (spec.image), for small models.
+                      maximum: 8
+                      minimum: 0
+                      type: integer
+                    memory:
+                      default: 16Gi
+                      description: Mi or Gi.
+                      pattern: ^[0-9]+(Mi|Gi)$
+                      type: string
+                  type: object
+                routing:
+                  default: {}
+                  properties:
+                    prefixCacheAware:
+                      default: true
+                      description: 'Route through llm-d''s inference scheduler (an endpoint picker next to the server, behind an InferencePool): each request goes to the replica that most likely has its prompt''s prefix in its KV cache, weighed against the replicas'' load. Off, a gateway balances the replicas round robin.'
+                      type: boolean
+                  type: object
+                scheduling:
+                  description: Where the vLLM pods may run, e.g. on GPU nodes with a taint.
+                  properties:
+                    nodeSelector:
+                      additionalProperties:
+                        type: string
+                      type: object
+                    tolerations:
+                      items:
+                        properties:
+                          effect:
+                            enum:
+                              - NoSchedule
+                              - PreferNoSchedule
+                              - NoExecute
+                            type: string
+                          key:
+                            type: string
+                          operator:
+                            enum:
+                              - Exists
+                              - Equal
+                            type: string
+                          tolerationSeconds:
+                            type: integer
+                          value:
+                            type: string
+                        type: object
+                      maxItems: 20
+                      type: array
+                  type: object
+              required:
+                - model
+              type: object
+            status:
+              properties:
+                conditions:
+                  description: Conditions of the resource, one per type. Crossplane sets Ready (every composed resource is ready) and Synced (the last reconcile succeeded); the composition adds its own, e.g. PostgresReady.
+                  items:
+                    properties:
+                      lastTransitionTime:
+                        format: date-time
+                        type: string
+                      message:
+                        description: Human-readable detail
+                        type: string
+                      observedGeneration:
+                        format: int64
+                        type: integer
+                      reason:
+                        description: Machine-readable reason, e.g. Available, ReconcileSuccess
+                        type: string
+                      status:
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                        type: string
+                      type:
+                        description: e.g. Ready, Synced
+                        type: string
+                    required:
+                      - type
+                      - status
+                      - reason
+                      - lastTransitionTime
+                    type: object
+                  type: array
+                dashboardUid:
+                  description: The server's dashboard in the Project's Grafana, at <grafana>/d/<uid>.
+                  type: string
+                endpoint:
+                  description: Base URL in each site's location for OpenAI clients that call the server directly, without a gateway (no key, round robin over the replicas).
+                  type: string
+                inferencePool:
+                  description: The InferencePool a gateway routes to, with prefix-cache-aware routing.
+                  type: string
+                message:
+                  type: string
+                model:
+                  description: The name the model is served as (spec.model.name, else the ModelServer's name).
+                  type: string
+                ready:
+                  type: boolean
+                sites:
+                  items:
+                    properties:
+                      location:
+                        type: string
+                      message:
+                        description: What KServe reports when the site isn't ready.
+                        type: string
+                      ready:
+                        type: boolean
+                      replicas:
+                        type: integer
+                      site:
+                        type: string
+                    type: object
+                  type: array
+              type: object
+          required:
+            - apiVersion
+            - kind
+            - metadata
+          type: object
+        ObjectMeta:
+          description: Standard Kubernetes object metadata (the fields that matter here).
+          properties:
+            annotations:
+              additionalProperties:
+                type: string
+              type: object
+            labels:
+              additionalProperties:
+                type: string
+              type: object
+            name:
+              type: string
+            namespace:
+              type: string
+          required:
+            - name
+          type: object
+      securitySchemes:
+        bearerAuth:
+          description: A Kubernetes token (OIDC or ServiceAccount) with RBAC on modelservers.ai.cndev.nl
+          scheme: bearer
+          type: http
+    info:
+      description: |-
+        A self-hosted model (vLLM on KServe, llm-d routing) in its Project's site(s).
+
+        A Crossplane composite resource on the platform's control plane, namespaced: it lives in its Project's namespace. Use it with `kubectl` (short name `msrv`), GitOps, or the Kubernetes API below; the portal and its software templates create it the same way. This is the CRD Crossplane makes of the XRD (api/apis): the platform's fields plus Crossplane's own (spec.crossplane, status.conditions), so it is what the API server validates: the schema, its defaults and the rules listed under each field.
+      title: ModelServer (ai.cndev.nl/v1alpha1)
+      version: v1alpha1
+    openapi: 3.0.3
+    paths:
+      /apis/ai.cndev.nl/v1alpha1/namespaces/{namespace}/modelservers:
+        get:
+          operationId: listModelServer
+          responses:
+            "200":
+              content:
+                application/json:
+                  schema:
+                    properties:
+                      items:
+                        items:
+                          $ref: '#/components/schemas/ModelServer'
+                        type: array
+                    type: object
+              description: OK
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: List modelservers in a namespace
+          tags:
+            - ModelServer
+        parameters:
+          - description: The Project's namespace
+            in: path
+            name: namespace
+            required: true
+            schema:
+              type: string
+        post:
+          operationId: createModelServer
+          parameters:
+            - description: 'All: validate (schema, rules, admission policies) without persisting'
+              in: query
+              name: dryRun
+              schema:
+                enum:
+                  - All
+                type: string
+          requestBody:
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/ModelServer'
+            required: true
+          responses:
+            "201":
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/ModelServer'
+              description: Created
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "409":
+              description: Already exists
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Create a ModelServer
+          tags:
+            - ModelServer
+      /apis/ai.cndev.nl/v1alpha1/namespaces/{namespace}/modelservers/{name}:
+        delete:
+          operationId: deleteModelServer
+          responses:
+            "200":
+              description: Deletion started
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Delete a ModelServer
+          tags:
+            - ModelServer
+        get:
+          operationId: readModelServer
+          responses:
+            "200":
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/ModelServer'
+              description: OK
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Read a ModelServer
+          tags:
+            - ModelServer
+        parameters:
+          - description: The Project's namespace
+            in: path
+            name: namespace
+            required: true
+            schema:
+              type: string
+          - description: ModelServer name
+            in: path
+            name: name
+            required: true
+            schema:
+              type: string
+        patch:
+          description: JSON merge patch (only the fields sent change, null removes one) or server-side apply.
+          operationId: patchModelServer
+          parameters:
+            - description: 'All: validate (schema, rules, admission policies) without persisting'
+              in: query
+              name: dryRun
+              schema:
+                enum:
+                  - All
+                type: string
+          requestBody:
+            content:
+              application/apply-patch+yaml:
+                schema:
+                  type: object
+              application/merge-patch+json:
+                schema:
+                  type: object
+            required: true
+          responses:
+            "200":
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/ModelServer'
+              description: OK
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Change fields of a ModelServer
+          tags:
+            - ModelServer
+        put:
+          operationId: replaceModelServer
+          parameters:
+            - description: 'All: validate (schema, rules, admission policies) without persisting'
+              in: query
+              name: dryRun
+              schema:
+                enum:
+                  - All
+                type: string
+          requestBody:
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/ModelServer'
+            required: true
+          responses:
+            "200":
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/ModelServer'
+              description: OK
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "409":
+              description: 'Conflict: changed since read (resourceVersion)'
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Replace a ModelServer
+          tags:
+            - ModelServer
+    security:
+      - bearerAuth: []
+    servers:
+      - description: The control plane's Kubernetes API server
+        url: https://{apiserver}
+        variables:
+          apiserver:
+            default: kubernetes.default.svc
+    tags:
+      - description: A self-hosted model (vLLM on KServe, llm-d routing) in its Project's site(s).
+        name: ModelServer
   lifecycle: experimental
   owner: guests
   system: basis

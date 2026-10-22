@@ -16,9 +16,11 @@ import { ValkeyService, valkeyServiceRef } from './service/ValkeyService';
 import { StackService, stackServiceRef } from './service/StackService';
 import { GatewayService, gatewayServiceRef } from './service/GatewayService';
 import { ProviderKeyService, providerKeyServiceRef } from './service/ProviderKeyService';
+import { ServerService, serverServiceRef } from './service/ServerService';
 import {
   GenAIStack,
   ModelGateway,
+  ModelServer,
   PostgresCluster,
   Project,
   providerKeySecretName,
@@ -239,6 +241,33 @@ function fakeGateways(items: ModelGateway[] = []) {
   };
 }
 
+const llamaServer: ModelServer = {
+  apiVersion: 'ai.cndev.nl/v1alpha1',
+  kind: 'ModelServer',
+  metadata: { name: 'llama', namespace: 'demo' },
+  spec: { model: { uri: 'hf://meta-llama/Llama-3.1-8B-Instruct' }, replicas: 2 },
+  status: {
+    model: 'llama',
+    inferencePool: 'llama-inference-pool',
+    sites: [{ site: 'protected', location: 'dc-a', replicas: 2, ready: true }],
+    conditions: [{ type: 'Ready', status: 'True' }],
+  },
+};
+
+function fakeServers(items: ModelServer[] = []) {
+  return {
+    list: jest.fn(async (_ns?: string) => items),
+    get: jest.fn(async () => llamaServer),
+    workload: jest.fn(async () => ({
+      pods: [{ name: 'llama-kserve-0', location: 'dc-a', role: 'vLLM', phase: 'Running', ready: true, restarts: 0 }],
+      events: [],
+    })),
+    apply: jest.fn(async (o: any) => ({ ...llamaServer, metadata: { name: o.name, namespace: o.namespace } })),
+    patch: jest.fn(async () => llamaServer),
+    delete: jest.fn(async () => undefined),
+  };
+}
+
 function fakeAudit() {
   return {
     list: jest.fn(async ({ project }: { project: string }) => ({ project, items: [], clusters: [] })),
@@ -256,6 +285,7 @@ async function start(
   stacks = fakeStacks(),
   gateways = fakeGateways(),
   writtenKeys: Array<{ owner: string; keys: Record<string, string> }> = [],
+  servers = fakeServers(),
 ) {
   const { server } = await startTestBackend({
     features: [
@@ -299,6 +329,11 @@ async function start(
         service: gatewayServiceRef,
         deps: {},
         factory: () => gateways as unknown as GatewayService,
+      }),
+      createServiceFactory({
+        service: serverServiceRef,
+        deps: {},
+        factory: () => servers as unknown as ServerService,
       }),
       createServiceFactory({
         service: providerKeyServiceRef,
@@ -1260,6 +1295,61 @@ describe('basis backend', () => {
       expect((await request(server).delete('/api/basis/gateways/demo/llm')).status).toBe(409);
       expect(owned.delete).not.toHaveBeenCalled();
       expect(gateways.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('servers', () => {
+    const startWith = (servers: ReturnType<typeof fakeServers>, gateways = fakeGateways(), allow = true, k8s = fakeK8s()) =>
+      start(k8s, allow, fakeLocations(), fakeBuckets(), fakeVolumes(), fakeAudit(), fakeValkey(), fakeStacks(), gateways, [], servers);
+    const onServer: ModelGateway = { ...sharedGateway, spec: { models: [{ name: 'llama', server: 'llama' }] } };
+
+    it('lists servers with their served name and InferencePool', async () => {
+      const res = await request(await startWith(fakeServers([llamaServer]))).get('/api/basis/servers');
+      expect(res.status).toBe(200);
+      expect(res.body.items[0]).toMatchObject({
+        name: 'llama',
+        model: 'llama',
+        replicas: 2,
+        gpus: 1,
+        prefixCacheAware: true,
+        inferencePool: 'llama-inference-pool',
+        endpoint: 'http://llama-kserve-workload-svc.demo.svc:8000/v1',
+        ready: true,
+      });
+    });
+
+    it('shows its pods and the gateways that use it', async () => {
+      const res = await request(await startWith(fakeServers([llamaServer]), fakeGateways([onServer, sharedGateway]))).get(
+        '/api/basis/servers/demo/llama',
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.gateways).toEqual(['llm']);
+      expect(res.body.pods[0]).toMatchObject({ role: 'vLLM', location: 'dc-a' });
+    });
+
+    it('creates through the XR; refuses without the permission', async () => {
+      const servers = fakeServers();
+      const body = { name: 'llama', namespace: 'demo', spec: { model: { uri: 'hf://x/y' } } };
+      expect((await request(await startWith(servers)).post('/api/basis/servers').send(body)).status).toBe(201);
+      expect(servers.apply).toHaveBeenCalledWith(expect.objectContaining({ createOnly: true, spec: body.spec }));
+      expect((await request(await startWith(fakeServers(), fakeGateways(), false)).post('/api/basis/servers').send(body)).status).toBe(403);
+    });
+
+    it("won't delete a server a gateway routes to", async () => {
+      const servers = fakeServers([llamaServer]);
+      const res = await request(await startWith(servers, fakeGateways([onServer]))).delete('/api/basis/servers/demo/llama');
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toContain('llm');
+      expect(servers.delete).not.toHaveBeenCalled();
+      expect((await request(await startWith(servers)).delete('/api/basis/servers/demo/llama')).status).toBe(202);
+    });
+
+    it("won't delete a project with servers", async () => {
+      const k8s = fakeK8s();
+      k8s.list.mockResolvedValue([]);
+      const res = await request(await startWith(fakeServers([llamaServer]), fakeGateways(), true, k8s)).delete('/api/basis/projects/demo');
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toContain('model servers: llama');
     });
   });
 

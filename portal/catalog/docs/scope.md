@@ -19,7 +19,7 @@ API, this portal or an agent (MCP), and is operated by the platform.
 | Agents | MCP tools for the platform (Backstage MCP actions), `llms.txt` | **Available**; MCP servers per Project for retrieval and memory planned |
 | Context / RAG | PostgreSQL on [CloudNativePG](https://cloudnative-pg.io/) with pgvector, VectorChord and pg_search | **Available** |
 | Exact / semantic cache | [Valkey](https://valkey.io/) | **Available** |
-| Self-hosted models | [vLLM](https://docs.vllm.ai/) on [KServe](https://kserve.github.io/website/), [llm-d](https://llm-d.ai/) prefix-cache-aware routing | Planned (a gateway routes to your own servers today) |
+| Self-hosted models | `ModelServer`: [vLLM](https://docs.vllm.ai/) on [KServe](https://kserve.github.io/website/), [llm-d](https://llm-d.ai/) prefix-cache-aware routing | **Available**; multi-node servers and autoscaling planned |
 | Guardrails | At the gateway: PII filtering, prompt-injection checks, content policies | Planned |
 | Observability | [Prometheus](https://prometheus.io/) and [Grafana](https://grafana.com/) per Project; [OpenTelemetry](https://opentelemetry.io/) traces of agent runs | **Available** (Prometheus, Grafana); OpenTelemetry planned |
 | Object storage | A bucket per Project through [COSI](https://github.com/kubernetes-sigs/container-object-storage-interface) | **Available** |
@@ -31,7 +31,7 @@ Three levels, each for its own audience:
 | Level | APIs | For |
 |---|---|---|
 | Product | `GenAIStack` | Teams building an AI service: the default way in |
-| Building blocks | `ModelGateway`, `PostgresCluster`, `ValkeyCache` | What a stack is made of, on its own: a gateway shared by stacks and agents, a database for an agent's memory, a cache for tool results |
+| Building blocks | `ModelGateway`, `ModelServer`, `PostgresCluster`, `ValkeyCache` | What a stack is made of, on its own: a gateway shared by stacks and agents, a self-hosted model behind it, a database for an agent's memory, a cache for tool results |
 | Platform | `Project`, `Location`, the catalogs | Platform admins |
 
 A stack composes building blocks next to it and owns them: they change only through the stack.
@@ -46,7 +46,8 @@ Building blocks of your own sit beside it in the same Project.
  Model gateway (Agent Router)
    │   routes on the model; swaps the client key for the provider's
    ├──▶ hosted models (Anthropic, OpenAI, Mistral, ...)
-   └──▶ self-hosted models (vLLM, KServe, Ollama)
+   └──▶ self-hosted models: ModelServer (vLLM on KServe)
+          llm-d's endpoint picker: the replica with the prompt's prefix cached
 
  The app also uses:
    Cache (Valkey) ─────── exact and semantic answers, tool results
@@ -63,4 +64,5 @@ Building blocks of your own sit beside it in the same Project.
 - **MCP servers per Project:** retrieval over a stack's database and the agent's memory as tools,
   under the Project's access control.
 - **Agent observability:** OpenTelemetry traces of agent runs (tool calls, tokens, cost) per Project.
-- **Self-hosted inference:** vLLM on KServe for embeddings, guardrail models and air-gapped sites.
+- **Self-hosted inference at scale:** model servers over several nodes (LeaderWorkerSet), autoscaled
+  on queue length, and prefill/decode disaggregation (llm-d).

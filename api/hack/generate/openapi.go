@@ -31,6 +31,7 @@ var openAPIs = []struct{ name, title, description string }{
 	{"location", "Location API", "A Kubernetes cluster the platform runs workloads in (platform.cndev.nl/v1alpha1)"},
 	{"genaistack", "GenAIStack API", "A generative AI stack in a Project's site(s): RAG database, cache, model gateway and wiring (ai.cndev.nl/v1alpha1)"},
 	{"modelgateway", "ModelGateway API", "An OpenAI-compatible gateway to a Project's models, hosted and self-hosted, with a key per client (ai.cndev.nl/v1alpha1)"},
+	{"modelserver", "ModelServer API", "A self-hosted model: vLLM on KServe with llm-d's prefix-cache-aware routing, in a Project's site(s) (ai.cndev.nl/v1alpha1)"},
 	{"valkeycache", "ValkeyCache API", "An exact or semantic Valkey cache for an AI service (cache.cndev.nl/v1alpha1), namespaced in its Project"},
 }
 

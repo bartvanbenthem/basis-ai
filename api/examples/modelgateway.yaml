@@ -36,7 +36,11 @@ spec:
       endpoint: https://api.openai.com/v1
       apiKeySecretRef:
         name: openai
-    # A self-hosted, OpenAI-compatible server (vLLM, KServe, Ollama, ...).
+    # Self-hosted: ModelServer llama (examples/modelserver.yaml), through its
+    # InferencePool with prefix-cache-aware routing.
     - name: llama
-      endpoint: http://vllm.models.svc:8000/v1
-      upstreamModel: meta-llama/Llama-3.1-8B-Instruct
+      server: llama
+    # Another OpenAI-compatible server the platform doesn't run (Ollama, ...).
+    - name: qwen
+      endpoint: http://ollama.tools.svc:11434/v1
+      upstreamModel: qwen3:8b

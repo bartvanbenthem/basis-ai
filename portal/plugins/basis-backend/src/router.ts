@@ -23,6 +23,10 @@ import {
   basisGatewayDeletePermission,
   basisGatewayReadPermission,
   basisGatewayUpdatePermission,
+  basisServerCreatePermission,
+  basisServerDeletePermission,
+  basisServerReadPermission,
+  basisServerUpdatePermission,
   basisStackCreatePermission,
   basisStackCredentialsReadPermission,
   basisStackDeletePermission,
@@ -30,9 +34,11 @@ import {
   basisStackUpdatePermission,
   GenAIStackSummary,
   ModelGatewaySummary,
+  ModelServerSummary,
   STACK_OWNER_LABEL,
   stackPromotionPatch,
   summarizeGateway,
+  summarizeServer,
   summarizeStack,
   basisBucketReadPermission,
   basisClusterCreatePermission,
@@ -84,6 +90,7 @@ import { MAX_KUBECONFIG_BYTES } from './service/kubeconfig';
 import { LocationService, withTimeout } from './service/LocationService';
 import { GatewayService } from './service/GatewayService';
 import { ProviderKeyService } from './service/ProviderKeyService';
+import { ServerService } from './service/ServerService';
 import { StackService } from './service/StackService';
 import { ValkeyService } from './service/ValkeyService';
 import { VolumeService } from './service/VolumeService';
@@ -267,6 +274,12 @@ function withGatewayProject(summary: ModelGatewaySummary, project: Project | und
   return project ? { ...summary, project: project.metadata.name } : summary;
 }
 
+/** Adds the server's Project (same name as its namespace) and that project's Grafana. */
+function withServerProject(summary: ModelServerSummary, project: Project | undefined): ModelServerSummary {
+  if (!project) return summary;
+  return { ...summary, project: project.metadata.name, grafanaUrl: project.status?.grafana?.url || undefined };
+}
+
 /** Adds the cache's Project (same name as its namespace) and that project's Grafana. */
 function withCacheProject(summary: ValkeyCacheSummary, project: Project | undefined): ValkeyCacheSummary {
   if (!project) return summary;
@@ -286,9 +299,11 @@ export async function createRouter(options: {
   valkey: ValkeyService;
   stacks: StackService;
   gateways: GatewayService;
+  servers: ServerService;
   providerKeys: ProviderKeyService;
 }): Promise<express.Router> {
-  const { httpAuth, permissions, config, k8s, locations, buckets, volumes, audit, cost, valkey, stacks, gateways } = options;
+  const { httpAuth, permissions, config, k8s, locations, buckets, volumes, audit, cost, valkey, stacks, gateways, servers } =
+    options;
   const keys = options.providerKeys;
   /** A stack's or gateway's models, in its spec. */
   const stackModels = (spec: Record<string, any> | undefined) => spec?.gateway?.models;
@@ -557,7 +572,7 @@ export async function createRouter(options: {
     if (!p.success) throw new InputError(p.error.toString());
     await k8s.getProject(p.data.name);
     // Deleting the project deletes its namespace, and with it every
-    // GenAIStack, ModelGateway, PostgresCluster and ValkeyCache: only an empty project goes.
+    // GenAIStack, ModelGateway, ModelServer, PostgresCluster and ValkeyCache: only an empty project goes.
     const stackNames = (await stacks.list(p.data.name)).map(s => s.metadata.name);
     if (stackNames.length) {
       throw new ConflictError(
@@ -580,6 +595,12 @@ export async function createRouter(options: {
     if (gws.length) {
       throw new ConflictError(
         `Project ${p.data.name} still has model gateways: ${gws.sort().join(', ')}; delete them first`,
+      );
+    }
+    const srvs = (await servers.list(p.data.name)).map(s => s.metadata.name);
+    if (srvs.length) {
+      throw new ConflictError(
+        `Project ${p.data.name} still has model servers: ${srvs.sort().join(', ')}; delete them first`,
       );
     }
     await k8s.deleteProject(p.data.name);
@@ -875,6 +896,82 @@ export async function createRouter(options: {
       throw new ConflictError(`ModelGateway ${p.name} is used by stack(s) ${users.sort().join(', ')}; point them elsewhere first`);
     }
     await gateways.delete(p.namespace, p.name);
+    res.status(202).json({ status: 'deleting' });
+  });
+
+  // Model servers (ai.cndev.nl ModelServer): self-hosted models, vLLM on
+  // KServe, which gateways' models name. The spec goes to the XR as-is: the
+  // XRD validates it.
+  /** The gateways in a project with a model on server name. */
+  const gatewaysOn = async (ns: string, server: string) =>
+    (await gateways.list(ns))
+      .filter(g => (g.spec.models ?? []).some(m => m.server === server))
+      .map(g => g.metadata.name)
+      .sort();
+
+  router.get('/servers', async (req, res) => {
+    await authorize(req, basisServerReadPermission);
+    const q = z.object({ namespace: namespace.optional() }).safeParse(req.query);
+    if (!q.success) throw new InputError(q.error.toString());
+    const [items, projects] = await Promise.all([servers.list(q.data.namespace), k8s.listProjects()]);
+    const byName = new Map(projects.map(p => [p.metadata.name, p]));
+    res.json({
+      items: items.map(s => {
+        const project = byName.get(s.metadata.namespace);
+        return withServerProject(summarizeServer(s, project), project);
+      }),
+    });
+  });
+
+  router.get('/servers/:namespace/:name', async (req, res) => {
+    await authorize(req, basisServerReadPermission);
+    const p = params(req);
+    const [resource, project, users] = await Promise.all([
+      servers.get(p.namespace, p.name),
+      k8s.getProject(p.namespace).catch(() => undefined),
+      gatewaysOn(p.namespace, p.name).catch(() => []),
+    ]);
+    const workload = await servers.workload(resource, location => locations.kubeConfig(location));
+    res.json({
+      summary: withServerProject(summarizeServer(resource, project), project),
+      resource,
+      gateways: users,
+      ...workload,
+    });
+  });
+
+  router.post('/servers', async (req, res) => {
+    await authorize(req, basisServerCreatePermission);
+    const parsed = createSchema.safeParse(req.body);
+    if (!parsed.success) throw new InputError(parsed.error.toString());
+    const { owner, ...rest } = parsed.data;
+    const created = await servers.apply({
+      ...rest,
+      labels: owner ? { 'backstage.io/owner': owner } : undefined,
+      createOnly: true,
+    });
+    res.status(parsed.data.dryRun ? 200 : 201).json(created);
+  });
+
+  router.patch('/servers/:namespace/:name', async (req, res) => {
+    await authorize(req, basisServerUpdatePermission);
+    const p = params(req);
+    assertNotStackOwned('ModelServer', await servers.get(p.namespace, p.name));
+    const parsed = patchSchema.safeParse(req.body);
+    if (!parsed.success) throw new InputError(parsed.error.toString());
+    const { spec, owner, dryRun } = parsed.data;
+    res.json(await servers.patch({ ...p, spec, labels: ownerLabel(owner), dryRun }));
+  });
+
+  router.delete('/servers/:namespace/:name', async (req, res) => {
+    await authorize(req, basisServerDeletePermission);
+    const p = params(req);
+    assertNotStackOwned('ModelServer', await servers.get(p.namespace, p.name));
+    const users = await gatewaysOn(p.namespace, p.name);
+    if (users.length) {
+      throw new ConflictError(`ModelServer ${p.name} is used by gateway(s) ${users.join(', ')}; remove its models there first`);
+    }
+    await servers.delete(p.namespace, p.name);
     res.status(202).json({ status: 'deleting' });
   });
 

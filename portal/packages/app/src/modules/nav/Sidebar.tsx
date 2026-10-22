@@ -11,12 +11,13 @@ type Item = {
 const BASIS = '/basis';
 const STACKS = `${BASIS}/stacks`;
 const GATEWAYS = `${BASIS}/gateways`;
+const SERVERS = `${BASIS}/servers`;
 const CACHES = `${BASIS}/caches`;
 /** The PostgreSQL pages live at the root: /basis, /basis/create, /basis/<project>/<name>. */
 const isClusterPath = (p: string) =>
   p === BASIS ||
   (p.startsWith(`${BASIS}/`) &&
-    !['audit', 'projects', 'locations', 'buckets', 'volumes', 'caches', 'stacks', 'gateways'].some(s =>
+    !['audit', 'projects', 'locations', 'buckets', 'volumes', 'caches', 'stacks', 'gateways', 'servers'].some(s =>
       p.startsWith(`${BASIS}/${s}`),
     ));
 const under = (prefix: string) => (p: string) => p.startsWith(prefix) && !p.startsWith(`${prefix}/create`);
@@ -38,6 +39,7 @@ const sections: Array<{ title: string; items: Item[] }> = [
     title: 'Building blocks',
     items: [
       { label: 'Model gateways', to: GATEWAYS, isActive: p => p.startsWith(GATEWAYS) },
+      { label: 'Model servers', to: SERVERS, isActive: p => p.startsWith(SERVERS) },
       { label: 'PostgreSQL', to: BASIS, isActive: isClusterPath },
       { label: 'Valkey caches', to: CACHES, isActive: p => p.startsWith(CACHES) },
     ],

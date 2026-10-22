@@ -42,7 +42,10 @@ func (c *composition) backendRefs(m Model, byName map[string]Model) []any {
 	}
 	refs := []any{ref(m, 0)}
 	for _, f := range c.spec.fallbacks(m) {
-		refs = append(refs, ref(byName[f], len(refs)))
+		// Only the fallbacks this site serves.
+		if fb, ok := byName[f]; ok {
+			refs = append(refs, ref(fb, len(refs)))
+		}
 	}
 	return refs
 }

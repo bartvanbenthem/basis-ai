@@ -1,0 +1,59 @@
+# Observed state for xr/geo.yaml: the protected site waits for GPUs, the
+# token Secret is copied, the stopped standby is reported.
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: llama-70b-protected-server
+  namespace: ai-team
+  annotations:
+    crossplane.io/composition-resource-name: protected-server
+spec:
+  forProvider:
+    manifest: {}
+status:
+  atProvider:
+    manifest:
+      apiVersion: serving.kserve.io/v1alpha2
+      kind: LLMInferenceService
+      status:
+        conditions:
+          - type: Ready
+            status: "False"
+          - type: MainWorkloadReady
+            status: "False"
+            message: "0/4 nodes are available: 4 Insufficient nvidia.com/gpu"
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: llama-70b-protected-token
+  namespace: ai-team
+  annotations:
+    crossplane.io/composition-resource-name: protected-token
+spec:
+  forProvider:
+    manifest: {}
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: llama-70b-recovery-server
+  namespace: ai-team
+  annotations:
+    crossplane.io/composition-resource-name: recovery-server
+spec:
+  forProvider:
+    manifest: {}
+status:
+  atProvider:
+    manifest:
+      apiVersion: serving.kserve.io/v1alpha2
+      kind: LLMInferenceService
+      status:
+        conditions:
+          - type: Ready
+            status: "False"

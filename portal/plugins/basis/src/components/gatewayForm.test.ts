@@ -155,3 +155,30 @@ describe('gatewayForm', () => {
     expect(back.models[0].fallbacks).toBe('b');
   });
 });
+
+describe('gatewayForm with self-hosted models', () => {
+  const form = {
+    ...defaultGatewayForm(),
+    name: 'llm',
+    namespace: 'demo',
+    models: [{ ...defaultGatewayForm().models[0], name: 'llama', source: 'server' as const, server: 'llama', apiKey: 'ignored' }],
+  };
+
+  it('a server model is its name and server: no API, endpoint or key', () => {
+    expect((toGatewaySpec(form) as Record<string, any>).models).toEqual([{ name: 'llama', server: 'llama' }]);
+    expect(gatewayProviderKeys(form)).toBeUndefined();
+    expect(validateGateway(form).modelRows).toBeUndefined();
+    expect(validateGateway({ ...form, models: [{ ...form.models[0], server: '' }] }).modelRows?.[0]).toContain('model server');
+  });
+
+  it('round-trips a server model', () => {
+    const f = fromGateway({
+      apiVersion: 'ai.cndev.nl/v1alpha1',
+      kind: 'ModelGateway',
+      metadata: { name: 'llm', namespace: 'demo' },
+      spec: { models: [{ name: 'llama', server: 'llama', fallbacks: ['gpt'] }, { name: 'gpt', endpoint: 'https://api.openai.com/v1' }] },
+    });
+    expect(f.models[0]).toMatchObject({ source: 'server', server: 'llama', fallbacks: 'gpt' });
+    expect((toGatewaySpec(f) as Record<string, any>).models[0]).toEqual({ name: 'llama', server: 'llama', fallbacks: ['gpt'] });
+  });
+});

@@ -15,6 +15,9 @@ import type {
   GenAIStackSummary,
   ModelGateway,
   ModelGatewaySummary,
+  ModelServer,
+  ModelServerDetails,
+  ModelServerSummary,
   StackConnection,
   ClusterConnection,
   ClusterExtension,
@@ -199,6 +202,13 @@ export interface BasisApi {
   deleteGateway(namespace: string, name: string): Promise<void>;
   /** The clients' API keys. */
   getGatewayKeys(namespace: string, name: string): Promise<GatewayKey[]>;
+  listServers(namespace?: string): Promise<ModelServerSummary[]>;
+  /** The server, its pods and events in its sites, and the gateways that use it. */
+  getServer(namespace: string, name: string): Promise<ModelServerDetails>;
+  createServer(request: CreateClusterRequest): Promise<ModelServer>;
+  patchServer(namespace: string, name: string, request: PatchRequest & { owner?: string | null }): Promise<ModelServer>;
+  /** Deletes the server: its GPUs are freed, gateways' models on it stop answering. */
+  deleteServer(namespace: string, name: string): Promise<void>;
 }
 
 export const basisApiRef = createApiRef<BasisApi>().with({
@@ -481,6 +491,30 @@ export class BasisClient implements BasisApi {
 
   async getGatewayKeys(namespace: string, name: string) {
     return (await this.#request<{ items: GatewayKey[] }>(`/gateways/${enc(namespace)}/${enc(name)}/keys`)).items;
+  }
+
+  async listServers(namespace?: string) {
+    const query = namespace ? `?namespace=${enc(namespace)}` : '';
+    return (await this.#request<{ items: ModelServerSummary[] }>(`/servers${query}`)).items;
+  }
+
+  getServer(namespace: string, name: string) {
+    return this.#request<ModelServerDetails>(`/servers/${enc(namespace)}/${enc(name)}`);
+  }
+
+  createServer(request: CreateClusterRequest) {
+    return this.#request<ModelServer>('/servers', { method: 'POST', body: JSON.stringify(request) });
+  }
+
+  patchServer(namespace: string, name: string, request: PatchRequest & { owner?: string | null }) {
+    return this.#request<ModelServer>(`/servers/${enc(namespace)}/${enc(name)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async deleteServer(namespace: string, name: string) {
+    await this.#request(`/servers/${enc(namespace)}/${enc(name)}`, { method: 'DELETE' });
   }
 
   async #request<T>(path: string, init?: RequestInit): Promise<T> {

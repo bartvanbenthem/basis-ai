@@ -2,8 +2,8 @@
 # Installs Crossplane v2 core, function-basis (every API's composition,
 # ../function), provider-kubernetes
 # (which places everything in the locations), the RBAC Crossplane needs, and
-# the Location, Project, PostgresCluster, ValkeyCache, ModelGateway and
-# GenAIStack APIs (XRDs + Compositions +
+# the Location, Project, PostgresCluster, ValkeyCache, ModelServer,
+# ModelGateway and GenAIStack APIs (XRDs + Compositions +
 # admission policies) into the control plane cluster your current kubeconfig
 # context points at. Idempotent -- safe to re-run. Register the locations the
 # databases run in afterwards with add-location.sh.
@@ -12,8 +12,9 @@
 # It does run each Project's Prometheus (the remote-write receiver) and
 # Grafana: install the Prometheus Operator and grafana-operator first
 # (../../deps), or switch them off per Project. Every location needs
-# ../../deps/cnpg/install.sh and the Prometheus Operator, and the Valkey
-# operator where ValkeyCaches run (../../deps/README.md).
+# ../../deps/cnpg/install.sh and the Prometheus Operator, the Valkey
+# operator where ValkeyCaches run, and KServe where ModelServers run
+# (../../deps/README.md).
 #
 #   FUNCTION_MANIFEST=<file>        install function-basis from this
 #                                   manifest instead of function-basis.yaml
@@ -99,6 +100,12 @@ kubectl wait xrd/valkeycaches.cache.cndev.nl --for=condition=Established --timeo
 kubectl apply -f "${API_DIR}/valkeycache/composition.yaml"
 kubectl apply -f "${API_DIR}/valkeycache/policies.yaml"
 
+echo "==> ModelServer XRD + Composition + admission policy"
+kubectl apply -f "${API_DIR}/modelserver/definition.yaml"
+kubectl wait xrd/modelservers.ai.cndev.nl --for=condition=Established --timeout=120s
+kubectl apply -f "${API_DIR}/modelserver/composition.yaml"
+kubectl apply -f "${API_DIR}/modelserver/policies.yaml"
+
 echo "==> ModelGateway XRD + Composition + admission policy"
 kubectl apply -f "${API_DIR}/modelgateway/definition.yaml"
 kubectl wait xrd/modelgateways.ai.cndev.nl --for=condition=Established --timeout=120s
@@ -120,5 +127,6 @@ echo "      kubectl apply -f ${EXAMPLES}/project-defaults.yaml   # edit the ingr
 echo "      kubectl apply -f ${EXAMPLES}/project.yaml           # its spec.locations name your locations"
 echo "      kubectl apply -f ${EXAMPLES}/minimal.yaml"
 echo "      kubectl apply -f ${EXAMPLES}/valkeycache.yaml     # needs the Valkey operator in the location"
+echo "      kubectl apply -f ${EXAMPLES}/modelserver.yaml     # needs KServe (and GPUs) in the location"
 echo "      kubectl apply -f ${EXAMPLES}/modelgateway.yaml    # needs Envoy Gateway + Agent Router in the location"
 echo "      kubectl apply -f ${EXAMPLES}/genaistack.yaml      # the same, plus the Valkey operator"

@@ -1,0 +1,22 @@
+# Self-hosted models next to a hosted one, in both sites: llama on its
+# ModelServer's InferencePool (prefix-cache-aware), qwen served under
+# another name (so through the server's Service, renamed) and only in the
+# protected site, and qwen as the hosted model's fallback.
+apiVersion: ai.cndev.nl/v1alpha1
+kind: ModelGateway
+metadata:
+  name: llm-local
+  namespace: ai-team
+spec:
+  recovery:
+    enabled: true
+  models:
+    - name: gpt-4o-mini
+      endpoint: https://api.openai.com/v1
+      apiKeySecretRef:
+        name: openai
+      fallbacks: [qwen]
+    - name: llama
+      server: llama
+    - name: qwen
+      server: qwen-small

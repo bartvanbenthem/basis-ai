@@ -42,7 +42,7 @@ import {
   validateGateway,
 } from './gatewayForm';
 import { ExposeFields } from './ExposeFields';
-import { emptyModel, ModelFields } from './ModelFields';
+import { emptyModel, ModelFields, useProjectServers } from './ModelFields';
 
 const FIXED = 'Fixed after creation.';
 
@@ -63,6 +63,7 @@ const GatewayFormFields = ({
   projects?: ProjectSummary[];
 }) => {
   const set = <K extends keyof GatewayForm>(key: K) => (value: GatewayForm[K]) => setForm(f => ({ ...f, [key]: value }));
+  const servers = useProjectServers(form.namespace);
   const err = (key: Exclude<keyof GatewayErrors, 'modelRows'>) => (touched ? errors[key] : undefined);
   const project = projects?.find(p => p.name === form.namespace);
   const recoveryLocation = project?.recoveryLocation;
@@ -257,6 +258,7 @@ const GatewayFormFields = ({
             index={i}
             namespace={form.namespace}
             owner={form.name}
+            servers={servers}
             error={touched ? errors.modelRows?.[i] : undefined}
             onChange={model => setForm(f => ({ ...f, models: f.models.map((x, j) => (j === i ? model : x)) }))}
             onRemove={() => setForm(f => ({ ...f, models: f.models.filter((_, j) => j !== i) }))}

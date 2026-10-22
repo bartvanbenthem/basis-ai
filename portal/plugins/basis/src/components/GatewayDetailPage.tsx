@@ -34,7 +34,7 @@ import useAsync from 'react-use/esm/useAsync';
 import useAsyncRetry from 'react-use/esm/useAsyncRetry';
 import useInterval from 'react-use/esm/useInterval';
 import { basisApiRef } from '../api';
-import { editGatewayRouteRef, gatewaysRouteRef, projectRouteRef, stackRouteRef } from '../routes';
+import { editGatewayRouteRef, gatewaysRouteRef, projectRouteRef, serverRouteRef, stackRouteRef } from '../routes';
 import { StaticTable } from './ClusterDetails';
 import { age, ErrorAlert, Fields, GatewayHealthBadge, gatewayHealth, Mono, Panel } from './common';
 
@@ -171,6 +171,7 @@ export const GatewayDetails = ({
 }) => {
   const projectLink = useRouteRef(projectRouteRef);
   const stackLink = useRouteRef(stackRouteRef);
+  const serverLink = useRouteRef(serverRouteRef);
   const h = gatewayHealth(summary);
   const ns = summary.namespace;
   const models = (resource.spec.models ?? []).map(m => ({ ...m, id: m.name }));
@@ -246,8 +247,17 @@ export const GatewayDetails = ({
           empty="No models yet: add them in Edit."
           columns={[
             { id: 'name', label: 'Model', isRowHeader: true, cell: m => <CellText title={m.name} description={m.upstreamModel ? `→ ${m.upstreamModel}` : undefined} /> },
-            { id: 'schema', label: 'API', cell: m => <CellText title={m.schema ?? 'OpenAI'} /> },
-            { id: 'endpoint', label: 'Endpoint', cell: m => <CellText title={m.endpoint} /> },
+            { id: 'schema', label: 'API', cell: m => <CellText title={m.server ? 'OpenAI (vLLM)' : m.schema ?? 'OpenAI'} /> },
+            {
+              id: 'endpoint',
+              label: 'Endpoint',
+              cell: m =>
+                m.server ? (
+                  <CellText title={`Model server ${m.server}`} href={serverLink?.({ namespace: ns, name: m.server })} description="self-hosted" />
+                ) : (
+                  <CellText title={m.endpoint ?? '-'} />
+                ),
+            },
             { id: 'key', label: 'Provider key', cell: m => <CellText title={m.apiKeySecretRef ? `Secret ${m.apiKeySecretRef.name}` : 'none'} /> },
           ]}
         />

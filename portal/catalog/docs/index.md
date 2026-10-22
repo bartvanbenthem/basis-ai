@@ -16,6 +16,8 @@ platform runs it. Built on [Crossplane](https://www.crossplane.io/) and
 - **Model gateways:** one OpenAI-compatible endpoint to hosted and self-hosted models. Provider keys
   stay in the platform; every app, agent and stack gets a key of its own. See
   [Model gateways](ai/model-gateways.md).
+- **Self-hosted models:** open models on your own GPUs with vLLM, behind the same gateway, routed to
+  the replica that has the prompt's prefix cached. See [Model servers](ai/model-servers.md).
 - **Agents welcome:** the platform as MCP tools and a Kubernetes API with schemas, dry runs and
   admission rules that explain themselves. Agents work within your permissions. See
   [Agents and MCP](ai/agents.md).
@@ -51,6 +53,7 @@ platform runs it. Built on [Crossplane](https://www.crossplane.io/) and
 |---|---|
 | Run an AI service: RAG, cache, models | [Getting started](getting-started.md), [GenAI stacks](ai/genai-stacks.md) |
 | Give apps and agents access to models | [Model gateways](ai/model-gateways.md) |
+| Run an open model on our own GPUs | [Model servers](ai/model-servers.md) |
 | Let an agent build on the platform | [Agents and MCP](ai/agents.md) |
 | See the full stack and what's coming | [Platform scope](scope.md) |
 | A database on its own | [Create a cluster](clusters/create.md), [Configure a cluster](clusters/configure.md), [Vector & RAG](clusters/vector-rag.md) |
