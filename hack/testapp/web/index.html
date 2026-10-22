@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BASIS Lens</title>
+<style>
+:root {
+  --bg: #f5f6f8; --panel: #ffffff; --text: #16191d; --muted: #5f6873; --line: #e2e5e9;
+  --accent: #3156e8; --accent-soft: #e9eefe; --ok: #1d8a4b; --warn: #b46c00; --bad: #c83232;
+  --exact: #1d8a4b; --semantic: #7b3fd8; --miss: #5f6873; --shade: rgba(10, 12, 16, .72);
+  --embed: #3156e8; --cache: #7b3fd8; --retrieve: #0e8d8d; --generate: #d8822a; --describe: #c2410c; --resize: #8a94a0; --store: #0e8d8d;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1114; --panel: #181b20; --text: #e7eaee; --muted: #9aa3ae; --line: #2a2f37;
+    --accent: #7d9bff; --accent-soft: #1e2847; --ok: #4cc283; --warn: #e4a73c; --bad: #f06b6b;
+    --exact: #4cc283; --semantic: #b58cf3; --miss: #9aa3ae;
+    --embed: #7d9bff; --cache: #b58cf3; --retrieve: #3cc7c7; --generate: #f0a35c; --describe: #fb8a4c; --resize: #8a94a0; --store: #3cc7c7;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+.bar { max-width: 1400px; margin: 0 auto; padding: 12px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.brand { font-weight: 700; font-size: 17px; display: flex; align-items: center; gap: 9px; margin-right: 8px; }
+.logo { width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #9fb4ff, var(--accent) 60%); box-shadow: inset 0 0 0 4px rgba(255,255,255,.25); }
+.search { flex: 1; min-width: 240px; display: flex; gap: 8px; position: relative; }
+.search input { flex: 1; min-width: 0; padding: 10px 14px 10px 38px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--text); font: inherit; }
+.search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.search svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12.5px; color: var(--muted); background: var(--panel); white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); } .dot.warn { background: var(--warn); }
+button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button:disabled { opacity: .5; cursor: default; }
+main { max-width: 1400px; margin: 0 auto; padding: 16px 16px 60px; }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.toolbar .spacer { flex: 1; }
+.meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--muted); }
+.badge { font-size: 12px; font-weight: 650; padding: 2px 9px; border-radius: 999px; color: #fff; }
+.badge.exact { background: var(--exact); } .badge.semantic { background: var(--semantic); } .badge.miss { background: var(--miss); }
+.timeline { display: flex; height: 6px; width: 160px; border-radius: 3px; overflow: hidden; background: var(--line); }
+.timeline span { height: 100%; }
+.recent { display: flex; gap: 6px; flex-wrap: wrap; }
+.recent button { font-size: 12.5px; padding: 3px 10px; background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.grid { columns: 4 260px; column-gap: 12px; }
+.tile { break-inside: avoid; margin: 0 0 12px; position: relative; border-radius: 10px; overflow: hidden; cursor: pointer; background: var(--line); display: block; width: 100%; padding: 0; border: 0; }
+.tile img { display: block; width: 100%; height: auto; transition: transform .25s; }
+.tile:hover img { transform: scale(1.03); }
+.tile .cap { position: absolute; inset: auto 0 0 0; padding: 26px 10px 8px; background: linear-gradient(transparent, var(--shade)); color: #fff; font-size: 13px; text-align: left; opacity: 0; transition: opacity .2s; }
+.tile:hover .cap, .tile:focus .cap { opacity: 1; }
+.tile .why { position: absolute; top: 8px; right: 8px; background: var(--shade); color: #fff; font-size: 11.5px; border-radius: 999px; padding: 1px 8px; }
+.empty { text-align: center; padding: 70px 16px; color: var(--muted); }
+.empty h2 { color: var(--text); margin: 0 0 6px; font-size: 21px; }
+.progress { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; max-width: 360px; margin: 14px auto 6px; }
+.progress span { display: block; height: 100%; background: var(--accent); transition: width .4s; }
+.drop { position: fixed; inset: 0; background: rgba(49, 86, 232, .18); border: 3px dashed var(--accent); z-index: 20; display: none; place-items: center; font-size: 22px; font-weight: 650; color: var(--accent); }
+.drop.on { display: grid; }
+.drop div { background: var(--panel); padding: 20px 28px; border-radius: 14px; text-align: center; }
+.drop small { display: block; font-size: 14px; font-weight: 400; color: var(--muted); }
+.toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 30; max-width: calc(100% - 32px); display: none; }
+.modal { position: fixed; inset: 0; background: var(--shade); z-index: 10; display: none; padding: 24px 16px; overflow-y: auto; }
+.modal.on { display: block; }
+.sheet { max-width: 1150px; margin: 0 auto; background: var(--panel); border-radius: 14px; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); }
+@media (max-width: 860px) { .sheet { grid-template-columns: minmax(0, 1fr); } }
+.sheet .pic { background: #000; display: grid; place-items: center; min-height: 300px; }
+.sheet .pic img { max-width: 100%; max-height: 82vh; display: block; }
+.info { padding: 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.info h2 { margin: 0; font-size: 19px; }
+.info .close { align-self: flex-end; padding: 2px 10px; margin-bottom: -10px; }
+.tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.tags button { font-size: 12.5px; padding: 2px 10px; }
+.credit { font-size: 13px; color: var(--muted); }
+.credit a { color: var(--muted); }
+.ask { display: flex; gap: 8px; }
+.ask input { flex: 1; min-width: 0; padding: 9px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--text); font: inherit; font-size: 14px; }
+.answer { background: var(--bg); border-radius: 10px; padding: 10px 12px; font-size: 14.5px; white-space: pre-wrap; }
+.answer .meta { margin-top: 6px; }
+.suggest { display: flex; gap: 6px; flex-wrap: wrap; }
+.suggest button { font-size: 12.5px; padding: 3px 10px; background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.muted { color: var(--muted); font-size: 13px; }
+.spinner { width: 15px; height: 15px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; vertical-align: -3px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="brand"><div class="logo"></div>BASIS Lens</div>
+    <form class="search" id="search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" autocomplete="off" placeholder="Describe a photo: “a dog on a beach at sunset”, “something cozy”, “blue and minimal”…" maxlength="500">
+      <button type="button" id="by-image" title="Search with a photo of your own">By image</button>
+    </form>
+    <div class="chips">
+      <span class="chip" id="site-chip"><span class="dot"></span>site</span>
+      <span class="chip" id="db-chip"><span class="dot"></span>database</span>
+      <span class="chip" id="cache-chip"><span class="dot"></span>cache</span>
+      <span class="chip" id="gw-chip"><span class="dot"></span>gateway</span>
+    </div>
+  </div>
+</header>
+<main>
+  <div class="toolbar">
+    <div class="meta" id="meta"></div>
+    <div class="spacer"></div>
+    <label class="muted"><input type="checkbox" id="nocache"> Skip the cache</label>
+    <button id="add">Add photos</button>
+    <button id="seed">Load samples</button>
+  </div>
+  <div class="recent" id="recent" style="margin-bottom:14px"></div>
+  <div id="grid" class="grid"></div>
+  <div id="empty" class="empty" style="display:none"></div>
+</main>
+<input type="file" id="files" accept="image/*" multiple class="sr">
+<input type="file" id="query-file" accept="image/*" class="sr">
+<div class="drop" id="drop"><div>Drop photos<small>onto the left half to add them to the library, the right half to search with them</small></div></div>
+<div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const STAGES = ["resize", "cache", "embed", "describe", "retrieve", "generate", "store"];
+const ASK = ["What's the mood of this photo?", "Which colors dominate?", "Write an Instagram caption for it", "What would make this a better photo?"];
+let state = {status: null, view: "latest", readOnly: false, seeding: false};
+
+function toast(msg, ms = 3500) { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", ms); }
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, opts);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || r.statusText);
+  return body;
+}
+
+function chip(id, ok, label, title) {
+  $(id).innerHTML = `<span class="dot ${ok === true ? "ok" : ok === "warn" ? "warn" : "bad"}"></span>${esc(label)}`;
+  $(id).title = title || "";
+}
+
+async function status() {
+  try {
+    const s = state.status = await api("api/status");
+    chip("site-chip", s.active ? true : "warn", `${s.site} · ${s.active ? "active" : "standby"}`, s.active ? "This site serves the stack" : "Standby: the database is a read-only replica");
+    chip("db-chip", s.database.ok, "database", s.database.detail);
+    chip("cache-chip", s.cache.ok ? (s.cache.detail.startsWith("exact only") ? "warn" : true) : false, "cache", s.cache.detail);
+    chip("gw-chip", s.gateway.ok, "gateway", `${s.gateway.detail} · ${s.visionModel} + ${s.embedModel} (${s.dim}d)`);
+    state.readOnly = !!s.readOnly;
+    $("add").disabled = $("seed").disabled = state.readOnly || s.seed.running;
+    const wasSeeding = state.seeding;
+    state.seeding = s.seed.running;
+    if (s.seed.running || wasSeeding) { if (state.view === "latest") latest(); }
+    if (wasSeeding && !s.seed.running) toast(`Loaded ${s.seed.done - (s.seed.errors || []).length} sample photos${(s.seed.errors || []).length ? `, ${s.seed.errors.length} failed: ${s.seed.errors[0]}` : ""}`, 6000);
+    if (s.seed.running) setTimeout(status, 3000);
+  } catch (e) { chip("site-chip", false, "app unreachable", String(e)); }
+}
+
+function tiles(photos, why) {
+  $("grid").innerHTML = photos.map(p => `
+    <button class="tile" data-id="${p.id}" style="aspect-ratio:${p.width}/${p.height}">
+      <img src="img/${p.id}/thumb" alt="${esc(p.caption)}" loading="lazy">
+      ${why && why(p) ? `<span class="why" title="${p.similarity != null ? `cosine ${p.similarity.toFixed(3)}` : ""}${p.vectorRank ? ` · image #${p.vectorRank}` : ""}${p.textRank ? ` · words #${p.textRank}` : ""}">${why(p)}</span>` : ""}
+      <span class="cap"><b>${esc(p.title)}</b><br>${esc(p.caption)}</span>
+    </button>`).join("");
+}
+
+function timing(t) {
+  const total = Math.max(1, t.total || 0);
+  return `<span class="timeline">${STAGES.filter(k => t[k]).map(k => `<span style="width:${(t[k] / total * 100).toFixed(1)}%;background:var(--${k})" title="${k}: ${t[k]} ms"></span>`).join("")}</span>
+    <span title="${STAGES.filter(k => t[k] !== undefined).map(k => `${k} ${t[k]} ms`).join(" · ")}">${t.total} ms</span>`;
+}
+
+function empty(html) { $("empty").innerHTML = html; $("empty").style.display = html ? "block" : "none"; }
+
+async function latest() {
+  state.view = "latest";
+  const photos = await api("api/photos");
+  const s = state.status;
+  const lib = s && s.library;
+  $("meta").innerHTML = lib ? `${lib.photos} photos · library v${lib.version} · ${(lib.bytes / 1048576).toFixed(1)} MiB in PostgreSQL` : "";
+  tiles(photos);
+  if (s && s.seed.running) {
+    empty(`<h2>Loading sample photos…</h2><p>Each one is described by ${esc(s.visionModel)} and embedded by ${esc(s.embedModel)} as it arrives.</p>
+      <div class="progress"><span style="width:${(s.seed.done / s.seed.total * 100).toFixed(0)}%"></span></div><p>${s.seed.done} of ${s.seed.total}</p>`);
+  } else if (!photos.length) {
+    empty(state.readOnly
+      ? `<h2>No photos here yet</h2><p>This is the standby site. Add photos in the active site; they arrive here by replication.</p>`
+      : `<h2>An empty library</h2><p>Load sample photos from Unsplash, or drop your own anywhere on the page.<br>A vision model writes their captions and tags; then search them by meaning.</p>
+         <div class="row" style="justify-content:center;margin-top:14px"><button class="primary" onclick="seed()">Load sample photos</button><button onclick="$('files').click()">Add your own</button></div>`);
+  } else empty("");
+}
+
+async function search(q) {
+  $("q").value = q;
+  state.view = "search";
+  $("meta").innerHTML = `<span class="spinner"></span> Searching for “${esc(q)}”…`;
+  try {
+    const r = await api(`api/search?q=${encodeURIComponent(q)}${$("nocache").checked ? "&nocache=1" : ""}`);
+    showResults(r, `“${esc(q)}”`);
+  } catch (e) { $("meta").innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
+  recent();
+}
+
+function showResults(r, what) {
+  const cache = r.cache === "semantic" ? `<span class="badge semantic" title="cosine distance ${r.distance.toFixed(3)}">semantic hit: “${esc(r.cachedQuery)}”</span>`
+    : r.cache === "exact" ? `<span class="badge exact">exact hit</span>` : `<span class="badge miss">searched</span>`;
+  $("meta").innerHTML = `${cache}<span>${r.photos.length} photos for ${what}</span>${timing(r.timings)}<span>· site ${esc(r.site)}</span>
+    ${(r.warnings || []).map(w => `<span style="color:var(--warn)">⚠ ${esc(w)}</span>`).join("")}
+    <button onclick="latest()" style="padding:2px 10px">Clear</button>`;
+  // Text-to-image similarities are low in absolute terms (a match is 0.1-0.2); a percentage only means something image to image.
+  tiles(r.photos, p => [p.similarity > 0.3 ? `${Math.round(p.similarity * 100)}%` : "", p.textRank ? "words" : ""].filter(Boolean).join(" · "));
+  empty(r.photos.length ? "" : `<h2>Nothing like that</h2><p>Try other words, or add photos.</p>`);
+}
+
+async function recent() {
+  const list = await api("api/searches").catch(() => []);
+  const seen = new Set();
+  $("recent").innerHTML = list.filter(s => !seen.has(s.query.toLowerCase()) && seen.add(s.query.toLowerCase())).slice(0, 8)
+    .map(s => `<button data-q="${esc(s.query)}" title="${s.cache} · ${s.totalMs} ms">${esc(s.query)}</button>`).join("");
+}
+
+async function openPhoto(id) {
+  const p = await api(`api/photos/${id}`);
+  $("sheet").innerHTML = `
+    <div class="pic"><img src="img/${p.id}/image" alt="${esc(p.caption)}"></div>
+    <div class="info">
+      <button class="close" onclick="closeModal()">✕</button>
+      <h2>${esc(p.title)}</h2>
+      <div>${esc(p.caption)}</div>
+      <div class="tags">${p.tags.map(t => `<button data-tag="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+      <div class="credit">${p.author ? `Photo by ${p.sourceUrl ? `<a href="${esc(p.sourceUrl)}" target="_blank" rel="noopener">${esc(p.author)}</a> on Unsplash` : esc(p.author)} · ` : ""}${p.width}×${p.height} · added ${new Date(p.createdAt).toLocaleString()}</div>
+      <div class="row"><button class="primary" id="similar">Find similar</button>${state.readOnly ? "" : `<button id="delete">Delete</button>`}</div>
+      <div><b style="font-size:14px">Ask about this photo</b></div>
+      <form class="ask" id="ask-form"><input id="ask-q" placeholder="What breed is the dog? Where could this be?" maxlength="1000"><button class="primary">Ask</button></form>
+      <div class="suggest">${ASK.map(a => `<button type="button">${esc(a)}</button>`).join("")}</div>
+      <div id="answer"></div>
+    </div>`;
+  $("modal").classList.add("on");
+  $("similar").onclick = async () => {
+    closeModal();
+    state.view = "search";
+    $("meta").innerHTML = `<span class="spinner"></span> Finding photos like “${esc(p.title)}”…`;
+    try { showResults(await api(`api/photos/${p.id}/similar`), `like “${esc(p.title)}”`); } catch (e) { toast(e.message); }
+  };
+  if ($("delete")) $("delete").onclick = async () => {
+    if (!confirm(`Delete “${p.title}”?`)) return;
+    try { await api(`api/photos/${p.id}`, {method: "DELETE"}); closeModal(); toast("Deleted; the library has a new version"); status().then(latest); } catch (e) { toast(e.message); }
+  };
+  const ask = async question => {
+    $("ask-q").value = question;
+    $("answer").innerHTML = `<div class="answer muted"><span class="spinner"></span> ${esc(state.status?.visionModel || "The model")} is looking…</div>`;
+    try {
+      const a = await api(`api/photos/${p.id}/ask`, {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({question, noCache: $("nocache").checked})});
+      $("answer").innerHTML = `<div class="answer">${esc(a.answer)}<div class="meta">
+        <span class="badge ${a.cache}">${a.cache === "exact" ? "cached" : "generated"}</span>${timing(a.timings)}
+        ${a.usage.prompt ? `<span>${a.usage.prompt} + ${a.usage.completion} tokens</span>` : ""}</div></div>`;
+    } catch (e) { $("answer").innerHTML = `<div class="answer" style="color:var(--bad)">${esc(e.message)}</div>`; }
+  };
+  $("ask-form").onsubmit = e => { e.preventDefault(); const q = $("ask-q").value.trim(); if (q) ask(q); };
+  $("sheet").querySelector(".suggest").onclick = e => { if (e.target.tagName === "BUTTON") ask(e.target.textContent); };
+  $("sheet").querySelector(".tags").onclick = e => { if (e.target.dataset.tag) { closeModal(); search(e.target.dataset.tag); } };
+}
+function closeModal() { $("modal").classList.remove("on"); }
+
+async function addPhotos(files) {
+  files = [...files].filter(f => f.type.startsWith("image/"));
+  if (!files.length) return;
+  if (state.readOnly) return toast("Standby site: add photos in the active site");
+  let done = 0, failed = 0, dup = 0;
+  const report = () => $("meta").innerHTML = `<span class="spinner"></span> Adding ${files.length} photos: describing and embedding… ${done} of ${files.length}`;
+  report();
+  const queue = [...files];
+  await Promise.all([1, 2, 3].map(async () => {
+    for (let f; (f = queue.shift());) {
+      const fd = new FormData(); fd.append("photo", f);
+      try { const r = await api("api/photos", {method: "POST", body: fd}); if (r.duplicate) dup++; }
+      catch (e) { failed++; toast(`${f.name}: ${e.message}`); }
+      done++; report();
+    }
+  }));
+  toast(`Added ${done - failed - dup} photos${dup ? `, ${dup} already there` : ""}${failed ? `, ${failed} failed` : ""}`);
+  await status(); latest();
+}
+
+async function searchByImage(file) {
+  const fd = new FormData(); fd.append("photo", file);
+  state.view = "search";
+  $("meta").innerHTML = `<span class="spinner"></span> Embedding your photo and looking for similar ones…`;
+  try { showResults(await api("api/search/image", {method: "POST", body: fd}), "your photo"); }
+  catch (e) { $("meta").innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
+}
+
+async function seed() {
+  try { await api("api/seed", {method: "POST"}); toast("Loading sample photos…"); status(); } catch (e) { toast(e.message); }
+}
+
+$("search").onsubmit = e => { e.preventDefault(); const q = $("q").value.trim(); q ? search(q) : latest(); };
+$("recent").onclick = e => { if (e.target.dataset.q) search(e.target.dataset.q); };
+$("grid").onclick = e => { const t = e.target.closest(".tile"); if (t) openPhoto(t.dataset.id); };
+$("modal").onclick = e => { if (e.target === $("modal")) closeModal(); };
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+$("add").onclick = () => $("files").click();
+$("seed").onclick = seed;
+$("by-image").onclick = () => $("query-file").click();
+$("files").onchange = e => { addPhotos(e.target.files); e.target.value = ""; };
+$("query-file").onchange = e => { if (e.target.files[0]) searchByImage(e.target.files[0]); e.target.value = ""; };
+let dragDepth = 0;
+addEventListener("dragenter", e => { if (e.dataTransfer.types.includes("Files")) { dragDepth++; $("drop").classList.add("on"); } });
+addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; $("drop").classList.remove("on"); } });
+addEventListener("dragover", e => e.preventDefault());
+addEventListener("drop", e => {
+  e.preventDefault(); dragDepth = 0; $("drop").classList.remove("on");
+  const files = e.dataTransfer.files;
+  if (!files.length) return;
+  if (e.clientX > innerWidth / 2 && files.length === 1) searchByImage(files[0]); else addPhotos(files);
+});
+
+status().then(latest); recent();
+setInterval(() => { if (!state.seeding) status(); }, 20000);
+</script>
+</body>
+</html>

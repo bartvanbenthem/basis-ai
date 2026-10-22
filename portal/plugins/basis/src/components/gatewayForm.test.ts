@@ -62,6 +62,9 @@ describe('gatewayForm', () => {
     expect(spec.models[0].apiKeySecretRef).toEqual({ name: providerKeySecretName('llm', 'claude'), key: 'apiKey' });
     expect(JSON.stringify(spec)).not.toContain('sk-secret');
     expect(gatewayProviderKeys(entered)).toEqual({ claude: 'sk-secret' });
+    // Pasted from a wrapped display: the line breaks aren't part of the token.
+    const wrapped = { ...entered, models: [{ ...entered.models[0], apiKey: ' eyJh.abc \n def.ghi\n' }] };
+    expect(gatewayProviderKeys(wrapped)).toEqual({ claude: 'eyJh.abcdef.ghi' });
     expect(validateGateway({ ...entered, models: [{ ...entered.models[0], apiKey: '' }] }).modelRows?.[0]).toContain('API key');
   });
 

@@ -77,10 +77,15 @@ export const toModels = (rows: ModelRow[], owner: string) =>
       };
     });
 
-/** The keys entered in the form, by model name: what the portal writes into Secrets. */
+/**
+ * The keys entered in the form, by model name: what the portal writes into Secrets. Without
+ * whitespace: a token pasted from a wrapped display has line breaks the provider rejects.
+ */
 export const providerKeys = (rows: ModelRow[]): Record<string, string> | undefined => {
   const keys = Object.fromEntries(
-    rows.filter(m => m.keySource === 'enter' && m.name.trim() && m.apiKey).map(m => [m.name.trim(), m.apiKey]),
+    rows
+      .filter(m => m.keySource === 'enter' && m.name.trim() && m.apiKey.trim())
+      .map(m => [m.name.trim(), m.apiKey.replace(/\s+/g, '')]),
   );
   return Object.keys(keys).length ? keys : undefined;
 };

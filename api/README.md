@@ -371,7 +371,7 @@ See [`examples/modelgateway.yaml`](examples/modelgateway.yaml) and
 |---|---|---|
 | `Secret <name>-keys` | control plane | A key per `spec.clients` entry, generated once and kept; a removed client's key goes |
 | `Gateway <name>` + `EnvoyProxy <name>` | each site's location (Object) | Internal Service `<name>` (ClusterIP): `http://<name>.<namespace>.svc/v1`; `replicas` in the active site, `recovery.replicas` in the standby |
-| `SecurityPolicy`, `ClientTrafficPolicy`, `Secret <name>-keys` (copy) | each site's location | Client API key auth on `Authorization: Bearer`, not forwarded; prompts up to 50Mi |
+| `SecurityPolicy`, `ClientTrafficPolicy`, `BackendTrafficPolicy`, `Secret <name>-keys` (copy) | each site's location | Client API key auth on `Authorization: Bearer`, not forwarded; prompts (also over HTTP/2: images) and responses (embeddings, long completions) up to 50Mi |
 | `AIGatewayRoute <name>` | each site's location | A rule per model on the request's `model` |
 | `Backend`, `AIServiceBackend`, `BackendTLSPolicy`, `BackendSecurityPolicy`, `Secret` per model | each site's location | The provider's endpoint (TLS for https), its key copied from the Project's Secret under `apiKey` |
 | `Certificate <name>-tls`, `Gateway <name>-external` + `EnvoyProxy <name>-external` | each site's location, with `spec.expose` | HTTPS only at `expose.hostname`, LoadBalancer Service `<name>-external` limited to `expose.loadBalancerSourceRanges`; certificate from the cert-manager ClusterIssuer `expose.issuer` (`basis`); the route and key auth cover both Gateways |

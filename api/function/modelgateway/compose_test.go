@@ -44,13 +44,20 @@ func TestCompose(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, key := range []string{"keys", "protected-gateway", "protected-envoyproxy", "protected-keys",
-			"protected-securitypolicy", "protected-clienttraffic", "protected-route"} {
+			"protected-securitypolicy", "protected-clienttraffic", "protected-backendtraffic", "protected-route"} {
 			if _, ok := out.Composed[key]; !ok {
 				t.Errorf("missing %s", key)
 			}
 		}
 		if pc := dig(out.Composed["protected-gateway"].Object, "spec", "providerConfigRef", "name"); pc != "dc-a" {
 			t.Errorf("providerConfigRef %v", pc)
+		}
+		// Images in requests and embeddings in responses: well over Envoy's defaults.
+		if w := dig(manifest(out.Composed["protected-clienttraffic"]), "spec", "http2", "initialStreamWindowSize"); w != "50Mi" {
+			t.Errorf("HTTP/2 stream window %v", w)
+		}
+		if b := dig(manifest(out.Composed["protected-backendtraffic"]), "spec", "connection", "bufferLimit"); b != "50Mi" {
+			t.Errorf("backend buffer %v", b)
 		}
 		ep := manifest(out.Composed["protected-envoyproxy"])
 		if s := dig(ep, "spec", "provider", "kubernetes", "envoyService"); s.(Object)["name"] != "llm" {
@@ -163,7 +170,7 @@ func TestCompose(t *testing.T) {
 			!strings.Contains(string(listeners), `"name":"llm-tls"`) {
 			t.Errorf("external listeners %s", listeners)
 		}
-		for _, k := range []string{"route", "securitypolicy", "clienttraffic"} {
+		for _, k := range []string{"route", "securitypolicy", "clienttraffic", "backendtraffic"} {
 			refs, _ := json.Marshal(manifest(out.Composed["protected-"+k]))
 			if !strings.Contains(string(refs), `"name":"llm-external"`) {
 				t.Errorf("%s does not cover the external Gateway: %s", k, refs)
@@ -181,7 +188,7 @@ func TestCompose(t *testing.T) {
 		}
 		cond := func(t string) Object { return Object{"conditions": []any{Object{"type": t, "status": "True"}}} }
 		observed := map[string]Object{"keys": {}}
-		for _, k := range []string{"envoyproxy", "clienttraffic", "securitypolicy", "external-envoyproxy"} {
+		for _, k := range []string{"envoyproxy", "clienttraffic", "backendtraffic", "securitypolicy", "external-envoyproxy"} {
 			observed["protected-"+k] = live(Object{"kind": "x"})
 		}
 		observed["protected-keys"] = Object{"status": cond("Ready")}

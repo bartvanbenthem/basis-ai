@@ -12,7 +12,8 @@
 //	envoyproxy,        Agent Router on Envoy Gateway: an internal (ClusterIP)
 //	gateway,           Service <name>, client API key auth, and an
 //	clienttraffic,     AIGatewayRoute routing on the request's model to a
-//	keys,              backend per spec.models entry
+//	backendtraffic,    backend per spec.models entry; 50Mi buffers for
+//	keys,              requests and responses
 //	securitypolicy,    (model-<hash>-{backend,aiservicebackend,tls,apikey,
 //	route, model-...   backendsecurity})
 //
@@ -351,7 +352,17 @@ func (c *composition) siteObjects(replicas int) (map[string]object, error) {
 	}
 	out["clienttraffic"] = object{ready: reported, manifest: Object{
 		"apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "ClientTrafficPolicy", "metadata": c.meta(c.name),
-		// Prompts with context can be large.
+		// Prompts with context, and images, can be large. Over HTTP/2 (the
+		// exposed Gateway's HTTPS) a request is also limited to the stream's
+		// flow-control window, 64Ki by default: one photo is more, a 413.
+		"spec": Object{"targetRefs": gatewayRefs, "connection": Object{"bufferLimit": "50Mi"},
+			"http2": Object{"initialStreamWindowSize": "50Mi", "initialConnectionWindowSize": "50Mi"}},
+	}}
+	out["backendtraffic"] = object{ready: reported, manifest: Object{
+		"apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "BackendTrafficPolicy", "metadata": c.meta(c.name),
+		// Agent Router's per-backend filter buffers whole responses on the
+		// upstream connection, 32Ki by default: an embedding (4096 floats as
+		// JSON) or a long completion is more, and fails with a 500.
 		"spec": Object{"targetRefs": gatewayRefs, "connection": Object{"bufferLimit": "50Mi"}},
 	}}
 	out["keys"] = object{ready: objectReady, copyFrom: &copySpec{from: KeysSecret(c.name)},

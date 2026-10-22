@@ -1,0 +1,67 @@
+# BASIS Lens next to GenAIStack __STACK__, in the stack's namespace of one of
+# its locations (make deploy CONTEXT=<location>). It mounts the stack's
+# connection Secret, which the platform puts in both sites: apply it in both,
+# and the standby site's copy serves the replica's photos.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lens
+  labels: {app.kubernetes.io/name: lens, app.kubernetes.io/part-of: __STACK__}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: lens}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: lens, app.kubernetes.io/part-of: __STACK__}
+    spec:
+      # 65532 is distroless's nonroot; runAsNonRoot needs it numeric to verify it.
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: app
+          image: __IMAGE__
+          envFrom:
+            - secretRef: {name: __STACK__-connection}
+          ports:
+            - {name: http, containerPort: 8080}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+          resources:
+            # Photos are decoded in memory: a 12-megapixel one is ~50Mi, three at a time.
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {memory: 768Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+---
+# Plain HTTP on a LoadBalancer of its own, only for the source ranges (by
+# default the stack gateway's): a demo, not a production ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: lens
+  labels: {app.kubernetes.io/name: lens}
+spec:
+  type: LoadBalancer
+  loadBalancerSourceRanges: [__SOURCE_RANGES__]
+  selector: {app.kubernetes.io/name: lens}
+  ports:
+    - {name: http, port: 80, targetPort: http}
+---
+# The Project's Prometheus in the location scrapes every PodMonitor in the
+# namespace: lens_* metrics next to the database's and the cache's.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: lens
+  labels: {app.kubernetes.io/name: lens}
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: lens}
+  podMetricsEndpoints:
+    - {port: http, path: /metrics, interval: 30s}

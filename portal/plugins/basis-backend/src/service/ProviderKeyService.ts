@@ -72,7 +72,8 @@ export class ProviderKeyService {
                 : {}),
             },
             type: 'Opaque',
-            data: { [PROVIDER_KEY_FIELD]: Buffer.from(value, 'utf8').toString('base64') },
+            // No token has whitespace; a pasted one can carry line breaks.
+            data: { [PROVIDER_KEY_FIELD]: Buffer.from(value.replace(/\s+/g, ''), 'utf8').toString('base64') },
           } as any,
           undefined,
           undefined,
