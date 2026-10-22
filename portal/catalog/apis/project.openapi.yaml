@@ -79,6 +79,30 @@ components:
                     - bucketClassName can't change; it would provision a new, empty bucket
                   type: string
               type: object
+            budget:
+              description: 'What the project may spend per month. Needs the basis-prices catalog: the project''s cost is priced from what runs in its locations (CPU and memory requests, volumes, LoadBalancers, gateway tokens), and its Prometheus alerts when the month''s forecast passes 80% and 100%. Enforced token limits are per gateway client (ModelGateway).'
+              properties:
+                monthly:
+                  description: In the catalog's currency (EUR by default).
+                  minimum: 0
+                  type: number
+                monthlyTokens:
+                  description: Tokens through the project's gateways, all models and sites.
+                  minimum: 0
+                  type: integer
+              type: object
+            classification:
+              default: internal
+              description: The data classification of what runs in the project. It decides which models its gateways may use (the basis-models catalog), and confidential projects can't open anything to 0.0.0.0/0. Set as label platform.cndev.nl/classification on its namespaces.
+              enum:
+                - public
+                - internal
+                - confidential
+              type: string
+            costCenter:
+              description: Who pays, for showback. Set as label platform.cndev.nl/cost-center on its namespaces.
+              pattern: ^[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$
+              type: string
             crossplane:
               description: 'Set by Crossplane: how it composes this resource. Leave it out; the platform''s composition (project) is the only one, and Crossplane fills in the rest.'
               properties:
@@ -153,6 +177,19 @@ components:
               type: boolean
             description:
               maxLength: 200
+              type: string
+            environment:
+              default: production
+              description: What the project is for. Set as label platform.cndev.nl/environment; sandbox projects usually get expiresAt.
+              enum:
+                - production
+                - staging
+                - development
+                - sandbox
+              type: string
+            expiresAt:
+              description: The last day the project is for (YYYY-MM-DD), e.g. for a sandbox. After it, nothing new can be created in it (what runs keeps running) and its status says so; extend it or delete the project. Unset, it doesn't expire.
+              format: date
               type: string
             locations:
               description: |-
@@ -361,6 +398,32 @@ components:
                   - lastTransitionTime
                 type: object
               type: array
+            governance:
+              description: Classification, environment, cost center, budget and expiry, as composed.
+              properties:
+                budget:
+                  properties:
+                    monthly:
+                      type: number
+                    monthlyTokens:
+                      type: integer
+                  type: object
+                classification:
+                  type: string
+                costCenter:
+                  type: string
+                costMetric:
+                  description: The recording rule in the project's Prometheus with its cost per hour (by site and component).
+                  type: string
+                currency:
+                  type: string
+                environment:
+                  type: string
+                expired:
+                  type: boolean
+                expiresAt:
+                  type: string
+              type: object
             grafana:
               properties:
                 adminSecret:

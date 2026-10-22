@@ -213,6 +213,10 @@ components:
                     type: object
                   maxItems: 30
                   type: array
+                monthlyTokens:
+                  description: Tokens the stack's own gateway may pass per calendar month in each site (its ModelGateway's monthlyTokens); past it, 429 until the month ends.
+                  minimum: 1
+                  type: integer
                 ref:
                   description: A ModelGateway in this namespace to use instead of one of the stack's own; models are then the gateway's. It needs a client for the stack (client) and, with recovery, a recovery site of its own.
                   pattern: ^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$

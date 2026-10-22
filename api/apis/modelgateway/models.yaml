@@ -1,0 +1,29 @@
+# The model providers a ModelGateway (or a GenAIStack's gateway) may route
+# to, and where each keeps the data: the admission policy
+# ai.cndev.nl-model-residency (policies.yaml) refuses a model whose endpoint
+# isn't here, or whose residency the Project's classification doesn't allow.
+# Without this EnvironmentConfig, the policy allows every endpoint.
+#
+# install/install.sh applies it once; it is the platform team's to edit
+# afterwards (it applies to new and changed gateways).
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: basis-models
+data:
+  # Endpoints by URL prefix (scheme and host, optionally a path).
+  #   self-hosted  in the platform's own clusters (vLLM, KServe, Ollama, ...)
+  #   eu           a provider processing and storing in the EU, under EU law
+  #   non-eu       anywhere else
+  providers:
+    - {name: STACKIT model serving, prefix: "https://api.openai-compat.model-serving.eu01.onstackit.cloud/", residency: eu}
+    - {name: Mistral AI, prefix: "https://api.mistral.ai/", residency: eu}
+    - {name: OpenAI, prefix: "https://api.openai.com/", residency: non-eu}
+    - {name: Anthropic, prefix: "https://api.anthropic.com/", residency: non-eu}
+    # In-cluster model servers: plain HTTP to a Service.
+    - {name: In-cluster model servers, prefix: "http://", residency: self-hosted}
+  # Per Project spec.classification: the residencies its gateways may use.
+  classifications:
+    public: [self-hosted, eu, non-eu]
+    internal: [self-hosted, eu, non-eu]
+    confidential: [self-hosted, eu]

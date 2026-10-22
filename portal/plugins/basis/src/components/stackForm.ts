@@ -44,6 +44,8 @@ export interface StackForm {
   /** The stack's client in the shared gateway; empty for the stack's name. */
   gatewayClient: string;
   gatewayReplicas: number;
+  /** The stack's own gateway's monthly token cap; empty for none. */
+  gatewayMonthlyTokens: string;
   models: ModelRow[];
   /** gateway.expose: the stack's own gateway over HTTPS. */
   gatewayExpose: ExposeFields;
@@ -71,6 +73,7 @@ export const defaultStackForm = (): StackForm => ({
   gatewayRef: '',
   gatewayClient: '',
   gatewayReplicas: 2,
+  gatewayMonthlyTokens: '',
   models: [emptyModel()],
   gatewayExpose: defaultExpose(),
 });
@@ -100,6 +103,7 @@ export function fromStack(stack: GenAIStack): StackForm {
     gatewayRef: spec.gateway?.ref ?? '',
     gatewayClient: spec.gateway?.client ?? '',
     gatewayReplicas: spec.gateway?.replicas ?? d.gatewayReplicas,
+    gatewayMonthlyTokens: spec.gateway?.monthlyTokens ? String(spec.gateway.monthlyTokens) : '',
     models: (spec.gateway?.models ?? []).map(m => fromModel(m, metadata.name)),
     gatewayExpose: fromExpose(spec.gateway?.expose),
   };
@@ -131,6 +135,9 @@ export function validateStack(f: StackForm): StackErrors {
   if (f.gatewayEnabled && f.gatewayRef) {
     if (f.gatewayClient && !CLIENT.test(f.gatewayClient)) e.gatewayClient = 'Lowercase letters, digits and "-".';
   } else if (f.gatewayEnabled) {
+    if (f.gatewayMonthlyTokens && !/^[1-9][0-9]*$/.test(f.gatewayMonthlyTokens)) {
+      e.gatewayMonthlyTokens = 'A whole number, e.g. 10000000.';
+    }
     const rows = validateModels(f.models);
     if (Object.keys(rows).length) e.modelRows = rows;
     const gw = validateExpose(f.gatewayExpose);
@@ -173,6 +180,7 @@ export function toStackSpec(f: StackForm): Record<string, unknown> {
           replicas: f.gatewayReplicas,
           models: toModels(f.models, f.name),
           ...(f.gatewayExpose.enabled ? { expose: toExpose(f.gatewayExpose) } : {}),
+          ...(f.gatewayMonthlyTokens ? { monthlyTokens: Number(f.gatewayMonthlyTokens) } : {}),
         },
   };
 }

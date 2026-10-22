@@ -293,6 +293,9 @@ func Compose(in Input) (*Output, error) {
 			if len(spec.Gateway.Expose) > 0 {
 				gwSpec["expose"] = spec.Gateway.Expose
 			}
+			if spec.Gateway.MonthlyTokens > 0 {
+				gwSpec["monthlyTokens"] = spec.Gateway.MonthlyTokens
+			}
 			out.Composed["gateway"] = Composed{Ready: conditionTrue(c.observed["gateway"], "Ready"), Object: Object{
 				"apiVersion": "ai.cndev.nl/v1alpha1", "kind": "ModelGateway",
 				"metadata": c.meta(gwName), "spec": gwSpec,

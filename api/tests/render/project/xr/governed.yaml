@@ -1,0 +1,18 @@
+# minimal.yaml with governance: confidential, a sandbox with a cost center,
+# a budget and an expiry (far ahead), and the price catalog (required/):
+# the namespace labels, and the cost rules and dashboard on the control plane.
+apiVersion: platform.cndev.nl/v1alpha1
+kind: Project
+metadata:
+  name: demo
+spec:
+  owner: team-demo
+  locations:
+    protected: si-ske-demo
+  classification: confidential
+  environment: sandbox
+  costCenter: CC-4711
+  budget:
+    monthly: 2500
+    monthlyTokens: 50000000
+  expiresAt: "2099-12-31"

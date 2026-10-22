@@ -1,0 +1,34 @@
+# The platform's price list, for showback: what a Project costs per month,
+# priced from what runs in its locations. The Project composition turns it
+# into recording rules in each project's Prometheus (basis:cost_per_hour, by
+# site and component) and alerts on spec.budget. Without this
+# EnvironmentConfig, projects get no cost rules.
+#
+# install/install.sh applies it once; it is the platform team's to edit
+# afterwards (projects pick a change up on their next reconcile). The numbers
+# below are examples: put in your own cost of a vCPU, a GiB, a load balancer,
+# and your providers' token prices.
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: basis-prices
+data:
+  currency: EUR
+  # Per month (730 hours), per unit requested by running pods / claimed.
+  cpu: 22            # per vCPU
+  memory: 3          # per GiB
+  storage: 0.15      # per GiB of PersistentVolumeClaims
+  loadBalancer: 12   # per LoadBalancer Service
+  # Per 1M tokens through the project's gateways, by the provider's model name
+  # (the upstreamModel, as the gateway's metrics label it).
+  tokens:
+    default: {input: 0.5, output: 1.5}
+    models:
+      - {model: openai/gpt-oss-120b, input: 0.45, output: 0.9}
+      - {model: openai/gpt-oss-20b, input: 0.1, output: 0.4}
+      - {model: Qwen/Qwen3-VL-235B-A22B-Instruct-FP8, input: 0.7, output: 2.1}
+      - {model: Qwen/Qwen3-VL-Embedding-8B, input: 0.05, output: 0}
+      - {model: intfloat/e5-mistral-7b-instruct, input: 0.02, output: 0}
+      - {model: cortecs/Llama-3.3-70B-Instruct-FP8-Dynamic, input: 0.5, output: 0.75}
+      - {model: claude-sonnet-4-5, input: 3, output: 15}
+      - {model: gpt-4o-mini, input: 0.15, output: 0.6}

@@ -5,6 +5,7 @@ import {
   AuditLog,
   clusterLocations,
   CONTROL_PLANE,
+  parseGatewayLine,
   parsePgAuditLine,
   pgauditLog,
   PostgresCluster,
@@ -34,8 +35,9 @@ function clusterOf(object: string | undefined, clusters: string[]): string | und
 
 /**
  * A project's audit trail (see AuditEntry): the Kubernetes events of its
- * namespace on the control plane and in each of its locations, and the
- * pgaudit records in the logs of its PostgreSQL instances. A location that
+ * namespace on the control plane and in each of its locations, the pgaudit
+ * records in the logs of its PostgreSQL instances, and the calls through its
+ * ModelGateways. A location that
  * can't be read is reported in `unreachable`, not fatal.
  */
 export class AuditService {
@@ -93,11 +95,12 @@ export class AuditService {
               audited.find(a => a.name === c.metadata.name)?.pgauditLog &&
               clusterLocations(c).includes(location),
           );
-          const [events, ...records] = await Promise.all([
+          const [events, calls, ...records] = await Promise.all([
             this.#events(core, location, project, names),
+            this.#gatewayCalls(core, location, project, tailLines),
             ...pgaudit.map(c => this.#pgaudit(core, location, project, c.metadata.name, tailLines)),
           ]);
-          return [...events, ...records.flat()];
+          return [...events, ...calls, ...records.flat()];
         }),
       ),
     ]);
@@ -127,6 +130,32 @@ export class AuditService {
   async #events(core: AuditCore, location: string, namespace: string, clusters: string[]): Promise<AuditEntry[]> {
     const res = await kubeCall(() => core.listNamespacedEvent({ namespace }));
     return res.items.map(e => toEntry(e, location, clusters));
+  }
+
+  /**
+   * The calls through the project's ModelGateways in one location: their
+   * Envoy proxies' access logs (client, model, tokens, outcome; no prompts).
+   */
+  async #gatewayCalls(core: AuditCore, location: string, namespace: string, tailLines: number): Promise<AuditEntry[]> {
+    const pods = await kubeCall(() =>
+      core.listNamespacedPod({ namespace, labelSelector: 'gateway.envoyproxy.io/owning-gateway-name' }),
+    );
+    const perPod = await Promise.all(
+      pods.items.map(async pod => {
+        const name = pod.metadata?.name ?? '';
+        // The exposed gateway's Envoy belongs to the same ModelGateway.
+        const gateway = (pod.metadata?.labels?.['gateway.envoyproxy.io/owning-gateway-name'] ?? '').replace(/-external$/, '');
+        const text = await kubeCall(() =>
+          core.readNamespacedPodLog({ namespace, name, container: 'envoy', tailLines, limitBytes: MAX_LOG_BYTES }),
+        ).catch(() => '');
+        return (text ?? '')
+          .split('\n')
+          .map(parseGatewayLine)
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+          .map(r => ({ ...r, location, gateway, instance: name }));
+      }),
+    );
+    return perPod.flat();
   }
 
   /** pgaudit's records in the current log of each instance of a cluster in one location. */

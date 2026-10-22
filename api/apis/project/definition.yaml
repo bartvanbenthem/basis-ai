@@ -58,6 +58,14 @@ spec:
           type: boolean
           jsonPath: .spec.deletionProtection
           priority: 1
+        - name: Classification
+          type: string
+          jsonPath: .spec.classification
+          priority: 1
+        - name: Expires
+          type: string
+          jsonPath: .spec.expiresAt
+          priority: 1
         # Crossplane appends SYNCED, READY, COMPOSITION and AGE itself.
       schema:
         openAPIV3Schema:
@@ -143,6 +151,46 @@ spec:
                       description: >-
                         COSI BucketAccessClass. Its driver must hand out S3 keys (the locations use them,
                         not a ServiceAccount on the control plane).
+                classification:
+                  type: string
+                  description: >-
+                    The data classification of what runs in the project. It decides which models its
+                    gateways may use (the basis-models catalog), and confidential projects can't open
+                    anything to 0.0.0.0/0. Set as label platform.cndev.nl/classification on its namespaces.
+                  enum: [public, internal, confidential]
+                  default: internal
+                environment:
+                  type: string
+                  description: What the project is for. Set as label platform.cndev.nl/environment; sandbox projects usually get expiresAt.
+                  enum: [production, staging, development, sandbox]
+                  default: production
+                costCenter:
+                  type: string
+                  description: Who pays, for showback. Set as label platform.cndev.nl/cost-center on its namespaces.
+                  pattern: '^[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$'
+                budget:
+                  type: object
+                  description: >-
+                    What the project may spend per month. Needs the basis-prices catalog: the project's cost
+                    is priced from what runs in its locations (CPU and memory requests, volumes,
+                    LoadBalancers, gateway tokens), and its Prometheus alerts when the month's forecast
+                    passes 80% and 100%. Enforced token limits are per gateway client (ModelGateway).
+                  properties:
+                    monthly:
+                      type: number
+                      description: In the catalog's currency (EUR by default).
+                      minimum: 0
+                    monthlyTokens:
+                      type: integer
+                      description: Tokens through the project's gateways, all models and sites.
+                      minimum: 0
+                expiresAt:
+                  type: string
+                  format: date
+                  description: >-
+                    The last day the project is for (YYYY-MM-DD), e.g. for a sandbox. After it, nothing new can
+                    be created in it (what runs keeps running) and its status says so; extend it or delete the
+                    project. Unset, it doesn't expire.
                 deletionProtection:
                   type: boolean
                   description: >-
@@ -265,6 +313,32 @@ spec:
                   type: string
                 namespace:
                   type: string
+                governance:
+                  type: object
+                  description: Classification, environment, cost center, budget and expiry, as composed.
+                  properties:
+                    classification:
+                      type: string
+                    environment:
+                      type: string
+                    costCenter:
+                      type: string
+                    expiresAt:
+                      type: string
+                    expired:
+                      type: boolean
+                    currency:
+                      type: string
+                    costMetric:
+                      type: string
+                      description: The recording rule in the project's Prometheus with its cost per hour (by site and component).
+                    budget:
+                      type: object
+                      properties:
+                        monthly:
+                          type: number
+                        monthlyTokens:
+                          type: integer
                 locations:
                   type: array
                   description: Per location (protected first), whether its namespace and Prometheus are ready.

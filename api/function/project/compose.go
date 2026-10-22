@@ -21,6 +21,7 @@
 //	backup-access-<loc>         with its own S3 keys, granted one at a time
 //	backup-s3-<loc>             those keys unpacked from COSI's BucketInfo JSON
 //	usage-location-<loc>        ClusterUsage: a Location can't go while used
+//	cost-rules, cost-dashboard  the project's cost and budget alerts (governance.go)
 //
 // In each location (spec.locations.protected and .recovery), wrapped in
 // provider-kubernetes Objects named location-<loc>-<key>:
@@ -107,6 +108,7 @@ type settings struct {
 	remoteWrite   Object
 	rwHost, rwURL string
 	hasRemote     bool
+	gov           governance
 }
 
 func newSettings(xr Object, required map[string][]Object) *settings {
@@ -148,6 +150,7 @@ func newSettings(xr Object, required map[string][]Object) *settings {
 			s.bucketClass = fmt.Sprintf("prj-%s-%s", strings.TrimSuffix(trunc(s.name, 16), "-"), trunc(sha256hex(s.name), 6))
 		}
 	}
+	s.gov = newGovernance(s.spec, required)
 	s.accessClass = or(str(pb["bucketAccessClassName"]), str(s.cosi["bucketAccessClassName"]))
 	s.bucketOn = boolOr(pb["bucket"], true) && s.bucketClass != "" && s.accessClass != ""
 
@@ -178,6 +181,8 @@ func Requirements(xr Object, required map[string][]Object) map[string]Requiremen
 	s := newSettings(xr, required)
 	reqs := map[string]Requirement{
 		requiredDefaults: {APIVersion: "apiextensions.crossplane.io/v1beta1", Kind: "EnvironmentConfig", Name: "project-defaults"},
+		// The price catalog (governance.go); optional.
+		requiredPrices: {APIVersion: "apiextensions.crossplane.io/v1beta1", Kind: "EnvironmentConfig", Name: "basis-prices"},
 	}
 	for _, l := range s.siteLocations {
 		reqs["location-"+l] = Requirement{APIVersion: "platform.cndev.nl/v1alpha1", Kind: "Location", Name: l}
@@ -500,6 +505,14 @@ func (s *settings) status(out *Output, statuses []memberStatus, bucket Object, u
 	if ready && s.hasRemote && s.promEnabled && s.rwURL == "" {
 		msg = fmt.Sprintf("Project %s is ready; metrics stay in its locations and Grafana shows none (no prometheus.remoteWrite in project-defaults)", s.name)
 	}
+	if s.gov.expired {
+		expiry := fmt.Sprintf("expired on %s: it keeps running, but nothing new can be created in it; extend spec.expiresAt or delete it", s.gov.expiresAt)
+		if ready {
+			msg = fmt.Sprintf("Project %s %s", s.name, expiry)
+		} else {
+			msg += "; " + expiry
+		}
+	}
 
 	locations := []any{}
 	var reach []any
@@ -521,7 +534,7 @@ func (s *settings) status(out *Output, statuses []memberStatus, bucket Object, u
 			reach = append(reach, r)
 		}
 	}
-	status := Object{"ready": ready, "message": msg, "namespace": s.ns, "locations": locations}
+	status := Object{"ready": ready, "message": msg, "namespace": s.ns, "locations": locations, "governance": s.gov.status()}
 	if bucket != nil {
 		b := Object{"ready": bucket["ready"], "namespace": bucket["namespace"]}
 		if name := str(bucket["bucket"]); name != "" {

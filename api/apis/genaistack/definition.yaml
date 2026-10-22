@@ -228,6 +228,12 @@ spec:
                     enabled:
                       type: boolean
                       default: true
+                    monthlyTokens:
+                      type: integer
+                      description: >-
+                        Tokens the stack's own gateway may pass per calendar month in each site (its
+                        ModelGateway's monthlyTokens); past it, 429 until the month ends.
+                      minimum: 1
                     ref:
                       type: string
                       description: >-

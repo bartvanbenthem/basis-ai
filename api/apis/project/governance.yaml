@@ -1,0 +1,170 @@
+# Governance guardrails (ValidatingAdmissionPolicy, Kubernetes >= 1.30), from
+# the labels the Project composition sets on its namespace
+# (platform.cndev.nl/classification, platform.cndev.nl/expired):
+#
+#   1. model residency: a ModelGateway's or GenAIStack's models must use an
+#      endpoint from the basis-models catalog (apis/modelgateway/models.yaml)
+#      whose residency the Project's classification allows. Without the
+#      catalog, every endpoint is allowed.
+#   2. confidential exposure: in a confidential Project nothing opens to
+#      0.0.0.0/0 or ::/0 (a PostgresCluster's, ModelGateway's or GenAIStack's
+#      expose.loadBalancerSourceRanges).
+#   3. expired projects: past the Project's spec.expiresAt, nothing new is
+#      created in it; what runs keeps running and can be changed or deleted.
+#
+# On an update, rules 1 and 2 only look at what changed: Crossplane writes to
+# the objects too, and a later stricter classification must not stop it.
+# install/install.sh replaces "crossplane-system" below with
+# $CROSSPLANE_NAMESPACE.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: platform.cndev.nl-model-residency
+spec:
+  failurePolicy: Fail
+  paramKind:
+    apiVersion: apiextensions.crossplane.io/v1beta1
+    kind: EnvironmentConfig
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [ai.cndev.nl]
+        apiVersions: ["*"]
+        resources: [modelgateways, genaistacks]
+        operations: [CREATE, UPDATE]
+  variables:
+    - name: labels
+      expression: "has(namespaceObject.metadata.labels) ? namespaceObject.metadata.labels : {}"
+    - name: classification
+      expression: >-
+        'platform.cndev.nl/classification' in variables.labels
+        ? variables.labels['platform.cndev.nl/classification'] : 'internal'
+    - name: models
+      expression: >-
+        object.kind == 'ModelGateway'
+        ? (has(object.spec.models) ? object.spec.models : [])
+        : (has(object.spec.gateway) && has(object.spec.gateway.models) ? object.spec.gateway.models : [])
+    - name: oldModels
+      expression: >-
+        oldObject == null ? [] : (oldObject.kind == 'ModelGateway'
+        ? (has(oldObject.spec.models) ? oldObject.spec.models : [])
+        : (has(oldObject.spec.gateway) && has(oldObject.spec.gateway.models) ? oldObject.spec.gateway.models : []))
+    - name: allowed
+      expression: >-
+        has(params.data.classifications) && variables.classification in params.data.classifications
+        ? params.data.classifications[variables.classification] : []
+    - name: refused
+      expression: >-
+        variables.models.filter(m, !has(params.data.providers) || !params.data.providers.exists(p,
+          m.endpoint.startsWith(p.prefix) && p.residency in variables.allowed))
+  validations:
+    - expression: "(oldObject != null && variables.models == variables.oldModels) || size(variables.refused) == 0"
+      messageExpression: >-
+        'project ' + namespaceObject.metadata.name + ' is ' + variables.classification + ' and may only use models with residency '
+        + variables.allowed.join(', ') + ' from the basis-models catalog; not allowed: '
+        + variables.refused.map(m, m.name + ' (' + m.endpoint + ')').join(', ')
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: platform.cndev.nl-model-residency
+spec:
+  policyName: platform.cndev.nl-model-residency
+  paramRef:
+    name: basis-models
+    # No catalog, no restriction.
+    parameterNotFoundAction: Allow
+  validationActions: [Deny]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: platform.cndev.nl-confidential-exposure
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [postgres.cndev.nl]
+        apiVersions: ["*"]
+        resources: [postgresclusters]
+        operations: [CREATE, UPDATE]
+      - apiGroups: [ai.cndev.nl]
+        apiVersions: ["*"]
+        resources: [modelgateways, genaistacks]
+        operations: [CREATE, UPDATE]
+  variables:
+    - name: labels
+      expression: "has(namespaceObject.metadata.labels) ? namespaceObject.metadata.labels : {}"
+    - name: confidential
+      expression: "'platform.cndev.nl/classification' in variables.labels && variables.labels['platform.cndev.nl/classification'] == 'confidential'"
+    - name: ranges
+      expression: >-
+        (has(object.spec.expose) && has(object.spec.expose.loadBalancerSourceRanges) ? object.spec.expose.loadBalancerSourceRanges : [])
+        + (has(object.spec.retrieval) && has(object.spec.retrieval.expose) && has(object.spec.retrieval.expose.loadBalancerSourceRanges)
+           ? object.spec.retrieval.expose.loadBalancerSourceRanges : [])
+        + (has(object.spec.gateway) && has(object.spec.gateway.expose) && has(object.spec.gateway.expose.loadBalancerSourceRanges)
+           ? object.spec.gateway.expose.loadBalancerSourceRanges : [])
+    - name: oldRanges
+      expression: >-
+        oldObject == null ? [] :
+        (has(oldObject.spec.expose) && has(oldObject.spec.expose.loadBalancerSourceRanges) ? oldObject.spec.expose.loadBalancerSourceRanges : [])
+        + (has(oldObject.spec.retrieval) && has(oldObject.spec.retrieval.expose) && has(oldObject.spec.retrieval.expose.loadBalancerSourceRanges)
+           ? oldObject.spec.retrieval.expose.loadBalancerSourceRanges : [])
+        + (has(oldObject.spec.gateway) && has(oldObject.spec.gateway.expose) && has(oldObject.spec.gateway.expose.loadBalancerSourceRanges)
+           ? oldObject.spec.gateway.expose.loadBalancerSourceRanges : [])
+  validations:
+    - expression: >-
+        !variables.confidential || (oldObject != null && variables.ranges == variables.oldRanges)
+        || !variables.ranges.exists(r, r == '0.0.0.0/0' || r == '::/0')
+      messageExpression: >-
+        'project ' + namespaceObject.metadata.name + ' is confidential: loadBalancerSourceRanges must name the clients, '
+        + 'not 0.0.0.0/0 or ::/0'
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: platform.cndev.nl-confidential-exposure
+spec:
+  policyName: platform.cndev.nl-confidential-exposure
+  validationActions: [Deny]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: platform.cndev.nl-expired-project
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [postgres.cndev.nl]
+        apiVersions: ["*"]
+        resources: [postgresclusters]
+        operations: [CREATE]
+      - apiGroups: [cache.cndev.nl]
+        apiVersions: ["*"]
+        resources: [valkeycaches]
+        operations: [CREATE]
+      - apiGroups: [ai.cndev.nl]
+        apiVersions: ["*"]
+        resources: [modelgateways, genaistacks]
+        operations: [CREATE]
+  validations:
+    # Crossplane may still compose the parts of what exists (a stack's database).
+    - expression: >-
+        request.userInfo.username == 'system:serviceaccount:crossplane-system:crossplane'
+        || !has(namespaceObject.metadata.labels)
+        || !('platform.cndev.nl/expired' in namespaceObject.metadata.labels)
+        || namespaceObject.metadata.labels['platform.cndev.nl/expired'] != 'true'
+      messageExpression: >-
+        'project ' + namespaceObject.metadata.name + ' has expired (spec.expiresAt): nothing new can be created in it; '
+        + 'extend expiresAt on the Project, or delete it'
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: platform.cndev.nl-expired-project
+spec:
+  policyName: platform.cndev.nl-expired-project
+  validationActions: [Deny]

@@ -1,5 +1,13 @@
 import { Select, Switch, Text, TextField } from '@backstage/ui';
-import type { LocationSummary, Project } from '@internal/backstage-plugin-basis-common';
+import {
+  CLASSIFICATION_HINTS,
+  CLASSIFICATIONS,
+  ENVIRONMENTS,
+  type Classification,
+  type Environment,
+  type LocationSummary,
+  type Project,
+} from '@internal/backstage-plugin-basis-common';
 import { Section } from './common';
 import { ProjectForm } from './projectForm';
 
@@ -158,6 +166,63 @@ export const ProjectFormFields = ({
             />
           </>
         )}
+      </Section>
+
+      <Section
+        title="Governance and cost"
+        description="What the project is for and who pays. The classification decides which models its gateways may use; the budget, its cost alerts (with the platform's price catalog)."
+      >
+        <Select
+          label="Data classification"
+          value={form.classification}
+          onChange={k => set('classification')(String(k) as Classification)}
+          options={CLASSIFICATIONS.map(c => ({ id: c, label: c[0].toUpperCase() + c.slice(1) }))}
+          description={CLASSIFICATION_HINTS[form.classification]}
+        />
+        <Select
+          label="Environment"
+          value={form.environment}
+          onChange={k => set('environment')(String(k) as Environment)}
+          options={ENVIRONMENTS.map(e => ({ id: e, label: e[0].toUpperCase() + e.slice(1) }))}
+        />
+        <TextField
+          label="Cost center"
+          value={form.costCenter}
+          onChange={set('costCenter')}
+          placeholder="e.g. CC-4711"
+          description={err('costCenter') ?? 'For showback; a label on the namespaces.'}
+          isInvalid={Boolean(err('costCenter'))}
+        />
+        <TextField
+          label="Monthly budget"
+          value={form.budgetMonthly}
+          onChange={set('budgetMonthly')}
+          placeholder="e.g. 2500"
+          description={err('budgetMonthly') ?? "In the price catalog's currency (EUR). Alerts at 80% and 100% of the month's forecast."}
+          isInvalid={Boolean(err('budgetMonthly'))}
+        />
+        <TextField
+          label="Monthly token budget"
+          value={form.budgetTokens}
+          onChange={set('budgetTokens')}
+          placeholder="e.g. 50000000"
+          description={
+            err('budgetTokens') ??
+            "Through all the project's gateways; alerts like the budget. Hard caps are per gateway or client."
+          }
+          isInvalid={Boolean(err('budgetTokens'))}
+        />
+        <TextField
+          label="Expires"
+          value={form.expiresAt}
+          onChange={set('expiresAt')}
+          placeholder="YYYY-MM-DD"
+          description={
+            err('expiresAt') ??
+            'The last day, e.g. for a sandbox. After it nothing new can be created in the project; what runs keeps running.'
+          }
+          isInvalid={Boolean(err('expiresAt'))}
+        />
       </Section>
 
       <Section title="Quota" description="Caps on what the whole project may request.">

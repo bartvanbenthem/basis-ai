@@ -10,7 +10,7 @@
  *   CloudNativePG loads pgaudit as soon as a pgaudit.* parameter is set and
  *   logs its records as JSON lines with logger "pgaudit".
  */
-export type AuditSource = 'kubernetes' | 'postgresql';
+export type AuditSource = 'kubernetes' | 'postgresql' | 'gateway';
 
 /** Where control-plane events come from, in the location column. */
 export const CONTROL_PLANE = 'control-plane';
@@ -37,8 +37,12 @@ export interface AuditEntry {
   count?: number;
   /** postgresql: the instance (pod) that logged it. */
   instance?: string;
-  /** postgresql: the client address (connection_from). */
+  /** postgresql: the client address (connection_from). gateway: the caller's address. */
   client?: string;
+  /** gateway: the ModelGateway that served it. */
+  gateway?: string;
+  /** gateway: the request's tokens, input and output. */
+  tokens?: { input?: number; output?: number };
 }
 
 /** A PostgresCluster in the project and whether pgaudit records anything for it. */
@@ -114,5 +118,47 @@ export function parsePgAuditLine(
     type: text(audit.class) ?? text(audit.audit_type) ?? 'AUDIT',
     instance: text(entry.logging_pod),
     client: text(record.connection_from),
+  };
+}
+
+const num = (v: unknown) => {
+  let n = NaN;
+  if (typeof v === 'number') n = v;
+  else if (typeof v === 'string' && v !== '' && v !== '-') n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+};
+
+/**
+ * One line of a ModelGateway's access log (the JSON its Envoy writes, field
+ * "basis": "gateway"): who called which model, with how many tokens and how
+ * it ended. Never the prompt. Undefined for any other line.
+ */
+export function parseGatewayLine(line: string): AuditEntry | undefined {
+  if (!line.includes('"basis":"gateway"') && !line.includes('"basis": "gateway"')) return undefined;
+  let r: Record<string, unknown>;
+  try {
+    r = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  if (r.basis !== 'gateway') return undefined;
+  // Envoy writes "-" for what it doesn't have.
+  const s = (v: unknown) => (v === '-' ? undefined : text(v));
+  const status = num(r.status);
+  const input = num(r.input_tokens);
+  const output = num(r.output_tokens);
+  const tokens = input !== undefined || output !== undefined ? `${input ?? 0} + ${output ?? 0} tokens, ` : '';
+  const details = s(r.details) && r.details !== 'via_upstream' ? ` (${r.details})` : '';
+  return {
+    source: 'gateway',
+    time: s(r.time),
+    location: '',
+    actor: s(r.client) ?? 'unauthenticated',
+    action: `${s(r.method) ?? ''} ${s(r.path) ?? ''}`.trim(),
+    object: s(r.model),
+    message: `${status ?? '-'}${details}, ${tokens}${num(r.duration_ms) ?? '-'} ms`,
+    type: status === undefined ? 'unknown' : `${Math.floor(status / 100)}xx`,
+    client: s(r.source),
+    ...(input !== undefined || output !== undefined ? { tokens: { input, output } } : {}),
   };
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 func xr(t *testing.T, spec, status string) Object {
@@ -222,4 +223,68 @@ func TestCompose(t *testing.T) {
 			t.Errorf("status %+v", out.Status)
 		}
 	})
+}
+
+func TestGovernance(t *testing.T) {
+	NewKey = func() string { return "generated" }
+	Now = func() time.Time { return time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC) }
+	defer func() { Now = time.Now }()
+
+	spec := `{` + models + `,"monthlyTokens":5000000,"clients":[
+		{"name":"apps","monthlyTokens":1000000},
+		{"name":"bot","owner":"team-ai","expiresAt":"2026-10-22"},
+		{"name":"old","monthlyTokens":10,"expiresAt":"2026-10-21"}]}`
+	out, err := Compose(Input{XR: xr(t, spec, `{}`), Required: required(false)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A client past its last day loses its key; one on its last day keeps it.
+	keys := out.Composed["keys"].Object["data"].(map[string]string)
+	if _, ok := keys["old"]; ok || keys["bot"] == "" || len(out.Status.ExpiredClients) != 1 || out.Status.ExpiredClients[0] != "old" {
+		t.Errorf("keys %v, expired %v", keys, out.Status.ExpiredClients)
+	}
+
+	// Who called goes upstream, each request's tokens into metadata.
+	if h := dig(manifest(out.Composed["protected-securitypolicy"]), "spec", "apiKeyAuth", "forwardClientIDHeader"); h != ClientHeader {
+		t.Errorf("client header %v", h)
+	}
+	costs, _ := json.Marshal(dig(manifest(out.Composed["protected-route"]), "spec", "llmRequestCosts"))
+	if !strings.Contains(string(costs), `"metadataKey":"llm_total_token","type":"TotalToken"`) {
+		t.Errorf("request costs %s", costs)
+	}
+
+	// Monthly caps: apps, and the gateway as a whole; not the expired client.
+	limits, _ := json.Marshal(manifest(out.Composed["protected-ratelimit"]))
+	for _, want := range []string{
+		`"targetRefs":[{"group":"gateway.networking.k8s.io","kind":"HTTPRoute","name":"llm"}]`,
+		`"mergeType":"StrategicMerge"`,
+		`{"clientSelectors":[{"headers":[{"name":"x-basis-client","type":"Exact","value":"apps"}]}],"cost":`,
+		`"limit":{"requests":1000000,"unit":"Month"}`,
+		`"limit":{"requests":5000000,"unit":"Month"}`,
+		`"response":{"from":"Metadata","metadata":{"key":"llm_total_token","namespace":"io.envoy.ai_gateway"}}`,
+	} {
+		if !strings.Contains(string(limits), want) {
+			t.Errorf("limits lack %s\n%s", want, limits)
+		}
+	}
+	if strings.Contains(string(limits), `"value":"old"`) {
+		t.Error("a cap for an expired client")
+	}
+
+	// Token metrics for the Project's cost, and an access log on each Gateway.
+	pm, _ := json.Marshal(manifest(out.Composed["protected-podmonitor"]))
+	if !strings.Contains(string(pm), `"values":["llm"]`) || !strings.Contains(string(pm), `"targetPort":1064`) {
+		t.Errorf("podmonitor %s", pm)
+	}
+	log, _ := json.Marshal(dig(manifest(out.Composed["protected-envoyproxy"]), "spec", "telemetry"))
+	if !strings.Contains(string(log), `"client":"%REQ(X-BASIS-CLIENT)%"`) || !strings.Contains(string(log), `"total_tokens":"%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_total_token)%"`) {
+		t.Errorf("access log %s", log)
+	}
+
+	// No caps, no rate limit policy.
+	out, _ = Compose(Input{XR: xr(t, `{`+models+`}`, `{}`), Required: required(false)})
+	if _, ok := out.Composed["protected-ratelimit"]; ok {
+		t.Error("rate limits without monthlyTokens")
+	}
 }

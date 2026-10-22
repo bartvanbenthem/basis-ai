@@ -52,6 +52,8 @@ type Spec struct {
 		Client string `json:"client"`
 		// Expose goes to the stack's own ModelGateway's spec.expose as it is.
 		Expose Object `json:"expose"`
+		// MonthlyTokens caps the stack's own gateway per month.
+		MonthlyTokens int64 `json:"monthlyTokens"`
 	} `json:"gateway"`
 }
 

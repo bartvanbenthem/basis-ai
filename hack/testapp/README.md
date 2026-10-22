@@ -15,8 +15,8 @@ A vision model writes every photo's title, caption and tags when it is added.
 | `ModelGateway` | Two models, both reached through the stack's endpoint with its client key. `qwen3-vl` (Qwen3-VL-235B) describes and answers questions about photos. `qwen3-vl-embedding` (Qwen3-VL-Embedding-8B) puts images and text in one vector space, at 1024 dimensions |
 | `PostgresCluster` (vector) | The library, in schema `lens`: photos (display size and thumbnail), their descriptions, and their embeddings, with an HNSW index (pgvector) and a full-text index on the titles, tags and captions. A search merges the vector matches with the word matches (reciprocal rank fusion) |
 | `ValkeyCache` (semantic) | Caches query embeddings, search results and answers about photos. Search results are cached exactly (same words) and semantically: a paraphrase ("sunset over the mountains" for "mountains at sunset") finds the earlier result through valkey-search KNN |
-| connection Secret | The only configuration: `envFrom` the stack's `<stack>-connection` |
-| the Project's Prometheus | A PodMonitor for the `lens_*` metrics: requests by kind and cache result, time per stage (describe, embed, retrieve, ...), tokens |
+| connection Secret | The only configuration: `envFrom` a copy of the stack's `<stack>-connection` in the app's namespace |
+| the Project's Prometheus | A PodMonitor in the stack's namespace, for the app's pods in its own, with the `lens_*` metrics: requests by kind and cache result, time per stage (describe, embed, retrieve, ...), tokens |
 | recovery site | Deploy it in both sites. The standby's copy shows the replica's photos and refuses changes; `SITE` and `ACTIVE` come from the Secret |
 
 Search results are cached under the library version, a row that every added or deleted photo bumps
@@ -57,13 +57,29 @@ photos under the Unsplash license, credited to their photographers).
 
 ```sh
 make push                     # the image: ghcr.io/bartvanbenthem/basis-lens:v0.1.0
-make deploy                   # STACK=newtest NAMESPACE=multi-region CONTEXT=protected
+make deploy                   # STACK=newtest NAMESPACE=multi-region APP_NAMESPACE=lens CONTEXT=protected
 make deploy CONTEXT=recovery  # the standby site's copy, on a LoadBalancer of its own
 make smoke                    # the end-to-end check below, on the protected site's LoadBalancer
 ```
 
 `make deploy` prints the app's address, `http://<LoadBalancer IP>`. You can also get it later with
 `make url`.
+
+- **Its own namespace:** the app runs in `APP_NAMESPACE`, next to the stack's namespace rather than
+  in it; `make deploy` creates it when missing. A Secret can only be used in its own namespace, so
+  `make deploy` copies `<stack>-connection` there. The copy doesn't follow the stack: run
+  `make deploy` again after a switchover or a key rotation, and the app restarts with the new copy.
+  Several apps can share the stack this way, each from its own namespace.
+
+To remove it:
+
+```sh
+make undeploy CONTEXT=recovery  # the app in a site, and its namespace if deploy created it; the photo library stays
+make uninstall                  # undeploy, then drop schema lens on the active site (asks first)
+```
+
+Run `uninstall` against the active site: the standby's database is a read-only replica and follows.
+Cached entries expire within `CACHE_TTL`.
 
 - **Who can reach it:** the LoadBalancer serves plain HTTP, limited to `SOURCE_RANGES`. By default
   that's the CIDRs of the stack's exposed gateway, read from the control plane (the current kubectl

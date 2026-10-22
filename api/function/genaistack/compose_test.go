@@ -229,6 +229,9 @@ func TestCompose(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if out, _ := Compose(Input{XR: xr(t, `{"gateway":{"monthlyTokens":1000}}`, `{}`), Required: required(false, RequiredCacheSecret)}); dig(out.Composed["gateway"].Object, "spec", "monthlyTokens") != int64(1000) {
+			t.Errorf("gateway monthlyTokens %v", dig(out.Composed["gateway"].Object, "spec", "monthlyTokens"))
+		}
 		if a := dig(out.Composed["database"].Object, "spec", "postgresql", "parameters", "pgaudit.log"); a != "write, ddl, role" {
 			t.Errorf("pgaudit.log %v", a)
 		}

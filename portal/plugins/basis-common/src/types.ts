@@ -6,6 +6,7 @@
  */
 
 import { specExtensions } from './extensions';
+import type { Classification, Environment, ProjectGovernanceStatus } from './governance';
 import { ClusterProfile, clusterProfile } from './profiles';
 import type { ClusterResources } from './sizes';
 
@@ -326,6 +327,7 @@ export interface ProjectStatus {
     adminSecret?: string;
     instanceSelector?: Record<string, string>;
   };
+  governance?: ProjectGovernanceStatus;
   conditions?: Condition[];
 }
 
@@ -357,6 +359,12 @@ export interface Project {
       grafana?: { enabled?: boolean; ingress?: boolean };
     };
     backup?: { bucket?: boolean; bucketClassName?: string; bucketAccessClassName?: string };
+    classification?: Classification;
+    environment?: Environment;
+    costCenter?: string;
+    budget?: { monthly?: number; monthlyTokens?: number };
+    /** YYYY-MM-DD: after it nothing new can be created in the project. */
+    expiresAt?: string;
     [key: string]: unknown;
   };
   status?: ProjectStatus;
@@ -385,6 +393,12 @@ export interface ProjectSummary {
   locations: string[];
   /** Its COSI backup bucket, which PostgresClusters without a backup destination of their own use. */
   backupBucket?: { ready: boolean; bucket?: string; reachability: BackupReachability[] };
+  classification?: Classification;
+  environment?: Environment;
+  costCenter?: string;
+  expiresAt?: string;
+  expired?: boolean;
+  budget?: { monthly?: number; monthlyTokens?: number };
   createdAt?: string;
 }
 
@@ -413,6 +427,12 @@ export function summarizeProject(project: Project): ProjectSummary {
           reachability: status.backup.reachability ?? [],
         }
       : undefined,
+    classification: spec.classification ?? 'internal',
+    environment: spec.environment ?? 'production',
+    costCenter: spec.costCenter || undefined,
+    expiresAt: spec.expiresAt || undefined,
+    expired: Boolean(status?.governance?.expired),
+    budget: spec.budget,
     createdAt: metadata.creationTimestamp,
   };
 }

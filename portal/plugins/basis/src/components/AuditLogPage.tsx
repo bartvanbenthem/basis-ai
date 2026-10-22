@@ -37,7 +37,14 @@ const SOURCES: Array<{ id: SourceFilter; label: string }> = [
   { id: 'all', label: 'All' },
   { id: 'kubernetes', label: 'Kubernetes' },
   { id: 'postgresql', label: 'PostgreSQL' },
+  { id: 'gateway', label: 'Model gateways' },
 ];
+
+const SOURCE_LABELS: Record<AuditSource, string> = {
+  kubernetes: 'Kubernetes',
+  postgresql: 'PostgreSQL',
+  gateway: 'Model gateway',
+};
 const ALL = '__all__';
 
 const where = (location: string) =>
@@ -68,8 +75,8 @@ const matches = (e: AuditEntry, query: string) =>
 
 /**
  * A project's audit trail: the Kubernetes events of its namespace on the
- * control plane and in its locations, and the pgaudit records of its
- * PostgreSQL clusters. The project lives in ?project=<name> so the project
+ * control plane and in its locations, the pgaudit records of its
+ * PostgreSQL clusters and the calls through its model gateways. The project lives in ?project=<name> so the project
  * page can link to it.
  */
 export const AuditLogPage = () => {
@@ -128,6 +135,8 @@ export const AuditLogPage = () => {
   const stats = useMemo(() => {
     const events = all.filter(e => e.source === 'kubernetes');
     const records = all.filter(e => e.source === 'postgresql');
+    const calls = all.filter(e => e.source === 'gateway');
+    const callTokens = calls.reduce((n, e) => n + (e.tokens?.input ?? 0) + (e.tokens?.output ?? 0), 0);
     const oldest = all[all.length - 1]?.time;
     const audited = (log?.clusters.length ?? 0) - unaudited.length;
     return [
@@ -147,6 +156,11 @@ export const AuditLogPage = () => {
         hint: `pgaudit on in ${audited} of ${
           log?.clusters.length ?? 0
         } clusters`,
+      },
+      {
+        label: 'Model gateway calls',
+        value: calls.length,
+        hint: `${callTokens.toLocaleString()} tokens, ${calls.filter(e => e.type !== '2xx').length} not OK`,
       },
     ];
   }, [all, log, unaudited]);
@@ -169,7 +183,7 @@ export const AuditLogPage = () => {
         <Cell>
           <Flex direction="column" gap="1">
             <Text variant="body-small">
-              {e.source === 'kubernetes' ? 'Kubernetes' : 'PostgreSQL'}
+              {SOURCE_LABELS[e.source]}
             </Text>
             {e.type === 'Warning' ? (
               <StatusDot health="degraded" label="Warning" />
@@ -196,6 +210,11 @@ export const AuditLogPage = () => {
               >
                 {e.instance ?? e.cluster}
               </Link>
+            )}
+            {e.gateway && (
+              <Text variant="body-x-small" color="secondary">
+                {e.gateway}
+              </Text>
             )}
           </Flex>
         </Cell>
@@ -274,7 +293,7 @@ export const AuditLogPage = () => {
     <>
       <Header
         title="Audit logs"
-        description="Kubernetes events of a project's namespace, on the control plane and in its locations, and the pgaudit records of its PostgreSQL clusters"
+        description="Kubernetes events of a project's namespace, on the control plane and in its locations, the pgaudit records of its PostgreSQL clusters, and the calls through its model gateways (client, model, tokens; no prompts)"
         customActions={
           <Flex gap="3" align="center">
             {project && projectLink && (

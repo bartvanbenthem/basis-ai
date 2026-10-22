@@ -44,6 +44,7 @@ import {
   volumesRouteRef,
 } from '../routes';
 import { ProjectBackupsPanel } from './Backups';
+import { ProjectCostPanel } from './ProjectCostPanel';
 import {
   age,
   ErrorAlert,
@@ -436,6 +437,7 @@ export const ProjectDetailPage = () => {
                 />
               </Panel>
             </Grid.Root>
+            <ProjectCostPanel project={summary} />
             {summary.backupBucket && summary.locations.length > 0 && (
               <BackupReachabilityPanel project={summary} />
             )}

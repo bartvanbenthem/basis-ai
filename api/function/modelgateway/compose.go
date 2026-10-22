@@ -15,7 +15,15 @@
 //	backendtraffic,    backend per spec.models entry; 50Mi buffers for
 //	keys,              requests and responses
 //	securitypolicy,    (model-<hash>-{backend,aiservicebackend,tls,apikey,
-//	route, model-...   backendsecurity})
+//	route, model-...   backendsecurity}); the client's name goes upstream
+//	                   in x-basis-client, each request's tokens in metadata
+//	podmonitor         the token metrics per model, for the Project's cost
+//	ratelimit          with monthlyTokens (per client or the gateway): the
+//	                   monthly token caps, a BackendTrafficPolicy on the route
+//
+// Both Gateways write an access log per request (client, model, tokens,
+// outcome; no prompts): the portal's audit trail. A client past its
+// expiresAt loses its key.
 //
 // With spec.expose, next to those in each site:
 //
@@ -101,6 +109,8 @@ type Status struct {
 	ExternalEndpoint string       `json:"externalEndpoint,omitempty"`
 	KeysSecret       string       `json:"keysSecret"`
 	Sites            []SiteStatus `json:"sites"`
+	// ExpiredClients are the clients past their expiresAt: their keys are revoked.
+	ExpiredClients []string `json:"expiredClients,omitempty"`
 }
 
 type Output struct {
@@ -193,6 +203,11 @@ func Compose(in Input) (*Output, error) {
 
 	status := Status{ActiveSite: active, Models: len(spec.Models), Clients: len(keys),
 		Endpoint: Endpoint(c.name, c.ns), KeysSecret: KeysSecret(c.name), Sites: []SiteStatus{}}
+	for _, cl := range spec.clientList() {
+		if cl.expired() {
+			status.ExpiredClients = append(status.ExpiredClients, cl.Name)
+		}
+	}
 	if spec.exposed() {
 		status.ExternalEndpoint = ExternalEndpoint(spec.Expose.Hostname)
 	}
@@ -280,6 +295,9 @@ type copySpec struct {
 
 func reported(o Object) bool { return len(live(o)) > 0 }
 
+// always: serving doesn't wait for it (metrics, limits).
+func always(Object) bool { return true }
+
 func objectReady(o Object) bool { return conditionTrue(o, "Ready") }
 
 // live is the manifest as the location reports it.
@@ -302,7 +320,7 @@ func (c *composition) siteObjects(replicas int) (map[string]object, error) {
 			// Internal: clients in the location only, at a predictable name.
 			"envoyService":    Object{"name": c.name, "type": "ClusterIP"},
 			"envoyDeployment": Object{"replicas": replicas},
-		}}},
+		}}, "telemetry": telemetry()},
 	}}
 	programmed := func(o Object) bool { return liveReady(o, "Programmed") }
 	out["gateway"] = object{ready: programmed, manifest: Object{
@@ -328,7 +346,7 @@ func (c *composition) siteObjects(replicas int) (map[string]object, error) {
 			"spec": Object{"provider": Object{"type": "Kubernetes", "kubernetes": Object{
 				"envoyService":    svc,
 				"envoyDeployment": Object{"replicas": replicas},
-			}}},
+			}}, "telemetry": telemetry()},
 		}}
 		out["certificate"] = object{ready: func(o Object) bool { return liveReady(o, "Ready") }, manifest: Object{
 			"apiVersion": "cert-manager.io/v1", "kind": "Certificate", "metadata": c.meta(c.name + "-tls"),
@@ -376,6 +394,8 @@ func (c *composition) siteObjects(replicas int) (map[string]object, error) {
 				"credentialRefs": []any{Object{"name": KeysSecret(c.name)}},
 				"extractFrom":    []any{Object{"headers": []any{"Authorization"}}},
 				"sanitize":       true,
+				// Who called: for the token limits and the access log.
+				"forwardClientIDHeader": ClientHeader,
 			},
 		},
 	}}
@@ -447,10 +467,100 @@ func (c *composition) siteObjects(replicas int) (map[string]object, error) {
 	if len(rules) > 0 {
 		out["route"] = object{ready: reported, manifest: Object{
 			"apiVersion": "aigateway.envoyproxy.io/v1beta1", "kind": "AIGatewayRoute", "metadata": c.meta(c.name),
-			"spec": Object{"parentRefs": gatewayRefs, "rules": rules},
+			"spec": Object{"parentRefs": gatewayRefs, "rules": rules,
+				// Each request's tokens, for the token limits and the access log.
+				"llmRequestCosts": []any{
+					Object{"metadataKey": "llm_input_token", "type": "InputToken"},
+					Object{"metadataKey": "llm_output_token", "type": "OutputToken"},
+					Object{"metadataKey": "llm_total_token", "type": "TotalToken"},
+				}},
 		}}
+		if spec.limited() {
+			out["ratelimit"] = object{ready: always, manifest: c.tokenLimits()}
+		}
 	}
+	// The token usage per model (Agent Router's gen_ai_* metrics) for the
+	// Project's Prometheus: what its cost rules price.
+	gateways := []any{c.name}
+	if spec.exposed() {
+		gateways = append(gateways, c.name+"-external")
+	}
+	out["podmonitor"] = object{ready: always, manifest: Object{
+		"apiVersion": "monitoring.coreos.com/v1", "kind": "PodMonitor", "metadata": c.meta(c.name + "-tokens"),
+		"spec": Object{
+			"selector": Object{"matchExpressions": []any{Object{
+				"key": "gateway.envoyproxy.io/owning-gateway-name", "operator": "In", "values": gateways}}},
+			// The ai-gateway-extproc sidecar's admin port (no named port).
+			"podMetricsEndpoints": []any{Object{"targetPort": ExtProcMetricsPort, "path": "/metrics", "interval": "30s"}},
+		},
+	}}
 	return out, nil
+}
+
+// ClientHeader carries the calling client's name (its key's id) upstream.
+const ClientHeader = "x-basis-client"
+
+// ExtProcMetricsPort is where Agent Router's sidecar serves its metrics.
+const ExtProcMetricsPort = 1064
+
+// tokenLimits is the monthly token caps: per client, and for the gateway as
+// a whole. Global rate limits (Envoy Gateway's rate limit service, see
+// deps/README.md) on the route, charged with each response's total tokens;
+// a request is refused (429) once its counter is used up. Shared by both
+// Gateways; each site counts on its own.
+func (c *composition) tokenLimits() Object {
+	cost := Object{
+		"request":  Object{"from": "Number", "number": 0},
+		"response": Object{"from": "Metadata", "metadata": Object{"namespace": "io.envoy.ai_gateway", "key": "llm_total_token"}},
+	}
+	var rules []any
+	for _, cl := range c.spec.clientList() {
+		if cl.MonthlyTokens > 0 && !cl.expired() {
+			rules = append(rules, Object{
+				"clientSelectors": []any{Object{"headers": []any{Object{"name": ClientHeader, "type": "Exact", "value": cl.Name}}}},
+				"limit":           Object{"requests": cl.MonthlyTokens, "unit": "Month"},
+				"cost":            cost, "shared": true,
+			})
+		}
+	}
+	if n := c.spec.MonthlyTokens; n > 0 {
+		rules = append(rules, Object{"limit": Object{"requests": n, "unit": "Month"}, "cost": cost, "shared": true})
+	}
+	return Object{
+		"apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "BackendTrafficPolicy", "metadata": c.meta(c.name + "-limits"),
+		"spec": Object{
+			// The HTTPRoute Agent Router makes of the AIGatewayRoute, merged
+			// into the Gateways' policy (its buffers) rather than replacing it.
+			"targetRefs": []any{Object{"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "name": c.name}},
+			"mergeType":  "StrategicMerge",
+			"rateLimit":  Object{"type": "Global", "global": Object{"rules": rules}},
+		},
+	}
+}
+
+// telemetry is the gateway's access log: one JSON line per request with the
+// client, the model, its tokens and the outcome, never the prompt. The
+// portal's Audit logs page reads it (source "gateway").
+func telemetry() Object {
+	return Object{"accessLog": Object{"settings": []any{Object{
+		"format": Object{"type": "JSON", "json": Object{
+			"basis":         "gateway",
+			"time":          "%START_TIME%",
+			"client":        "%REQ(" + strings.ToUpper(ClientHeader) + ")%",
+			"model":         "%REQ(X-AI-EG-MODEL)%",
+			"method":        "%REQ(:METHOD)%",
+			"path":          "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+			"status":        "%RESPONSE_CODE%",
+			"details":       "%RESPONSE_CODE_DETAILS%",
+			"duration_ms":   "%DURATION%",
+			"input_tokens":  "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%",
+			"output_tokens": "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%",
+			"total_tokens":  "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_total_token)%",
+			"request_id":    "%REQ(X-REQUEST-ID)%",
+			"source":        "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%",
+		}},
+		"sinks": []any{Object{"type": "File", "file": Object{"path": "/dev/stdout"}}},
+	}}}}
 }
 
 // wrap puts a location object into a provider-kubernetes Object.

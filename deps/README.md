@@ -152,6 +152,11 @@ together (Agent Router v1.2.x needs Envoy Gateway v1.9.2+), then the
 GatewayClass the gateways use:
 
 ```sh
+# The counters of the gateways' monthly token caps (Envoy Gateway's global
+# rate limits), before Envoy Gateway, which is pointed at it.
+kubectl create namespace envoy-gateway-system --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f agent-router/ratelimit-store.yaml
+
 # Envoy Gateway (Gateway API + its CRDs), with Agent Router's settings and
 # GatewayNamespace mode: each gateway's Envoy runs in its Project's namespace.
 helm upgrade -i eg oci://docker.io/envoyproxy/gateway-helm \
@@ -180,6 +185,11 @@ kubectl get gatewayclass basis-ai                 # ACCEPTED True
 kubectl get crd aigatewayroutes.aigateway.envoyproxy.io
 kubectl get clusterissuer basis                   # READY True
 ```
+
+Token caps (`monthlyTokens` on a ModelGateway, a client or a GenAIStack's gateway) are Envoy
+Gateway global rate limits counted in `basis-ratelimit` (Valkey, a 1Gi volume): Envoy Gateway then
+runs its rate limit service (`envoy-ratelimit`) in `envoy-gateway-system`. Each location counts on
+its own. Without the store, the caps aren't enforced; everything else works.
 
 An exposed gateway also needs `LoadBalancer` Services in the location (a cloud's load balancer, or
 MetalLB and the like on-premises) that honour `loadBalancerSourceRanges`.

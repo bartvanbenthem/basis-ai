@@ -18,6 +18,8 @@ describe('create-project form', () => {
         prometheus: { retention: '7d', storage: { size: '10Gi' } },
         grafana: { ingress: true },
       },
+      classification: 'internal',
+      environment: 'production',
     });
   });
 
@@ -142,5 +144,23 @@ describe('edit-project form', () => {
     expect(validateProjectEdit(original, withRecovery)).toEqual({});
     expect(validateProjectEdit(withRecovery, { ...withRecovery, recoveryLocation: '' }).recoveryLocation).toMatch(/Fixed/);
     expect(validateProjectEdit(original, { ...original, protectedLocation: 'other' }).protectedLocation).toMatch(/Fixed/);
+  });
+});
+
+describe('governance fields', () => {
+  it('sends classification, cost center, budget and expiry; an edit removes what is cleared', () => {
+    const f = {
+      ...defaultProjectForm(), name: 'team-a', protectedLocation: 'ske', classification: 'confidential' as const,
+      environment: 'sandbox' as const, costCenter: 'CC-4711', budgetMonthly: '2500', budgetTokens: '50000000', expiresAt: '2026-12-31',
+    };
+    expect(toProjectSpec(f)).toMatchObject({
+      classification: 'confidential', environment: 'sandbox', costCenter: 'CC-4711',
+      budget: { monthly: 2500, monthlyTokens: 50000000 }, expiresAt: '2026-12-31',
+    });
+    expect(validateProject({ ...f, costCenter: 'cc 1', budgetTokens: '1.5', expiresAt: '31-12-2026' })).toMatchObject({
+      costCenter: expect.any(String), budgetTokens: expect.any(String), expiresAt: expect.any(String),
+    });
+    const patch = toProjectEditPatch(f, { ...f, budgetMonthly: '', budgetTokens: '', expiresAt: '' });
+    expect(patch).toEqual({ budget: null, expiresAt: null });
   });
 });

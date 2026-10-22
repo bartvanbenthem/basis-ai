@@ -42,13 +42,22 @@ const auditLine = JSON.stringify({
   },
 });
 
-function fakeCore(events: object[], log = ''): jest.Mocked<AuditCore> {
+const gatewayLine = JSON.stringify({
+  basis: 'gateway', time: '2026-10-07T09:30:00Z', client: 'apps', model: 'gpt-oss-120b', method: 'POST',
+  path: '/v1/chat/completions', status: 200, details: 'via_upstream', duration_ms: 900, input_tokens: 10, output_tokens: 5,
+});
+
+function fakeCore(events: object[], log = '', gatewayLog = ''): jest.Mocked<AuditCore> {
   return {
     listNamespacedEvent: jest.fn(async ({ namespace }: { namespace: string }) => ({
       items: namespace === 'default' ? [event('demo', 'Project', 'ComposeResources', '2026-10-07T09:00:00Z')] : events,
     })),
-    listNamespacedPod: jest.fn(async () => ({ items: [{ metadata: { name: 'orders-db-1' } }] })),
-    readNamespacedPodLog: jest.fn(async () => log),
+    listNamespacedPod: jest.fn(async ({ labelSelector }: { labelSelector: string }) => ({
+      items: labelSelector.startsWith('gateway.envoyproxy.io')
+        ? [{ metadata: { name: 'llm-external-abc', labels: { 'gateway.envoyproxy.io/owning-gateway-name': 'llm-external' } } }]
+        : [{ metadata: { name: 'orders-db-1' } }],
+    })),
+    readNamespacedPodLog: jest.fn(async ({ container }: { container: string }) => (container === 'envoy' ? gatewayLog : log)),
   } as unknown as jest.Mocked<AuditCore>;
 }
 
@@ -68,29 +77,32 @@ function setup(clusters: PostgresCluster[], location = fakeCore([], '')) {
 }
 
 describe('AuditService', () => {
-  it('merges events and pgaudit records, newest first', async () => {
+  it('merges events, pgaudit records and gateway calls, newest first', async () => {
     const location = fakeCore(
       [event('orders-db-2', 'Pod', 'Killing', '2026-10-07T09:20:00Z', { type: 'Warning', count: 3 })],
       `{"level":"info","logger":"postgres","msg":"record"}\n${auditLine}\n`,
+      `{"start_time":"2026-10-07T09:29:00Z","response_code":200}\n${gatewayLine}\n`,
     );
     const { service } = setup([cluster('orders-db', { 'pgaudit.log': 'ddl' }), cluster('orders')], location);
     const log = await service.list({ project: 'demo', tailLines: 100 });
 
     expect(log.items.map(i => [i.source, i.location, i.cluster, i.action])).toEqual([
+      ['gateway', 'prod-ams', undefined, 'POST /v1/chat/completions'],
       ['postgresql', 'prod-ams', 'orders-db', 'DROP TABLE'],
       ['kubernetes', 'prod-ams', 'orders-db', 'Killing'],
       ['kubernetes', 'control-plane', 'orders-db', 'SelectComposition'],
       ['kubernetes', 'control-plane', undefined, 'ComposeResources'],
     ]);
-    expect(log.items[1]).toMatchObject({ type: 'Warning', count: 3, actor: 'cloudnative-pg', object: 'Pod/orders-db-2' });
-    expect(log.items[0]).toMatchObject({ actor: 'app@orders', instance: 'orders-db-1', type: 'DDL' });
+    expect(log.items[2]).toMatchObject({ type: 'Warning', count: 3, actor: 'cloudnative-pg', object: 'Pod/orders-db-2' });
+    expect(log.items[0]).toMatchObject({ actor: 'apps', object: 'gpt-oss-120b', gateway: 'llm', instance: 'llm-external-abc' });
+    expect(log.items[1]).toMatchObject({ actor: 'app@orders', instance: 'orders-db-1', type: 'DDL' });
     expect(log.clusters).toEqual([
       { name: 'orders-db', pgauditLog: 'ddl' },
       { name: 'orders', pgauditLog: undefined },
     ]);
     expect(log.unreachable).toBeUndefined();
-    // Only the cluster with pgaudit on has its instance logs read.
-    expect(location.listNamespacedPod).toHaveBeenCalledTimes(1);
+    // Only the cluster with pgaudit on has its instance logs read, next to the gateways'.
+    expect(location.listNamespacedPod).toHaveBeenCalledTimes(2);
     expect(location.listNamespacedPod).toHaveBeenCalledWith({
       namespace: 'demo',
       labelSelector: 'cnpg.io/cluster=orders-db,cnpg.io/podRole=instance',

@@ -1,0 +1,52 @@
+# The counters of Envoy Gateway's global rate limits: the monthly token caps
+# of ModelGateways (spec.monthlyTokens, spec.clients[].monthlyTokens). One
+# Valkey per location, Redis-compatible, which envoy-gateway-values.yaml
+# points Envoy Gateway's rate limit service at. The counters live a month, so
+# they're kept on a volume (append-only file): a restart doesn't reset them.
+apiVersion: v1
+kind: Service
+metadata:
+  name: basis-ratelimit
+  namespace: envoy-gateway-system
+  labels: {app.kubernetes.io/name: basis-ratelimit, app.kubernetes.io/part-of: basis}
+spec:
+  selector: {app.kubernetes.io/name: basis-ratelimit}
+  ports:
+    - {name: valkey, port: 6379, targetPort: valkey}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: basis-ratelimit
+  namespace: envoy-gateway-system
+  labels: {app.kubernetes.io/name: basis-ratelimit, app.kubernetes.io/part-of: basis}
+spec:
+  serviceName: basis-ratelimit
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: basis-ratelimit}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: basis-ratelimit, app.kubernetes.io/part-of: basis}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 999, runAsGroup: 999, fsGroup: 999, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: valkey
+          image: docker.io/valkey/valkey:8.1.4
+          args: [--appendonly, "yes", --dir, /data, --maxmemory, 200mb, --maxmemory-policy, volatile-ttl]
+          ports:
+            - {name: valkey, containerPort: 6379}
+          readinessProbe:
+            exec: {command: [valkey-cli, ping]}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: {requests: {storage: 1Gi}}

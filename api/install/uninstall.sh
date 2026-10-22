@@ -66,6 +66,7 @@ kubectl delete -f "${API_DIR}/modelgateway/definition.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/valkeycache/policies.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/valkeycache/composition.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/valkeycache/definition.yaml" --ignore-not-found
+kubectl delete -f "${API_DIR}/project/governance.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/project/policies.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/project/composition.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/project/definition.yaml" --ignore-not-found

@@ -46,9 +46,21 @@ export interface ModelGatewaySpec {
   recovery?: { enabled?: boolean; replicas?: number };
   activeSite?: Site;
   /** Each client gets an API key of its own in Secret <name>-keys. */
-  clients?: Array<{ name: string }>;
+  clients?: GatewayClient[];
   models?: GatewayModel[];
   expose?: GatewayExpose;
+  /** Tokens all clients together may use per month (per site); 429 past it. */
+  monthlyTokens?: number;
+}
+
+export interface GatewayClient {
+  name: string;
+  /** Who to ask about the key. */
+  owner?: string;
+  /** Tokens this client may use per month (per site); 429 past it. */
+  monthlyTokens?: number;
+  /** The key's last day (YYYY-MM-DD); after it the key is revoked. */
+  expiresAt?: string;
 }
 
 export interface GatewaySiteStatus {
@@ -81,6 +93,8 @@ export interface ModelGateway {
     externalEndpoint?: string;
     keysSecret?: string;
     sites?: GatewaySiteStatus[];
+    /** Clients past their expiresAt: their keys are revoked. */
+    expiredClients?: string[];
     conditions?: Condition[];
   };
 }

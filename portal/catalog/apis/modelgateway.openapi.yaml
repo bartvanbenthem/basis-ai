@@ -33,12 +33,24 @@ components:
             clients:
               default:
                 - name: apps
-              description: 'Who may call the gateway: each client gets an API key of its own, generated once into Secret <name>-keys (the client''s name is the key). Removing a client revokes its key.'
+              description: 'Who may call the gateway: each client gets an API key of its own, generated once into Secret <name>-keys (the client''s name is the key). Removing a client revokes its key, and so does passing its expiresAt.'
               items:
                 properties:
+                  expiresAt:
+                    description: The key's last day (YYYY-MM-DD). After it the key is revoked; a later date makes a new key.
+                    format: date
+                    type: string
+                  monthlyTokens:
+                    description: Tokens (input and output) this client may use per calendar month in each site; past it, the gateway answers 429 until the month ends. Needs Envoy Gateway's rate limit service in the location (deps/README.md).
+                    minimum: 1
+                    type: integer
                   name:
                     description: The client, e.g. an app, an agent or a team.
                     pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$
+                    type: string
+                  owner:
+                    description: Who to ask about this key, a person or a group.
+                    maxLength: 100
                     type: string
                 required:
                   - name
@@ -185,6 +197,10 @@ components:
                 type: object
               maxItems: 30
               type: array
+            monthlyTokens:
+              description: Tokens (input and output) all clients together may use per calendar month in each site; past it, the gateway answers 429 until the month ends. Needs Envoy Gateway's rate limit service in the location (deps/README.md).
+              minimum: 1
+              type: integer
             recovery:
               default: {}
               description: A standby gateway in the Project's recovery location (the Project needs one), with the same models and client keys.
@@ -247,6 +263,11 @@ components:
             endpoint:
               description: Base URL for OpenAI clients in each site's location (OPENAI_BASE_URL).
               type: string
+            expiredClients:
+              description: Clients past their expiresAt; their keys are revoked.
+              items:
+                type: string
+              type: array
             externalEndpoint:
               description: Base URL for clients outside the location (spec.expose).
               type: string

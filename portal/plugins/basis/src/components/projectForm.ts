@@ -4,7 +4,7 @@
  * XRD defaults, and the API server has the final say.
  */
 
-import type { Project } from '@internal/backstage-plugin-basis-common';
+import type { Classification, Environment, Project } from '@internal/backstage-plugin-basis-common';
 import { mergePatch, toMi } from './form';
 
 export interface ProjectForm {
@@ -24,6 +24,16 @@ export interface ProjectForm {
   prometheusRetention: string;
   prometheusStorage: string;
   grafanaIngress: boolean;
+  /** Governance and cost: what decides the allowed models and exposure, showback and expiry. */
+  classification: Classification;
+  environment: Environment;
+  costCenter: string;
+  /** Per month in the catalog's currency; empty for none. */
+  budgetMonthly: string;
+  /** Tokens per month through the project's gateways; empty for none. */
+  budgetTokens: string;
+  /** YYYY-MM-DD; empty for none. */
+  expiresAt: string;
 }
 
 export const defaultProjectForm = (): ProjectForm => ({
@@ -41,6 +51,12 @@ export const defaultProjectForm = (): ProjectForm => ({
   prometheusRetention: '7d',
   prometheusStorage: '10Gi',
   grafanaIngress: true,
+  classification: 'internal',
+  environment: 'production',
+  costCenter: '',
+  budgetMonthly: '',
+  budgetTokens: '',
+  expiresAt: '',
 });
 
 const NAME = /^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$/;
@@ -81,6 +97,14 @@ export function validateProject(f: ProjectForm): Partial<Record<keyof ProjectFor
     if (!QUANTITY.test(f.quotaStorage)) e.quotaStorage = 'e.g. 200Gi';
   }
   if (!/^[0-9]+(h|d|w|y)$/.test(f.prometheusRetention)) e.prometheusRetention = 'e.g. 7d, 2w';
+  if (f.costCenter && !/^[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$/.test(f.costCenter)) {
+    e.costCenter = 'Letters, digits, "-", "_" and ".", e.g. CC-4711.';
+  }
+  if (f.budgetMonthly && !(Number(f.budgetMonthly) >= 0)) e.budgetMonthly = 'A number, e.g. 2500.';
+  if (f.budgetTokens && !/^[0-9]+$/.test(f.budgetTokens)) e.budgetTokens = 'A whole number, e.g. 50000000.';
+  if (f.expiresAt && (!/^\d{4}-\d{2}-\d{2}$/.test(f.expiresAt) || Number.isNaN(Date.parse(f.expiresAt)))) {
+    e.expiresAt = 'A date, YYYY-MM-DD.';
+  }
   if (!QUANTITY.test(f.prometheusStorage)) e.prometheusStorage = 'e.g. 10Gi';
   return e;
 }
@@ -107,6 +131,18 @@ export function toProjectSpec(f: ProjectForm): Record<string, unknown> {
       },
       grafana: { ingress: f.grafanaIngress },
     },
+    classification: f.classification,
+    environment: f.environment,
+    ...(f.costCenter ? { costCenter: f.costCenter } : {}),
+    ...(f.budgetMonthly || f.budgetTokens
+      ? {
+          budget: {
+            ...(f.budgetMonthly ? { monthly: Number(f.budgetMonthly) } : {}),
+            ...(f.budgetTokens ? { monthlyTokens: Number(f.budgetTokens) } : {}),
+          },
+        }
+      : {}),
+    ...(f.expiresAt ? { expiresAt: f.expiresAt } : {}),
   };
 }
 
@@ -155,6 +191,12 @@ export function fromProject(project: Project): ProjectForm {
     prometheusRetention: prom.retention ?? d.prometheusRetention,
     prometheusStorage: prom.storage?.size ?? d.prometheusStorage,
     grafanaIngress: spec.observability?.grafana?.ingress ?? d.grafanaIngress,
+    classification: spec.classification ?? d.classification,
+    environment: spec.environment ?? d.environment,
+    costCenter: spec.costCenter ?? '',
+    budgetMonthly: spec.budget?.monthly !== undefined ? String(spec.budget.monthly) : '',
+    budgetTokens: spec.budget?.monthlyTokens !== undefined ? String(spec.budget.monthlyTokens) : '',
+    expiresAt: spec.expiresAt ?? '',
   };
 }
 

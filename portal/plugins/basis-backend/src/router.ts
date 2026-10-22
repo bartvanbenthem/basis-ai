@@ -77,6 +77,7 @@ import {
   ValkeyCacheSummary,
 } from '@internal/backstage-plugin-basis-common';
 import { AuditService } from './service/AuditService';
+import { CostService } from './service/CostService';
 import { BucketService } from './service/BucketService';
 import { BasisKubernetesService } from './service/BasisKubernetesService';
 import { MAX_KUBECONFIG_BYTES } from './service/kubeconfig';
@@ -281,12 +282,13 @@ export async function createRouter(options: {
   buckets: BucketService;
   volumes: VolumeService;
   audit: AuditService;
+  cost: CostService;
   valkey: ValkeyService;
   stacks: StackService;
   gateways: GatewayService;
   providerKeys: ProviderKeyService;
 }): Promise<express.Router> {
-  const { httpAuth, permissions, config, k8s, locations, buckets, volumes, audit, valkey, stacks, gateways } = options;
+  const { httpAuth, permissions, config, k8s, locations, buckets, volumes, audit, cost, valkey, stacks, gateways } = options;
   const keys = options.providerKeys;
   /** A stack's or gateway's models, in its spec. */
   const stackModels = (spec: Record<string, any> | undefined) => spec?.gateway?.models;
@@ -500,6 +502,14 @@ export async function createRouter(options: {
     // Statements can carry data: keep them out of every cache.
     res.set('Cache-Control', 'no-store');
     res.json(await audit.list({ project: p.data.name, tailLines: q.data.tailLines }));
+  });
+
+  // The project's cost and token use, from its Prometheus (the Project's cost rules).
+  router.get('/projects/:name/cost', async (req, res) => {
+    await authorize(req, basisProjectReadPermission);
+    const p = z.object({ name }).safeParse(req.params);
+    if (!p.success) throw new InputError(p.error.toString());
+    res.json(await cost.get(p.data.name));
   });
 
   router.post('/projects', async (req, res) => {

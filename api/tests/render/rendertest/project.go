@@ -63,6 +63,9 @@ var projExpected = map[string]map[string]map[string]bool{
 		"backup-bucketclass")},
 	// No Location "nowhere": no ClusterUsage for it, and the Project isn't ready.
 	"unregistered": {"empty": set("namespace")},
+	// minimal with governance and the price catalog: the cost rules and dashboard.
+	"governed": {"empty": set("namespace", "usage-location-si-ske-demo"),
+		"observed": union(projHub, set("usage-location-si-ske-demo", "cost-rules", "cost-dashboard"), at("si-ske-demo", projRemote))},
 }
 
 func assertProject(r *render) {
@@ -94,6 +97,25 @@ func assertProject(r *render) {
 		}
 		check(str(obj, "metadata", "labels", "platform.cndev.nl/project") == name, "%s: missing project label", key)
 	}
+	// --- governance: labels the admission policies read, status, cost rules
+	gov := mp(status, "governance")
+	classification, environment := "internal", "production"
+	if kase == "governed" {
+		classification, environment = "confidential", "sandbox"
+		check(str(labels, "platform.cndev.nl/cost-center") == "CC-4711" && str(gov, "costCenter") == "CC-4711" &&
+			equal(get(gov, "expired"), false) && str(gov, "currency") == "EUR", "governance status %s", repr(gov))
+	}
+	check(str(labels, "platform.cndev.nl/classification") == classification && str(labels, "platform.cndev.nl/environment") == environment &&
+		str(gov, "classification") == classification, "classification and environment labels %s", repr(labels))
+	check(!has(labels, "platform.cndev.nl/expired"), "not expired")
+	if rules, ok := composed["cost-rules"]; ok {
+		groups := list(rules, "spec", "groups")
+		check(len(groups) == 2 && str(groups[0], "name") == "basis-cost" && str(groups[1], "name") == "basis-budget",
+			"cost rules and budget alerts: %s", repr(groups))
+		check(equal(get(composed["prometheus"], "spec", "ruleNamespaceSelector", "matchLabels", "kubernetes.io/metadata.name"), name),
+			"the control-plane Prometheus evaluates the project's cost rules")
+	}
+
 	sites := mp(xr, "spec", "locations")
 	siteLocs := []string{str(sites, "protected")} // in the order of sites.values()
 	if has(sites, "recovery") {

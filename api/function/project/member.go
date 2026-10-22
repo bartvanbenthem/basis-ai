@@ -93,6 +93,9 @@ func (s *settings) member(m *member, unschedulable []string, check *backupCheck)
 	if o := str(s.spec["owner"]); o != "" {
 		nsLabels["backstage.io/owner"] = o
 	}
+	for k, v := range s.gov.labels() {
+		nsLabels[k] = v
+	}
 	// CNPG, Prometheus and Grafana all run under "baseline"; "restricted"
 	// warnings flag workloads to harden.
 	nsLabels["pod-security.kubernetes.io/enforce"] = "baseline"
@@ -137,6 +140,13 @@ func (s *settings) member(m *member, unschedulable []string, check *backupCheck)
 				"metadata": s.meta("prometheus-prometheus-db-prometheus-prometheus-0"),
 				"spec":     pvcSpec(prom),
 			}})
+			// The project's cost, from what its locations write here.
+			if local && s.gov.prices != nil {
+				add(object{key: "cost-rules", ready: seen("cost-rules"), manifest: s.gov.costRules(s)})
+				if grafEnabled {
+					add(object{key: "cost-dashboard", ready: seen("cost-dashboard"), manifest: s.gov.costDashboard(s)})
+				}
+			}
 		}
 
 		if grafEnabled {
@@ -259,6 +269,11 @@ func (s *settings) prometheusSpec(m *member, prom Object, cmEnabled bool, cmName
 	if m.local() {
 		// The Prometheus in the project's locations writes here.
 		spec["enableRemoteWriteReceiver"] = true
+		if s.gov.prices != nil {
+			// The cost rules (governance.go), over every location's series.
+			spec["ruleSelector"] = Object{"matchLabels": Object{"platform.cndev.nl/project": s.name}}
+			spec["ruleNamespaceSelector"] = Object{"matchLabels": Object{"kubernetes.io/metadata.name": s.ns}}
+		}
 		return spec
 	}
 	// Tells this location's series apart in the shared Grafana.

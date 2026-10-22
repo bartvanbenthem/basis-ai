@@ -301,6 +301,19 @@ const StackFormFields = ({
           />
         )}
         {form.gatewayEnabled && !form.gatewayRef && (
+          <TextField
+            label="Monthly token cap"
+            value={form.gatewayMonthlyTokens}
+            onChange={set('gatewayMonthlyTokens')}
+            placeholder="none"
+            description={
+              err('gatewayMonthlyTokens') ??
+              'Input and output tokens per calendar month, per site; past it the gateway answers 429.'
+            }
+            isInvalid={Boolean(err('gatewayMonthlyTokens'))}
+          />
+        )}
+        {form.gatewayEnabled && !form.gatewayRef && (
           <ExposeFields
             label="Expose the gateway over HTTPS"
             value={form.gatewayExpose}

@@ -23,10 +23,22 @@ export interface GatewayForm {
   recoveryReplicas: number;
   /** Who may call the gateway; each gets an API key of its own. */
   clients: string[];
+  /** Per client name: its owner, monthly token cap and key expiry (empty for none). */
+  clientSettings: Record<string, ClientSettings>;
+  /** Tokens all clients together may use per month; empty for no cap. */
+  monthlyTokens: string;
   models: ModelRow[];
   /** spec.expose: HTTPS at a hostname for clients outside the location. */
   expose: ExposeFields;
 }
+
+export interface ClientSettings {
+  owner: string;
+  monthlyTokens: string;
+  expiresAt: string;
+}
+
+export const emptyClientSettings = (): ClientSettings => ({ owner: '', monthlyTokens: '', expiresAt: '' });
 
 export const defaultGatewayForm = (): GatewayForm => ({
   name: '',
@@ -36,6 +48,8 @@ export const defaultGatewayForm = (): GatewayForm => ({
   recovery: false,
   recoveryReplicas: 1,
   clients: ['apps'],
+  clientSettings: {},
+  monthlyTokens: '',
   models: [emptyModel()],
   expose: defaultExpose(),
 });
@@ -51,6 +65,13 @@ export function fromGateway(gw: ModelGateway): GatewayForm {
     recovery: Boolean(spec.recovery?.enabled),
     recoveryReplicas: spec.recovery?.replicas ?? d.recoveryReplicas,
     clients: (spec.clients ?? [{ name: 'apps' }]).map(c => c.name),
+    clientSettings: Object.fromEntries(
+      (spec.clients ?? []).map(c => [
+        c.name,
+        { owner: c.owner ?? '', monthlyTokens: c.monthlyTokens ? String(c.monthlyTokens) : '', expiresAt: c.expiresAt ?? '' },
+      ]),
+    ),
+    monthlyTokens: spec.monthlyTokens ? String(spec.monthlyTokens) : '',
     models: (spec.models ?? []).map(m => fromModel(m, metadata.name)),
     expose: fromExpose(spec.expose),
   };
@@ -58,6 +79,8 @@ export function fromGateway(gw: ModelGateway): GatewayForm {
 
 const NAME = /^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$/;
 const CLIENT = /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/;
+const TOKENS = /^[1-9][0-9]*$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export type GatewayErrors = Partial<Record<Exclude<keyof GatewayForm, 'expose'>, string>> & {
   modelRows?: Record<number, string>;
@@ -75,6 +98,12 @@ export function validateGateway(f: GatewayForm): GatewayErrors {
   const bad = clients.find(c => !CLIENT.test(c));
   if (bad) e.clients = `Client ${bad}: lowercase letters, digits and "-".`;
   else if (new Set(clients).size !== clients.length) e.clients = 'A client is listed twice.';
+  for (const c of clients) {
+    const s = f.clientSettings[c];
+    if (s?.monthlyTokens && !TOKENS.test(s.monthlyTokens)) e.clientSettings = `Client ${c}: tokens per month, a whole number.`;
+    else if (s?.expiresAt && !DATE.test(s.expiresAt)) e.clientSettings = `Client ${c}: expires as YYYY-MM-DD.`;
+  }
+  if (f.monthlyTokens && !TOKENS.test(f.monthlyTokens)) e.monthlyTokens = 'A whole number, e.g. 10000000.';
   const rows = validateModels(f.models);
   if (Object.keys(rows).length) e.modelRows = rows;
   const expose = validateExpose(f.expose);
@@ -92,9 +121,18 @@ export function toGatewaySpec(f: GatewayForm): Record<string, unknown> {
     clients: f.clients
       .map(c => c.trim())
       .filter(Boolean)
-      .map(name => ({ name })),
+      .map(name => {
+        const s = f.clientSettings[name] ?? emptyClientSettings();
+        return {
+          name,
+          ...(s.owner.trim() ? { owner: s.owner.trim() } : {}),
+          ...(s.monthlyTokens ? { monthlyTokens: Number(s.monthlyTokens) } : {}),
+          ...(s.expiresAt ? { expiresAt: s.expiresAt } : {}),
+        };
+      }),
     models: toModels(f.models, f.name),
     ...(f.expose.enabled ? { expose: toExpose(f.expose) } : {}),
+    ...(f.monthlyTokens ? { monthlyTokens: Number(f.monthlyTokens) } : {}),
   };
 }
 

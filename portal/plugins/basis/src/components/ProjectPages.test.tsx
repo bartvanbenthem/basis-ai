@@ -136,17 +136,41 @@ describe('CreateClusterPage', () => {
 });
 
 describe('ProjectDetailPage', () => {
+  const noCost = jest.fn(async () => ({
+    available: false, reason: 'No cost rules: the platform has no price catalog', currency: 'EUR', breakdown: [], tokens: { byModel: [] },
+  }));
   const render = (api: Partial<BasisApi>) =>
     renderInTestApp(
       <Routes>
         <Route path="/p/:name" element={<ProjectDetailPage />} />
       </Routes>,
-      { ...apis(api), initialRouteEntries: ['/p/demo'] } as any,
+      { ...apis({ getProjectCost: noCost, ...api }), initialRouteEntries: ['/p/demo'] } as any,
     );
   const getProject = jest.fn(async () => ({
     summary: project({}),
     resource: { apiVersion: 'v1', kind: 'Project', metadata: { name: 'demo' }, spec: {} },
   }));
+
+  it("shows the project's governance and its cost against the budget", async () => {
+    const api: Partial<BasisApi> = {
+      getProject: jest.fn(async () => ({
+        summary: project({ classification: 'confidential', costCenter: 'CC-4711', budget: { monthly: 500 } }),
+        resource: { apiVersion: 'v1', kind: 'Project', metadata: { name: 'demo' }, spec: {} },
+      })),
+      listClusters: jest.fn(async () => []),
+      getProjectCost: jest.fn(async () => ({
+        available: true, currency: 'EUR', forecast: 450, last7Days: 98, budget: 500,
+        breakdown: [{ component: 'tokens', site: 'protected', monthly: 300 }],
+        tokens: { forecast: 2_000_000, byModel: [{ model: 'openai/gpt-oss-120b', input: 1_500_000, output: 500_000, monthlyCost: 300 }] },
+      })),
+    };
+    await render(api);
+    expect(await screen.findByText(/confidential: Self-hosted and EU models only/)).toBeInTheDocument();
+    expect(screen.getByText('CC-4711')).toBeInTheDocument();
+    expect(await screen.findByText('openai/gpt-oss-120b')).toBeInTheDocument();
+    // 450 of 500: over 80%.
+    expect(screen.getByRole('meter', { name: 'Budget used by the forecast' })).toHaveAttribute('aria-valuenow', '90');
+  });
 
   it("won't delete a project that still has clusters", async () => {
     const api: Partial<BasisApi> = {

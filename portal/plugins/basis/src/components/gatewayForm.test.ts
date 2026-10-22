@@ -103,4 +103,28 @@ describe('gatewayForm', () => {
     // Turning it off removes it: back to the XRD default (internal).
     expect(toGatewayEditPatch(gw, { ...gw, expose: { ...gw.expose, enabled: false } })).toEqual({ expose: null });
   });
+
+  it('caps tokens per client and for the gateway, and lets keys expire', () => {
+    const f = {
+      ...form,
+      monthlyTokens: '10000000',
+      clientSettings: { apps: { owner: 'team-ai', monthlyTokens: '1000000', expiresAt: '2026-12-31' } },
+    };
+    const spec = toGatewaySpec(f) as { clients: unknown[]; monthlyTokens: number };
+    expect(spec.monthlyTokens).toBe(10_000_000);
+    expect(spec.clients).toEqual([
+      { name: 'apps', owner: 'team-ai', monthlyTokens: 1_000_000, expiresAt: '2026-12-31' },
+      { name: 'coding-agent' },
+    ]);
+    expect(validateGateway({ ...f, clientSettings: { apps: { owner: '', monthlyTokens: '1e6', expiresAt: '' } } }).clientSettings).toContain(
+      'apps',
+    );
+    // Read back from the spec.
+    const back = fromGateway({
+      apiVersion: 'ai.cndev.nl/v1alpha1', kind: 'ModelGateway', metadata: { name: 'llm', namespace: 'demo' },
+      spec: { clients: [{ name: 'apps', monthlyTokens: 5 }], monthlyTokens: 9 },
+    });
+    expect(back.clientSettings.apps.monthlyTokens).toBe('5');
+    expect(back.monthlyTokens).toBe('9');
+  });
 });

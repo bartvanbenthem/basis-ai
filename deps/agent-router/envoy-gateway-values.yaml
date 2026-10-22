@@ -15,6 +15,13 @@ config:
       kubernetes:
         deploy:
           type: GatewayNamespace
+    # Global rate limits (the ModelGateways' monthly token caps) count in
+    # the Valkey of ratelimit-store.yaml: apply it first.
+    rateLimit:
+      backend:
+        type: Redis
+        redis:
+          url: basis-ratelimit.envoy-gateway-system.svc.cluster.local:6379
     extensionApis:
       enableEnvoyPatchPolicy: true
       # Required: the Backend API for AI service backends.

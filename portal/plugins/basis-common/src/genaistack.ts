@@ -52,6 +52,8 @@ export interface GenAIStackSpec {
     client?: string;
     /** The stack's own gateway's spec.expose. */
     expose?: GatewayExpose;
+    /** The stack's own gateway's monthly token cap (per site). */
+    monthlyTokens?: number;
   };
 }
 

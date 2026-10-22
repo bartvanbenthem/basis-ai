@@ -6,6 +6,7 @@ import {
 import { ResponseError } from '@backstage/errors';
 import type {
   AuditLog,
+  ProjectCost,
   BucketDetails,
   BucketList,
   CacheConnection,
@@ -146,6 +147,8 @@ export interface BasisApi {
   deleteProject(name: string): Promise<void>;
   /** Kubernetes events of the project's namespace and pgaudit records of its clusters, newest first. */
   getAuditLog(project: string, options?: { tailLines?: number }): Promise<AuditLog>;
+  /** The project's cost and token use, from its Prometheus. */
+  getProjectCost(project: string): Promise<ProjectCost>;
   listLocations(): Promise<LocationSummary[]>;
   getLocation(name: string): Promise<LocationSummary>;
   /** Probes the location again instead of returning the cached health. */
@@ -311,6 +314,10 @@ export class BasisClient implements BasisApi {
   getAuditLog(project: string, options?: { tailLines?: number }) {
     const query = options?.tailLines ? `?tailLines=${options.tailLines}` : '';
     return this.#request<AuditLog>(`/projects/${enc(project)}/audit${query}`);
+  }
+
+  getProjectCost(project: string) {
+    return this.#request<ProjectCost>(`/projects/${enc(project)}/cost`);
   }
 
   async listLocations() {

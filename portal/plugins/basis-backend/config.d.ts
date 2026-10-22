@@ -25,6 +25,15 @@ export interface Config {
      * @visibility frontend
      */
     storageClasses?: string[];
+    /** Project cost (the Cost card on a project's page). */
+    cost?: {
+      /**
+       * The projects' Prometheus, "{project}" replaced by the project's name.
+       * Unset: each project's status.prometheus.url, which the backend reaches
+       * when it runs on the control plane.
+       */
+      prometheusUrl?: string;
+    };
     locations?: {
       /**
        * Namespace in the platform cluster holding one Secret (with a

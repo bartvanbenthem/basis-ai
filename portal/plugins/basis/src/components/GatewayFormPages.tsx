@@ -28,7 +28,9 @@ import { basisApiRef } from '../api';
 import { createProjectRouteRef, gatewayRouteRef, stackRouteRef } from '../routes';
 import { ErrorAlert, ManifestPanel, Section } from './common';
 import {
+  type ClientSettings,
   defaultGatewayForm,
+  emptyClientSettings,
   fromGateway,
   type GatewayErrors,
   type GatewayForm,
@@ -150,6 +152,43 @@ const GatewayFormFields = ({
           description={err('clients') ?? 'Comma-separated, e.g. apps, support-bot, coding-agent.'}
           isInvalid={Boolean(err('clients'))}
         />
+        <TextField
+          label="Monthly token cap (all clients)"
+          value={form.monthlyTokens}
+          onChange={set('monthlyTokens')}
+          placeholder="none"
+          description={
+            err('monthlyTokens') ?? 'Input and output tokens per calendar month, per site; past it the gateway answers 429.'
+          }
+          isInvalid={Boolean(err('monthlyTokens'))}
+        />
+        {form.clients.filter(Boolean).map(client => {
+          const s = form.clientSettings[client] ?? emptyClientSettings();
+          const setClient = (key: keyof ClientSettings) => (v: string) =>
+            setForm(f => ({ ...f, clientSettings: { ...f.clientSettings, [client]: { ...s, [key]: v } } }));
+          return (
+            <Grid.Root key={client} columns={{ initial: '1', sm: '3' }} gap="2" style={{ gridColumn: '1 / -1' }}>
+              <TextField label={`${client}: owner`} value={s.owner} onChange={setClient('owner')} placeholder="who to ask" />
+              <TextField
+                label={`${client}: monthly tokens`}
+                value={s.monthlyTokens}
+                onChange={setClient('monthlyTokens')}
+                placeholder="no cap"
+              />
+              <TextField
+                label={`${client}: key expires`}
+                value={s.expiresAt}
+                onChange={setClient('expiresAt')}
+                placeholder="YYYY-MM-DD"
+              />
+            </Grid.Root>
+          );
+        })}
+        {err('clientSettings') && (
+          <Text variant="body-small" color="danger">
+            {err('clientSettings')}
+          </Text>
+        )}
       </Section>
 
       <Section

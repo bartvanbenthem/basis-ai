@@ -7,6 +7,7 @@ import { basisPermissions } from '@internal/backstage-plugin-basis-common';
 import { registerActions } from './actions';
 import { createRouter } from './router';
 import { auditServiceRef } from './service/AuditService';
+import { costServiceRef } from './service/CostService';
 import { bucketServiceRef } from './service/BucketService';
 import { basisKubernetesServiceRef } from './service/BasisKubernetesService';
 import { locationServiceRef } from './service/LocationService';
@@ -38,6 +39,7 @@ export const basisPlugin = createBackendPlugin({
         buckets: bucketServiceRef,
         volumes: volumeServiceRef,
         audit: auditServiceRef,
+        cost: costServiceRef,
         valkey: valkeyServiceRef,
         stacks: stackServiceRef,
         gateways: gatewayServiceRef,
@@ -55,6 +57,7 @@ export const basisPlugin = createBackendPlugin({
         buckets,
         volumes,
         audit,
+        cost,
         valkey,
         stacks,
         gateways,
@@ -72,6 +75,7 @@ export const basisPlugin = createBackendPlugin({
             buckets,
             volumes,
             audit,
+        cost,
             valkey,
             stacks,
             gateways,

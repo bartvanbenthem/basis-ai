@@ -83,6 +83,16 @@ echo "==> Project admission policies (deletion protection, locations)"
 sed "s/system:serviceaccount:crossplane-system:crossplane'/system:serviceaccount:${CROSSPLANE_NAMESPACE}:crossplane'/" \
   "${API_DIR}/project/policies.yaml" | kubectl apply -f -
 
+echo "==> Governance: price and model catalogs (once) + policies (model residency, exposure, expiry)"
+# Like the size catalog: the platform team's to edit afterwards, never overwritten.
+for catalog in project/prices:basis-prices modelgateway/models:basis-models; do
+  if ! kubectl get environmentconfig "${catalog#*:}" >/dev/null 2>&1; then
+    kubectl apply -f "${API_DIR}/${catalog%%:*}.yaml"
+  fi
+done
+sed "s/system:serviceaccount:crossplane-system:crossplane'/system:serviceaccount:${CROSSPLANE_NAMESPACE}:crossplane'/" \
+  "${API_DIR}/project/governance.yaml" | kubectl apply -f -
+
 echo "==> ValkeyCache XRD + Composition + admission policy"
 kubectl apply -f "${API_DIR}/valkeycache/definition.yaml"
 kubectl wait xrd/valkeycaches.cache.cndev.nl --for=condition=Established --timeout=120s
