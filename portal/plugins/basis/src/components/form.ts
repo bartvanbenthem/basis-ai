@@ -131,7 +131,18 @@ const PG_IDENT = /^[a-z_][a-z0-9_]*$/;
 const CPU = /^([0-9]+m|[0-9]+(\.[0-9]+)?)$/;
 /** pgaudit.log: its statement classes, comma-separated, "-" to subtract one. */
 const AUDIT_CLASS = '-?(read|write|function|role|ddl|misc|misc_set|all)';
-const AUDIT_LOG = new RegExp(`^\\s*${AUDIT_CLASS}(\\s*,\\s*${AUDIT_CLASS})*\\s*$`, 'i');
+export const AUDIT_LOG = new RegExp(`^\\s*${AUDIT_CLASS}(\\s*,\\s*${AUDIT_CLASS})*\\s*$`, 'i');
+
+/** pgaudit.log presets, for the cluster and the stack forms; another value set with kubectl is kept as an extra option. */
+export const AUDIT_PRESETS = [
+  { id: 'ddl, role', label: 'Schema and permission changes (ddl, role)' },
+  { id: 'write, ddl, role', label: 'Plus data changes (write, ddl, role)' },
+  { id: 'all', label: 'Every statement (all; verbose, costs performance)' },
+];
+
+/** The preset options plus the current value when it is none of them. */
+export const auditOptions = (value: string) =>
+  AUDIT_PRESETS.some(p => p.id === value) ? AUDIT_PRESETS : [...AUDIT_PRESETS, { id: value, label: value }];
 
 /** Field-level errors shown inline; the API server remains the final validator. */
 export function validate(f: ClusterForm): Partial<Record<keyof ClusterForm, string>> {

@@ -64,6 +64,20 @@ describe('stackForm', () => {
     expect((fewer.gateway as any).models).toHaveLength(1);
   });
 
+  it('turns audit logging on the database on and off', () => {
+    const original = fromStack(stack);
+    expect(original.auditEnabled).toBe(false);
+    expect((toStackSpec(original).retrieval as any).auditLog).toBeUndefined();
+    const on = { ...original, auditEnabled: true, auditLog: 'WRITE ,ddl, role' };
+    expect(toStackEditPatch(original, on)).toEqual({ retrieval: { auditLog: 'write, ddl, role' } });
+    expect(validateStack({ ...on, auditLog: 'everything' }).auditLog).toContain('Classes');
+
+    const audited = fromStack({ ...stack, spec: { ...stack.spec, retrieval: { auditLog: 'ddl, role' } } });
+    expect(audited.auditEnabled).toBe(true);
+    // Off: the patch removes the key.
+    expect(toStackEditPatch(audited, { ...audited, auditEnabled: false })).toEqual({ retrieval: { auditLog: null } });
+  });
+
   it('exposes the database (CIDRs) and its own gateway (hostname and CIDRs), internal by default', () => {
     const f = fromStack(stack);
     expect((toStackSpec(f).retrieval as any).expose).toBeUndefined();

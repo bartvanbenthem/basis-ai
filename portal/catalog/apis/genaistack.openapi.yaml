@@ -261,6 +261,11 @@ components:
               default: {}
               description: The RAG database, a PostgresCluster (profile vector, PostgreSQL 18) named <name>-db.
               properties:
+                auditLog:
+                  description: 'Audit logging with pgaudit: the statement classes to record, e.g. "ddl, role" or "write, ddl, role" (pgaudit.log). Unset, off. The project''s Audit logs page shows the records. Turning it on or off restarts the database''s instances, one at a time.'
+                  maxLength: 200
+                  pattern: ^\s*-?(read|write|function|role|ddl|misc|misc_set|all|READ|WRITE|FUNCTION|ROLE|DDL|MISC|MISC_SET|ALL)(\s*,\s*-?(read|write|function|role|ddl|misc|misc_set|all|READ|WRITE|FUNCTION|ROLE|DDL|MISC|MISC_SET|ALL))*\s*$
+                  type: string
                 backup:
                   default: false
                   description: Continuous backups to the Project's bucket (point-in-time restore). Always on with recovery, whose replica is fed from them.

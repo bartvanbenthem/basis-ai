@@ -12,7 +12,7 @@ import {
   STACK_VERSION,
 } from '@internal/backstage-plugin-basis-common';
 import { defaultExpose, type ExposeFields, fromExpose, toExpose, validateExpose } from './expose';
-import { mergePatch } from './form';
+import { AUDIT_LOG, mergePatch, normalizeAuditLog } from './form';
 import { emptyModel, fromModel, type ModelRow, providerKeys, toModels, validateModels } from './ModelFields';
 
 export { emptyModel, type ModelRow };
@@ -30,6 +30,9 @@ export interface StackForm {
   storageSize: string;
   backup: boolean;
   extensions: string[];
+  /** retrieval.auditLog: pgaudit on the database, recording the classes in auditLog. */
+  auditEnabled: boolean;
+  auditLog: string;
   /** retrieval.expose: the database on a LoadBalancer (no hostname). */
   dbExpose: ExposeFields;
   cacheEnabled: boolean;
@@ -58,6 +61,8 @@ export const defaultStackForm = (): StackForm => ({
   storageSize: '20Gi',
   backup: false,
   extensions: ['vector'],
+  auditEnabled: false,
+  auditLog: 'ddl, role',
   dbExpose: defaultExpose(),
   cacheEnabled: true,
   cacheMode: 'semantic',
@@ -85,6 +90,8 @@ export function fromStack(stack: GenAIStack): StackForm {
     storageSize: spec.retrieval?.storageSize ?? d.storageSize,
     backup: Boolean(spec.retrieval?.backup),
     extensions: spec.retrieval?.extensions ?? d.extensions,
+    auditEnabled: Boolean(spec.retrieval?.auditLog),
+    auditLog: spec.retrieval?.auditLog || d.auditLog,
     dbExpose: fromExpose(spec.retrieval?.expose),
     cacheEnabled: spec.cache?.enabled ?? true,
     cacheMode: spec.cache?.mode ?? d.cacheMode,
@@ -116,6 +123,9 @@ export function validateStack(f: StackForm): StackErrors {
   if (!f.namespace) e.namespace = 'Pick the project the stack belongs to.';
   if (f.owner && !/^[A-Za-z0-9][-A-Za-z0-9_.]{0,62}$/.test(f.owner)) e.owner = 'A group name, e.g. team-payments.';
   if (!/^[0-9]+(Mi|Gi|Ti)$/.test(f.storageSize)) e.storageSize = 'e.g. 20Gi';
+  if (f.auditEnabled && !AUDIT_LOG.test(f.auditLog)) {
+    e.auditLog = 'Classes separated by commas, e.g. ddl, role; prefix "-" to leave one out.';
+  }
   if (f.cacheEnabled && !QUANTITY.test(f.cacheMemory)) e.cacheMemory = 'e.g. 1Gi';
   if (f.recovery && f.cacheEnabled && !QUANTITY.test(f.recoveryCacheMemory)) e.recoveryCacheMemory = 'e.g. 512Mi';
   if (f.gatewayEnabled && f.gatewayRef) {
@@ -147,6 +157,7 @@ export function toStackSpec(f: StackForm): Record<string, unknown> {
       storageSize: f.storageSize,
       backup: f.backup,
       extensions: f.extensions,
+      ...(f.auditEnabled ? { auditLog: normalizeAuditLog(f.auditLog) } : {}),
       ...(f.dbExpose.enabled ? { expose: toExpose(f.dbExpose, { hostname: false }) } : {}),
     },
     cache: { enabled: f.cacheEnabled, mode: f.cacheMode, memory: f.cacheMemory },

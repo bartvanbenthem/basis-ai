@@ -207,6 +207,10 @@ export function registerActions(options: {
           recovery: z.boolean().optional().describe('Warm standby in the project\'s recovery location'),
           cacheMode: z.enum(['semantic', 'exact', 'none']).optional().describe('Cache: semantic (default), exact or none'),
           databaseSize: z.string().optional().describe('A size from the postgres-sizes catalog, e.g. s or m'),
+          auditLog: z
+            .string()
+            .optional()
+            .describe('Audit logging (pgaudit) on the database: the statement classes to record, e.g. "ddl, role"; unset, off'),
           gatewayRef: z.string().optional().describe('A shared ModelGateway in the project to use instead of an own gateway'),
           models: z.array(modelSchema(z)).optional().describe('Models of the stack\'s own gateway'),
           owner: z.string().optional().describe('Owning group'),
@@ -218,7 +222,10 @@ export function registerActions(options: {
       const spec: Record<string, unknown> = {
         recovery: { enabled: Boolean(input.recovery) },
         cache: input.cacheMode === 'none' ? { enabled: false } : { mode: input.cacheMode ?? 'semantic' },
-        retrieval: input.databaseSize ? { size: input.databaseSize } : {},
+        retrieval: {
+          ...(input.databaseSize ? { size: input.databaseSize } : {}),
+          ...(input.auditLog ? { auditLog: input.auditLog } : {}),
+        },
         gateway: input.gatewayRef ? { ref: input.gatewayRef } : { models: toModels(input.models) },
       };
       await stacks.apply({

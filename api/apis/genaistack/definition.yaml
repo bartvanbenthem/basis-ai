@@ -157,6 +157,14 @@ spec:
                       default: [vector]
                       items:
                         type: string
+                    auditLog:
+                      type: string
+                      description: >-
+                        Audit logging with pgaudit: the statement classes to record, e.g. "ddl, role" or
+                        "write, ddl, role" (pgaudit.log). Unset, off. The project's Audit logs page shows the
+                        records. Turning it on or off restarts the database's instances, one at a time.
+                      pattern: '^\s*-?(read|write|function|role|ddl|misc|misc_set|all|READ|WRITE|FUNCTION|ROLE|DDL|MISC|MISC_SET|ALL)(\s*,\s*-?(read|write|function|role|ddl|misc|misc_set|all|READ|WRITE|FUNCTION|ROLE|DDL|MISC|MISC_SET|ALL))*\s*$'
+                      maxLength: 200
                     expose:
                       type: object
                       description: >-

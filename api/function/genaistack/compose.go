@@ -236,6 +236,11 @@ func Compose(in Input) (*Output, error) {
 	if len(spec.Retrieval.Expose) > 0 {
 		dbSpec["expose"] = spec.Retrieval.Expose
 	}
+	// pgaudit: setting pgaudit.log is what loads it (the PostgresCluster's
+	// spec.postgresql.parameters, as a standalone cluster does it).
+	if a := strings.TrimSpace(spec.Retrieval.AuditLog); a != "" {
+		dbSpec["postgresql"] = Object{"parameters": Object{"pgaudit.log": a}}
+	}
 	out.Composed["database"] = Composed{Ready: conditionTrue(c.observed["database"], "Ready"), Object: Object{
 		"apiVersion": "postgres.cndev.nl/v1alpha1", "kind": "PostgresCluster",
 		"metadata": c.meta(c.name + "-db"), "spec": dbSpec,

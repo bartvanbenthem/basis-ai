@@ -415,7 +415,7 @@ See [`examples/genaistack.yaml`](examples/genaistack.yaml),
 
 | Component | What | Where |
 |---|---|---|
-| Retrieval | `PostgresCluster <name>-db`: profile vector, PostgreSQL 18, a role `<name>_stack` (member of the database owner) whose password the stack generates; geo-replicated with recovery | child XR next to the stack |
+| Retrieval | `PostgresCluster <name>-db`: profile vector, PostgreSQL 18, a role `<name>_stack` (member of the database owner) whose password the stack generates; geo-replicated with recovery; `retrieval.auditLog` (e.g. `ddl, role`) turns on pgaudit, as `pgaudit.log` on the database | child XR next to the stack |
 | Cache | `ValkeyCache <name>-cache` (protected) and `<name>-cache-dr` (recovery), one node each so any client works | child XRs |
 | Gateway | `ModelGateway <name>-gateway` with `gateway.models` and client `apps`, following the active site; or, with `gateway.ref`, a shared ModelGateway the stack is a client of | child XR, or shared |
 | Wiring | Secret `<name>-connection` with `DATABASE_URL` (and host, port, name, user, password), `VALKEY_URL` (and host, port, password, `VALKEY_CLUSTER=false`), `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `SITE`, `ACTIVE`: the same keys in both sites | each site's location |

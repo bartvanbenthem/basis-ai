@@ -36,6 +36,8 @@ export interface GenAIStackSpec {
     storageSize?: string;
     backup?: boolean;
     extensions?: string[];
+    /** pgaudit.log for the database, e.g. "ddl, role"; unset, no audit logging. */
+    auditLog?: string;
     /** The database's spec.expose: <name>-db-external, a LoadBalancer with TLS. */
     expose?: { enabled?: boolean; annotations?: Record<string, string>; loadBalancerSourceRanges?: string[] };
   };

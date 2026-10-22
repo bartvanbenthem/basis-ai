@@ -35,6 +35,7 @@ import { stringify } from 'yaml';
 import { basisApiRef } from '../api';
 import { createProjectRouteRef, stackRouteRef } from '../routes';
 import { ErrorAlert, ManifestPanel, Section } from './common';
+import { auditOptions } from './form';
 import { ExposeFields } from './ExposeFields';
 import { ModelFields } from './ModelFields';
 import {
@@ -203,6 +204,30 @@ const StackFormFields = ({
             </Checkbox>
           ))}
         </CheckboxGroup>
+        <Switch
+          label="Audit logging (pgaudit)"
+          isSelected={form.auditEnabled}
+          onChange={set('auditEnabled')}
+        />
+        {form.auditEnabled && (
+          <Select
+            label="What to record"
+            value={form.auditLog}
+            onChange={key => set('auditLog')(String(key))}
+            options={auditOptions(form.auditLog)}
+            description={
+              err('auditLog') ??
+              "pgaudit records who ran which statement, on which object; the project's Audit logs page shows the records."
+            }
+            isInvalid={Boolean(err('auditLog'))}
+          />
+        )}
+        {editing && (
+          <Text variant="body-small" color="secondary">
+            Turning audit logging on or off loads or unloads the pgaudit library: the database's instances restart one by
+            one, the primary last (switchover).
+          </Text>
+        )}
         <ExposeFields
           label="Expose the database through a LoadBalancer"
           hostname={false}

@@ -71,6 +71,17 @@ spec:
           type: string
           default: 20Gi
           pattern: '^[0-9]+(Mi|Gi|Ti)$'
+        auditLog:
+          title: Database audit logging (pgaudit)
+          type: string
+          description: Records who ran which statement; the project's Audit logs page shows the records.
+          enum: ['', 'ddl, role', 'write, ddl, role', 'all']
+          enumNames:
+            - Off
+            - Schema and permission changes (ddl, role)
+            - Plus data changes (write, ddl, role)
+            - Every statement (all; verbose, costs performance)
+          default: ''
         cacheMode:
           title: Cache
           type: string
@@ -138,6 +149,7 @@ spec:
           retrieval:
             size: ${{ parameters.size }}
             storageSize: ${{ parameters.storageSize }}
+            auditLog: ${{ parameters.auditLog if parameters.auditLog }}
           cache:
             enabled: ${{ parameters.cacheMode != 'none' }}
             mode: ${{ parameters.cacheMode if parameters.cacheMode != 'none' }}

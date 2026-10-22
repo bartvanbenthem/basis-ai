@@ -224,6 +224,20 @@ func TestCompose(t *testing.T) {
 		}
 	})
 
+	t.Run("auditLog goes to the database's pgaudit.log; unset, no parameters", func(t *testing.T) {
+		out, err := Compose(Input{XR: xr(t, `{"retrieval":{"auditLog":" write, ddl, role "}}`, `{}`), Required: required(false, RequiredCacheSecret)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if a := dig(out.Composed["database"].Object, "spec", "postgresql", "parameters", "pgaudit.log"); a != "write, ddl, role" {
+			t.Errorf("pgaudit.log %v", a)
+		}
+		out, _ = Compose(Input{XR: xr(t, `{}`, `{}`), Required: required(false, RequiredCacheSecret)})
+		if p := dig(out.Composed["database"].Object, "spec", "postgresql"); p != nil {
+			t.Errorf("postgresql without auditLog: %v", p)
+		}
+	})
+
 	t.Run("without cache and gateway only the database and wiring", func(t *testing.T) {
 		out, err := Compose(Input{XR: xr(t, `{"cache":{"enabled":false},"gateway":{"enabled":false}}`, `{}`), Required: required(false)})
 		if err != nil {

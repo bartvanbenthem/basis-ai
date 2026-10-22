@@ -22,6 +22,7 @@ Router in the Project's locations (the platform team installs them).
 | `retrieval.instances`, `.storageSize` | `3`, `20Gi` | |
 | `retrieval.extensions` | `[vector]` | From the extension catalog, e.g. `vchord`, `pg_search` |
 | `retrieval.backup` | off | Continuous backups to the Project's bucket; always on with recovery |
+| `retrieval.auditLog` | off | Audit logging with pgaudit: the statement classes to record, e.g. `ddl, role` or `write, ddl, role`. The project's **Audit logs** page shows the records. Turning it on or off restarts the instances one at a time |
 | `cache.enabled`, `.mode` | on, `semantic` | `exact` or `semantic` (vector search on prompts) |
 | `cache.memory`, `.cpu`, `.evictionPolicy` | `1Gi`, `500m`, `allkeys-lru` | Of the active site's cache |
 | `gateway.enabled` | on | |

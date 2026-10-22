@@ -29,6 +29,8 @@ type Spec struct {
 		StorageSize string    `json:"storageSize"`
 		Backup      bool      `json:"backup"`
 		Extensions  *[]string `json:"extensions"`
+		// AuditLog is pgaudit.log for the database; empty, no audit logging.
+		AuditLog string `json:"auditLog"`
 		// Expose goes to the PostgresCluster's spec.expose as it is.
 		Expose Object `json:"expose"`
 	} `json:"retrieval"`
