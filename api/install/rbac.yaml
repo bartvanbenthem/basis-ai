@@ -56,8 +56,9 @@ rules:
     resources: [clusterroles]
     resourceNames: [admin, edit, view]
     verbs: [bind]
+  # The Project's Prometheus, and its cost recording and budget rules (basis-cost).
   - apiGroups: [monitoring.coreos.com]
-    resources: [prometheuses]
+    resources: [prometheuses, prometheusrules]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [grafana.integreatly.org]
     resources: [grafanas, grafanadatasources]

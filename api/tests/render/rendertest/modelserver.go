@@ -42,6 +42,8 @@ func assertModelServer(r *render) {
 		srv := r.live(s + "-server")
 		check(str(srv, "apiVersion") == "serving.kserve.io/v1alpha2" && str(srv, "kind") == "LLMInferenceService" &&
 			str(srv, "metadata", "name") == name, "%s: LLMInferenceService %s", s, name)
+		check(equal(get(srv, "spec", "labels"), M{"ai.cndev.nl/modelserver": name}),
+			"%s: only our label on what KServe creates (its part-of label finds its Deployments): %s", s, repr(get(srv, "spec", "labels")))
 		check(str(srv, "spec", "model", "name") == served, "%s: served as %q: %s", s, served, repr(get(srv, "spec", "model")))
 		replicas := 1
 		switch {

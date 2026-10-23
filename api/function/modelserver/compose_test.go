@@ -58,6 +58,9 @@ func TestCompose(t *testing.T) {
 		if spec["replicas"] != 1 || spec["parallelism"] != nil {
 			t.Errorf("replicas %v, parallelism %v", spec["replicas"], spec["parallelism"])
 		}
+		if l := spec["labels"].(map[string]string); len(l) != 1 || l["ai.cndev.nl/modelserver"] != "llama" {
+			t.Errorf("labels %v: none of KServe's own (app.kubernetes.io/part-of finds its Deployments)", l)
+		}
 		if _, ok := dig(spec, "router", "scheduler").(Object); !ok {
 			t.Errorf("prefix-cache-aware routing needs the scheduler: %v", spec["router"])
 		}

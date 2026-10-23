@@ -299,8 +299,10 @@ func (c *composition) siteObjects(site string, replicas int) map[string]object {
 		"model":    Object{"uri": spec.Model.URI, "name": or(spec.Model.Name, c.name)},
 		"replicas": replicas,
 		"template": template,
-		// What a gateway's routes and the PodMonitor select on, next to KServe's own labels.
-		"labels": c.labels,
+		// Onto everything KServe creates, next to its own labels. Not the
+		// app.kubernetes.io ones: KServe's part-of label is how it finds its
+		// Deployments, and how the InferencePool and PodMonitor select pods.
+		"labels": map[string]string{"ai.cndev.nl/modelserver": c.name},
 	}
 	if g := res.gpus(); g > 1 {
 		server["parallelism"] = Object{"tensor": g}

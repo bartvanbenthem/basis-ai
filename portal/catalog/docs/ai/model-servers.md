@@ -88,7 +88,7 @@ audit log, fallbacks).
 | `replicas` | `1` | vLLM replicas in the protected site; `0` stops the server and frees its GPUs |
 | `resources.cpu`, `.memory` | `4`, `16Gi` | Per replica; memory is request and limit |
 | `resources.gpus`, `.gpuResource` | `1`, `nvidia.com/gpu` | GPUs per replica; more than one shards the model over them (tensor parallel). `0` for CPU only |
-| `image` | KServe's (llm-d's CUDA build) | Another vLLM image: another GPU vendor's, or `vllm/vllm-openai-cpu:<version>` with `gpus: 0` |
+| `image` | KServe's (llm-d's CUDA build) | Another vLLM image: another GPU vendor's, or `vllm/vllm-openai-cpu:<version>` with `gpus: 0` (give it at least 4Gi of memory, even for a small model, and `--enforce-eager`; it runs three processes) |
 | `args` | none | Extra `vllm serve` flags, one per item, e.g. `--max-model-len=16384` |
 | `routing.prefixCacheAware` | on | See [How the gateway routes to it](#how-the-gateway-routes-to-it) |
 | `scheduling.nodeSelector`, `.tolerations` | none | GPU nodes, e.g. a toleration for their taint |
