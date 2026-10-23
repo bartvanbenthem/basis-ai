@@ -21,6 +21,9 @@ platform runs it. Built on [Crossplane](https://www.crossplane.io/) and
 - **Agents welcome:** the platform as MCP tools and a Kubernetes API with schemas, dry runs and
   admission rules that explain themselves. Agents work within your permissions. See
   [Agents and MCP](ai/agents.md).
+- **A knowledge base and memory for agents:** an MCP server per Project, with hybrid search over
+  your stack's database and a memory per agent, a key per agent, every call audited. See
+  [MCP servers](ai/mcp-servers.md).
 - **Building blocks:** the parts on their own when a stack doesn't fit: highly available
   PostgreSQL (with pgvector, VectorChord and pg_search for RAG), exact and semantic Valkey caches,
   model gateways.
@@ -55,6 +58,7 @@ platform runs it. Built on [Crossplane](https://www.crossplane.io/) and
 | Give apps and agents access to models | [Model gateways](ai/model-gateways.md) |
 | Run an open model on our own GPUs | [Model servers](ai/model-servers.md) |
 | Let an agent build on the platform | [Agents and MCP](ai/agents.md) |
+| Give agents our documents and a memory | [MCP servers](ai/mcp-servers.md) |
 | See the full stack and what's coming | [Platform scope](scope.md) |
 | A database on its own | [Create a cluster](clusters/create.md), [Configure a cluster](clusters/configure.md), [Vector & RAG](clusters/vector-rag.md) |
 | A cache on its own | [Valkey caches](caches/valkey.md) |

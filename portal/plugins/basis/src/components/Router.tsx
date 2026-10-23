@@ -12,6 +12,9 @@ import { GatewayListPage } from './GatewayListPage';
 import { ServerDetailPage } from './ServerDetailPage';
 import { CreateServerPage, EditServerPage } from './ServerFormPages';
 import { ServerListPage } from './ServerListPage';
+import { McpDetailPage } from './McpDetailPage';
+import { CreateMcpPage, EditMcpPage } from './McpFormPages';
+import { McpListPage } from './McpListPage';
 import { BucketDetailPage } from './BucketDetailPage';
 import { BucketListPage } from './BucketListPage';
 import { ClusterDetailPage } from './ClusterDetailPage';
@@ -33,7 +36,7 @@ export const Router = () => (
     <Route path="/" element={<ClusterListPage />} />
     <Route path="/create" element={<CreateClusterPage />} />
     <Route path="/audit" element={<AuditLogPage />} />
-    {/* Static "locations"/"projects"/"buckets"/"volumes"/"caches"/"stacks"/"gateways"/"servers" segments outrank /:namespace/:name; all are reserved project names. */}
+    {/* Static "locations"/"projects"/"buckets"/"volumes"/"caches"/"stacks"/"gateways"/"servers"/"mcp-servers" segments outrank /:namespace/:name; all are reserved project names. */}
     <Route path="/locations" element={<LocationListPage />} />
     <Route path="/locations/create" element={<CreateLocationPage />} />
     <Route path="/locations/:name" element={<LocationDetailPage />} />
@@ -53,6 +56,10 @@ export const Router = () => (
     <Route path="/servers/create" element={<CreateServerPage />} />
     <Route path="/servers/:namespace/:name" element={<ServerDetailPage />} />
     <Route path="/servers/:namespace/:name/edit" element={<EditServerPage />} />
+    <Route path="/mcp-servers" element={<McpListPage />} />
+    <Route path="/mcp-servers/create" element={<CreateMcpPage />} />
+    <Route path="/mcp-servers/:namespace/:name" element={<McpDetailPage />} />
+    <Route path="/mcp-servers/:namespace/:name/edit" element={<EditMcpPage />} />
     <Route path="/caches" element={<CacheListPage />} />
     <Route path="/caches/create" element={<CreateCachePage />} />
     <Route path="/caches/:namespace/:name" element={<CacheDetailPage tab="overview" />} />

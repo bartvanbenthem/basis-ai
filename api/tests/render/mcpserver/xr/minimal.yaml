@@ -1,0 +1,10 @@
+# Retrieval and memory over a GenAIStack's database, in the protected
+# location, full-text only (the defaults: no embeddings model).
+apiVersion: ai.cndev.nl/v1alpha1
+kind: MCPServer
+metadata:
+  name: kb
+  namespace: ai-team
+spec:
+  database:
+    stack: support

@@ -5,17 +5,22 @@ import { AuthorizeResult, BasicPermission } from '@backstage/plugin-permission-c
 import {
   basisGatewayCreatePermission,
   basisGatewayReadPermission,
+  basisMcpCreatePermission,
+  basisMcpReadPermission,
   basisProjectReadPermission,
   basisServerReadPermission,
   basisStackCreatePermission,
   basisStackReadPermission,
+  MCP_TOOLS,
   summarizeGateway,
+  summarizeMcpServer,
   summarizeProject,
   summarizeServer,
   summarizeStack,
 } from '@internal/backstage-plugin-basis-common';
 import { BasisKubernetesService } from './service/BasisKubernetesService';
 import { GatewayService } from './service/GatewayService';
+import { McpService } from './service/McpService';
 import { ServerService } from './service/ServerService';
 import { StackService } from './service/StackService';
 
@@ -25,8 +30,8 @@ const STACK_NAME = /^[a-z]([-a-z0-9]{0,26}[a-z0-9])?$/;
 /**
  * The platform as MCP tools (through @backstage/plugin-mcp-actions-backend),
  * for agents such as Claude Code or Codex: find a project, see what runs in
- * it (stacks, gateways, self-hosted model servers), and create a GenAI stack or
- * a model gateway. Each action checks the
+ * it (stacks, gateways, self-hosted model servers, MCP servers), and create a
+ * GenAI stack, a model gateway or an MCP server. Each action checks the
  * same basis.* permission as the REST API, as the calling user. Creating
  * validates only (dryRun) unless asked otherwise, so an agent can show the
  * plan first. No action hands out credentials: an app mounts the stack's
@@ -39,8 +44,9 @@ export function registerActions(options: {
   stacks: Pick<StackService, 'list' | 'get' | 'apply'>;
   gateways: Pick<GatewayService, 'list' | 'apply'>;
   servers: Pick<ServerService, 'list'>;
+  mcp: Pick<McpService, 'list' | 'apply'>;
 }) {
-  const { actionsRegistry, permissions, k8s, stacks, gateways, servers } = options;
+  const { actionsRegistry, permissions, k8s, stacks, gateways, servers, mcp } = options;
   const authorize = async (credentials: BackstageCredentials, permission: BasicPermission) => {
     const [decision] = await permissions.authorize([{ permission }], { credentials });
     if (decision.result !== AuthorizeResult.ALLOW) throw new NotAllowedError(`Missing permission ${permission.name}`);
@@ -349,6 +355,124 @@ export function registerActions(options: {
           project: input.project,
           endpoint: `http://${input.name}.${input.project}.svc/v1`,
           keysSecret: `${input.name}-keys`,
+        },
+      };
+    },
+  });
+
+  actionsRegistry.register({
+    name: 'list-mcp-servers',
+    title: 'List MCP servers',
+    description:
+      'Lists MCP servers (ai.cndev.nl MCPServer): a project\'s knowledge base (search, fetch, add_document) and agent memory ' +
+      '(remember, recall, forget) over a stack\'s or cluster\'s PostgreSQL, as MCP tools at <endpoint> (streamable HTTP) with ' +
+      'Authorization: Bearer <key> (Secret <keysSecret>, key = client name; a person reads keys in the portal).',
+    attributes: { readOnly: true },
+    schema: {
+      input: z => z.object({ project: z.string().optional().describe('Only this project') }),
+      output: z =>
+        z.object({
+          servers: z.array(
+            z.object({
+              name: z.string(),
+              project: z.string(),
+              ready: z.boolean(),
+              endpoint: z.string(),
+              database: z.string().describe('GenAIStack/<name> or PostgresCluster/<name>'),
+              tools: z.array(z.string()),
+              clients: z.array(z.object({ name: z.string(), tools: z.array(z.string()) })),
+              search: z.string().describe('hybrid (vectors and full text), vector or text'),
+              memoryScope: z.string().describe('client: each client its own memories; shared: all of them'),
+              keysSecret: z.string(),
+            }),
+          ),
+        }),
+    },
+    action: async ({ input, credentials }) => {
+      await authorize(credentials, basisMcpReadPermission);
+      const items = (await mcp.list(input.project)).map(m => summarizeMcpServer(m));
+      return {
+        output: {
+          servers: items.map(m => ({
+            name: m.name,
+            project: m.namespace,
+            ready: m.ready,
+            endpoint: m.endpoint,
+            database: `${m.databaseKind}/${m.database}`,
+            tools: m.tools,
+            clients: m.clients
+              .filter(c => !m.expiredClients.includes(c.name))
+              .map(c => ({ name: c.name, tools: c.tools?.length ? m.tools.filter(t => c.tools!.includes(t)) : m.tools })),
+            search: m.mode,
+            memoryScope: m.memoryScope,
+            keysSecret: m.keysSecret,
+          })),
+        },
+      };
+    },
+  });
+
+  actionsRegistry.register({
+    name: 'create-mcp-server',
+    title: 'Create an MCP server',
+    description:
+      'Creates an MCPServer in a project: retrieval and agent memory over a GenAI stack\'s database (or a PostgresCluster\'s), ' +
+      'as MCP tools at http://<name>.<project>.svc/mcp, with a key per client. Validates only (dryRun: true, the default) ' +
+      'unless dryRun is false: show the user the plan first. With an embeddingsModel (one the stack\'s gateway serves, or ' +
+      'embeddingsGateway\'s for a cluster) search is hybrid, otherwise full-text.',
+    attributes: { destructive: false, idempotent: false },
+    schema: {
+      input: z =>
+        z.object({
+          project: z.string().describe('Project (namespace) to create it in'),
+          name: z.string().regex(NAME).describe('Server name: lowercase letters, digits and "-", max 40 characters'),
+          dryRun: z.boolean().default(true).describe('Only validate (default); false creates it'),
+          stack: z.string().optional().describe('A GenAIStack in the project whose database to use (list-genai-stacks)'),
+          cluster: z.string().optional().describe('Instead of stack: a PostgresCluster in the project'),
+          embeddingsModel: z.string().optional().describe('Embeddings model at the gateway, e.g. text-embedding-3-small'),
+          embeddingsGateway: z.string().optional().describe('With cluster: a ModelGateway serving the model, with a client named after the server'),
+          ingest: z.boolean().optional().describe('Also add_document and delete_document'),
+          memory: z.boolean().optional().describe('remember, recall and forget (default true)'),
+          sharedMemory: z.boolean().optional().describe('Every client recalls all memories, not only its own'),
+          clients: z
+            .array(z.object({ name: z.string(), tools: z.array(z.enum(MCP_TOOLS)).optional() }))
+            .optional()
+            .describe('Clients, each with a key of its own and optionally only some tools (default: agents, all tools)'),
+          recovery: z.boolean().optional().describe('A standby in the project\'s recovery location (the database must be geo-replicated)'),
+          owner: z.string().optional().describe('Owning group'),
+        }),
+      output: z =>
+        z.object({ created: z.boolean(), name: z.string(), project: z.string(), endpoint: z.string(), keysSecret: z.string(), portalPath: z.string() }),
+    },
+    action: async ({ input, credentials, logger }) => {
+      await authorize(credentials, basisMcpCreatePermission);
+      const spec: Record<string, unknown> = {
+        database: input.cluster ? { cluster: input.cluster } : { stack: input.stack },
+        recovery: { enabled: Boolean(input.recovery) },
+        retrieval: { ingest: Boolean(input.ingest) },
+        memory: { enabled: input.memory ?? true, scope: input.sharedMemory ? 'shared' : 'client' },
+        ...(input.embeddingsModel
+          ? { embeddings: { model: input.embeddingsModel, ...(input.embeddingsGateway ? { gateway: input.embeddingsGateway } : {}) } }
+          : {}),
+        ...(input.clients?.length ? { clients: input.clients } : {}),
+      };
+      await mcp.apply({
+        namespace: input.project,
+        name: input.name,
+        spec,
+        labels: input.owner ? { 'backstage.io/owner': input.owner } : undefined,
+        createOnly: true,
+        dryRun: input.dryRun,
+      });
+      if (!input.dryRun) logger.info(`Created MCPServer ${input.project}/${input.name} for an MCP client`);
+      return {
+        output: {
+          created: !input.dryRun,
+          name: input.name,
+          project: input.project,
+          endpoint: `http://${input.name}.${input.project}.svc/mcp`,
+          keysSecret: `${input.name}-keys`,
+          portalPath: `/basis/mcp-servers/${input.project}/${input.name}`,
         },
       };
     },

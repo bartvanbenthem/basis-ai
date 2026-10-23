@@ -1,0 +1,40 @@
+# The Project (both sites), the GenAIStack and the PostgresCluster the
+# servers' databases are, and the shared gateway's keys (client wiki).
+apiVersion: platform.cndev.nl/v1alpha1
+kind: Project
+metadata:
+  name: ai-team
+spec:
+  locations:
+    protected: si-ske-demo
+    recovery: onprem-ams
+---
+apiVersion: ai.cndev.nl/v1alpha1
+kind: GenAIStack
+metadata:
+  name: support
+  namespace: ai-team
+spec:
+  recovery:
+    enabled: false
+status:
+  activeSite: protected
+---
+apiVersion: postgres.cndev.nl/v1alpha1
+kind: PostgresCluster
+metadata:
+  name: docs
+  namespace: ai-team
+spec:
+  geoReplication:
+    enabled: false
+status:
+  primarySite: protected
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: shared-keys
+  namespace: ai-team
+data:
+  wiki: c2hhcmVkLWdhdGV3YXkta2V5

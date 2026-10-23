@@ -1,0 +1,77 @@
+# Observed state for xr/minimal.yaml: the keys exist and are copied, the
+# location reports the config, Service and ready pods.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kb-keys
+  namespace: ai-team
+  annotations:
+    crossplane.io/composition-resource-name: keys
+data:
+  agents: a2VwdC1rZXk=
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: kb-protected-keys
+  namespace: ai-team
+  annotations:
+    crossplane.io/composition-resource-name: protected-keys
+spec:
+  forProvider:
+    manifest: {}
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: kb-protected-config
+  namespace: ai-team
+  annotations:
+    crossplane.io/composition-resource-name: protected-config
+spec:
+  forProvider:
+    manifest: {}
+status:
+  atProvider:
+    manifest:
+      apiVersion: v1
+      kind: ConfigMap
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: kb-protected-service
+  namespace: ai-team
+  annotations:
+    crossplane.io/composition-resource-name: protected-service
+spec:
+  forProvider:
+    manifest: {}
+status:
+  atProvider:
+    manifest:
+      apiVersion: v1
+      kind: Service
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: kb-protected-deployment
+  namespace: ai-team
+  annotations:
+    crossplane.io/composition-resource-name: protected-deployment
+spec:
+  forProvider:
+    manifest: {}
+status:
+  atProvider:
+    manifest:
+      apiVersion: apps/v1
+      kind: Deployment
+      status:
+        replicas: 2
+        readyReplicas: 2

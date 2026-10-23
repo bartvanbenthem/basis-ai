@@ -6,6 +6,7 @@ import {
   clusterLocations,
   CONTROL_PLANE,
   parseGatewayLine,
+  parseMcpLine,
   parsePgAuditLine,
   pgauditLog,
   PostgresCluster,
@@ -36,8 +37,8 @@ function clusterOf(object: string | undefined, clusters: string[]): string | und
 /**
  * A project's audit trail (see AuditEntry): the Kubernetes events of its
  * namespace on the control plane and in each of its locations, the pgaudit
- * records in the logs of its PostgreSQL instances, and the calls through its
- * ModelGateways. A location that
+ * records in the logs of its PostgreSQL instances, the calls through its
+ * ModelGateways and the tool calls on its MCPServers. A location that
  * can't be read is reported in `unreachable`, not fatal.
  */
 export class AuditService {
@@ -95,12 +96,13 @@ export class AuditService {
               audited.find(a => a.name === c.metadata.name)?.pgauditLog &&
               clusterLocations(c).includes(location),
           );
-          const [events, calls, ...records] = await Promise.all([
+          const [events, calls, tools, ...records] = await Promise.all([
             this.#events(core, location, project, names),
             this.#gatewayCalls(core, location, project, tailLines),
+            this.#mcpCalls(core, location, project, tailLines),
             ...pgaudit.map(c => this.#pgaudit(core, location, project, c.metadata.name, tailLines)),
           ]);
-          return [...events, ...calls, ...records.flat()];
+          return [...events, ...calls, ...tools, ...records.flat()];
         }),
       ),
     ]);
@@ -153,6 +155,30 @@ export class AuditService {
           .map(parseGatewayLine)
           .filter((r): r is NonNullable<typeof r> => Boolean(r))
           .map(r => ({ ...r, location, gateway, instance: name }));
+      }),
+    );
+    return perPod.flat();
+  }
+
+  /**
+   * The tool calls on the project's MCPServers in one location: the audit
+   * lines basis-mcp writes to stdout (client, tool, outcome; no queries).
+   */
+  async #mcpCalls(core: AuditCore, location: string, namespace: string, tailLines: number): Promise<AuditEntry[]> {
+    const pods = await kubeCall(() =>
+      core.listNamespacedPod({ namespace, labelSelector: 'app.kubernetes.io/name=basis-mcp' }),
+    );
+    const perPod = await Promise.all(
+      pods.items.map(async pod => {
+        const name = pod.metadata?.name ?? '';
+        const text = await kubeCall(() =>
+          core.readNamespacedPodLog({ namespace, name, container: 'server', tailLines, limitBytes: MAX_LOG_BYTES }),
+        ).catch(() => '');
+        return (text ?? '')
+          .split('\n')
+          .map(parseMcpLine)
+          .filter((r): r is NonNullable<typeof r> => Boolean(r))
+          .map(r => ({ ...r, location, instance: name }));
       }),
     );
     return perPod.flat();

@@ -12,6 +12,7 @@ import { bucketServiceRef } from './service/BucketService';
 import { basisKubernetesServiceRef } from './service/BasisKubernetesService';
 import { locationServiceRef } from './service/LocationService';
 import { gatewayServiceRef } from './service/GatewayService';
+import { mcpServiceRef } from './service/McpService';
 import { providerKeyServiceRef } from './service/ProviderKeyService';
 import { serverServiceRef } from './service/ServerService';
 import { stackServiceRef } from './service/StackService';
@@ -20,8 +21,8 @@ import { volumeServiceRef } from './service/VolumeService';
 
 /**
  * REST API for the BASIS portal: list / inspect / create / update / delete
- * the BASIS APIs (GenAIStacks, ModelGateways, ModelServers, PostgresClusters, ValkeyCaches,
- * Projects and Locations). Mounted at /api/basis.
+ * the BASIS APIs (GenAIStacks, ModelGateways, ModelServers, MCPServers, PostgresClusters,
+ * ValkeyCaches, Projects and Locations). Mounted at /api/basis.
  *
  * @public
  */
@@ -45,6 +46,7 @@ export const basisPlugin = createBackendPlugin({
         stacks: stackServiceRef,
         gateways: gatewayServiceRef,
         servers: serverServiceRef,
+        mcp: mcpServiceRef,
         providerKeys: providerKeyServiceRef,
         actionsRegistry: actionsRegistryServiceRef,
       },
@@ -64,6 +66,7 @@ export const basisPlugin = createBackendPlugin({
         stacks,
         gateways,
         servers,
+        mcp,
         providerKeys,
         actionsRegistry,
       }) {
@@ -83,12 +86,13 @@ export const basisPlugin = createBackendPlugin({
             stacks,
             gateways,
             servers,
+            mcp,
             providerKeys,
           }),
         );
         httpRouter.addAuthPolicy({ path: '/health', allow: 'unauthenticated' });
         // The same, as MCP tools for agents (plugin-mcp-actions-backend).
-        registerActions({ actionsRegistry, permissions, k8s, stacks, gateways, servers });
+        registerActions({ actionsRegistry, permissions, k8s, stacks, gateways, servers, mcp });
       },
     });
   },

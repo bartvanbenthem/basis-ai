@@ -70,6 +70,7 @@ const RESERVED = [
   'stacks',
   'gateways',
   'servers',
+  'mcp-servers',
   'crossplane-system',
   'cnpg-system',
   'basis-locations',

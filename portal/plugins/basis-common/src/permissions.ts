@@ -285,6 +285,39 @@ export const basisServerDeletePermission = createPermission({
   attributes: { action: 'delete' },
 });
 
+/** List and inspect MCPServers (retrieval and agent memory over a project's database) and their pods. */
+export const basisMcpReadPermission = createPermission({
+  name: 'basis.mcp.read',
+  attributes: { action: 'read' },
+});
+
+/** Create an MCP server over a stack's or cluster's database. */
+export const basisMcpCreatePermission = createPermission({
+  name: 'basis.mcp.create',
+  attributes: { action: 'create' },
+});
+
+/** Change a server: its tools, clients and their tools, search and memory. */
+export const basisMcpUpdatePermission = createPermission({
+  name: 'basis.mcp.update',
+  attributes: { action: 'update' },
+});
+
+/** Delete a server: agents lose its tools (the documents and memories stay in the database). */
+export const basisMcpDeletePermission = createPermission({
+  name: 'basis.mcp.delete',
+  attributes: { action: 'delete' },
+});
+
+/**
+ * Read a server's client API keys (also needs basis.mcp.read). Grant it to
+ * whoever hands keys to agents.
+ */
+export const basisMcpCredentialsReadPermission = createPermission({
+  name: 'basis.mcp.credentials.read',
+  attributes: { action: 'read' },
+});
+
 export const basisPermissions = [
   basisClusterReadPermission,
   basisClusterCreatePermission,
@@ -326,4 +359,9 @@ export const basisPermissions = [
   basisServerCreatePermission,
   basisServerUpdatePermission,
   basisServerDeletePermission,
+  basisMcpReadPermission,
+  basisMcpCreatePermission,
+  basisMcpUpdatePermission,
+  basisMcpDeletePermission,
+  basisMcpCredentialsReadPermission,
 ];

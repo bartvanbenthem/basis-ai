@@ -18,4 +18,5 @@ export * from './valkey';
 export * from './genaistack';
 export * from './modelgateway';
 export * from './modelserver';
+export * from './mcpserver';
 export * from './governance';

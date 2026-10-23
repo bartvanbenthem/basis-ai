@@ -16,7 +16,7 @@ API, this portal or an agent (MCP), and is operated by the platform.
 |---|---|---|
 | AI service | `GenAIStack`: retrieval, cache, gateway and wiring in one object | **Available** |
 | Model gateway | `ModelGateway` on [Agent Router](https://aigateway.envoyproxy.io/) (Envoy Gateway): hosted and self-hosted models, a key per client | **Available**; token budgets, guardrails and per-client metrics planned |
-| Agents | MCP tools for the platform (Backstage MCP actions), `llms.txt` | **Available**; MCP servers per Project for retrieval and memory planned |
+| Agents | MCP tools for the platform (Backstage MCP actions), `llms.txt`; `MCPServer`: retrieval over a stack's database and agent memory as MCP tools, a key per agent | **Available**; an external endpoint, and a stack composing one, planned |
 | Context / RAG | PostgreSQL on [CloudNativePG](https://cloudnative-pg.io/) with pgvector, VectorChord and pg_search | **Available** |
 | Exact / semantic cache | [Valkey](https://valkey.io/) | **Available** |
 | Self-hosted models | `ModelServer`: [vLLM](https://docs.vllm.ai/) on [KServe](https://kserve.github.io/website/), [llm-d](https://llm-d.ai/) prefix-cache-aware routing | **Available**; multi-node servers and autoscaling planned |
@@ -31,7 +31,7 @@ Three levels, each for its own audience:
 | Level | APIs | For |
 |---|---|---|
 | Product | `GenAIStack` | Teams building an AI service: the default way in |
-| Building blocks | `ModelGateway`, `ModelServer`, `PostgresCluster`, `ValkeyCache` | What a stack is made of, on its own: a gateway shared by stacks and agents, a self-hosted model behind it, a database for an agent's memory, a cache for tool results |
+| Building blocks | `ModelGateway`, `ModelServer`, `MCPServer`, `PostgresCluster`, `ValkeyCache` | What a stack is made of, on its own: a gateway shared by stacks and agents, a self-hosted model behind it, an MCP server with the knowledge base and agents' memory, a database, a cache for tool results |
 | Platform | `Project`, `Location`, the catalogs | Platform admins |
 
 A stack composes building blocks next to it and owns them: they change only through the stack.
@@ -53,6 +53,12 @@ Building blocks of your own sit beside it in the same Project.
    Cache (Valkey) ─────── exact and semantic answers, tool results
    Context (PostgreSQL) ─ documents, embeddings, agent memory
 
+ Agent (MCP client)
+   │  Authorization: Bearer <its key>
+   ▼
+ MCP server (MCPServer) ── search, fetch, remember, recall ──▶ Context (PostgreSQL)
+   └── embeddings ──▶ Model gateway
+
  Everything ── metrics, traces ──▶ Prometheus, Grafana (OpenTelemetry)
  Databases ─── WAL, backups ─────▶ object storage (COSI) ──▶ the standby site
 ```
@@ -61,8 +67,8 @@ Building blocks of your own sit beside it in the same Project.
 
 - **Governance at the gateway:** token budgets and rate limits per client, an audit log of who
   called which model, PII redaction before a prompt leaves.
-- **MCP servers per Project:** retrieval over a stack's database and the agent's memory as tools,
-  under the Project's access control.
+- **MCP servers, further:** an external endpoint for agents outside the location (like the
+  gateway's `expose`), a GenAIStack composing one, and OpenTelemetry spans per tool call.
 - **Agent observability:** OpenTelemetry traces of agent runs (tool calls, tokens, cost) per Project.
 - **Self-hosted inference at scale:** model servers over several nodes (LeaderWorkerSet), autoscaled
   on queue length, and prefill/decode disaggregation (llm-d).

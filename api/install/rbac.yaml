@@ -8,8 +8,8 @@
 # go to the locations as provider-kubernetes Objects (managed resources,
 # which Crossplane grants itself), applied there with each location's
 # kubeconfig. What PostgresClusters compose here is the GrafanaDashboard;
-# ValkeyCaches compose their password Secret, ModelGateways their clients'
-# keys (Crossplane's own ClusterRole already covers Secrets).
+# ValkeyCaches compose their password Secret, ModelGateways and MCPServers
+# their clients' keys (Crossplane's own ClusterRole already covers Secrets).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -30,9 +30,10 @@ rules:
   - apiGroups: [ai.cndev.nl]
     resources: [modelgateways]
     verbs: [get, list, watch, create, update, patch, delete]
-  # ModelGateways read the ModelServers their self-hosted models name.
+  # ModelGateways read the ModelServers their self-hosted models name, and
+  # MCPServers the GenAIStacks (and PostgresClusters, above) they serve from.
   - apiGroups: [ai.cndev.nl]
-    resources: [modelservers]
+    resources: [modelservers, genaistacks]
     verbs: [get, list, watch]
 ---
 # What the Project composition (apis/project) composes on the control plane.
@@ -144,7 +145,7 @@ rules:
     resources: [valkeycaches]
     verbs: [get, list, watch]
 ---
-# The same for GenAIStacks, ModelGateways and ModelServers.
+# The same for GenAIStacks, ModelGateways, ModelServers and MCPServers.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -154,7 +155,7 @@ metadata:
     rbac.authorization.k8s.io/aggregate-to-edit: "true"
 rules:
   - apiGroups: [ai.cndev.nl]
-    resources: [genaistacks, modelgateways, modelservers]
+    resources: [genaistacks, modelgateways, modelservers, mcpservers]
     verbs: [get, list, watch, create, update, patch, delete]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -165,7 +166,7 @@ metadata:
     rbac.authorization.k8s.io/aggregate-to-view: "true"
 rules:
   - apiGroups: [ai.cndev.nl]
-    resources: [genaistacks, modelgateways, modelservers]
+    resources: [genaistacks, modelgateways, modelservers, mcpservers]
     verbs: [get, list, watch]
 ---
 # Projects are cluster-scoped, so the namespace roles don't apply: reading

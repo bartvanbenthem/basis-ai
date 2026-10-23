@@ -1,4 +1,4 @@
-import { parseGatewayLine, parsePgAuditLine, pgauditLog } from './audit';
+import { parseGatewayLine, parseMcpLine, parsePgAuditLine, pgauditLog } from './audit';
 
 const line = (record: object, extra: object = {}) =>
   JSON.stringify({ level: 'info', ts: '2026-10-07T09:12:03Z', logger: 'pgaudit', msg: 'record', logging_pod: 'orders-db-1', record, ...extra });
@@ -78,5 +78,34 @@ describe('parseGatewayLine', () => {
     expect(refused?.tokens).toBeUndefined();
     expect(parseGatewayLine('{"level":"info","msg":"x"}')).toBeUndefined();
     expect(parseGatewayLine('not json "basis":"gateway"')).toBeUndefined();
+  });
+});
+
+describe('parseMcpLine', () => {
+  it('reads an MCPServer tool call, never content', () => {
+    const call =
+      '{"basis":"mcp","time":"2026-10-23T09:44:34.24Z","server":"kb","client":"claude-code","tool":"remember","outcome":"ok","duration_ms":3,"results":1,"id":"17"}';
+    expect(parseMcpLine(call)).toEqual({
+      source: 'mcp',
+      time: '2026-10-23T09:44:34.24Z',
+      location: '',
+      actor: 'claude-code',
+      action: 'remember',
+      object: '17',
+      message: 'ok, 1 result(s), 3 ms',
+      type: 'ok',
+      mcpServer: 'kb',
+    });
+  });
+
+  it('carries the error of a failed call', () => {
+    const failed = '{"basis":"mcp","client":"bot","tool":"fetch","outcome":"error","duration_ms":1,"id":"9","error":"no document \\"9\\""}';
+    expect(parseMcpLine(failed)).toMatchObject({ type: 'error', message: 'error, 1 ms, no document "9"' });
+  });
+
+  it('skips everything else', () => {
+    expect(parseMcpLine('{"level":"INFO","msg":"serving"}')).toBeUndefined();
+    expect(parseMcpLine('{"basis":"mcp", broken')).toBeUndefined();
+    expect(parseMcpLine('{"basis":"gateway","note":"\\"basis\\":\\"mcp\\""}')).toBeUndefined();
   });
 });

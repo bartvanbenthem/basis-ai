@@ -7,6 +7,7 @@ Crossplane **v2** composite resources on three levels:
 | Product | `ai.cndev.nl/v1alpha1 GenAIStack` | Retrieval, cache, model gateway and wiring for an AI service, per site. See [The GenAIStack API](#the-genaistack-api) |
 | Building blocks | `ai.cndev.nl/v1alpha1 ModelGateway` | An OpenAI-compatible gateway to hosted and self-hosted models, a key per client. See [The ModelGateway API](#the-modelgateway-api) |
 | | `ai.cndev.nl/v1alpha1 ModelServer` | A self-hosted model: vLLM on KServe, with llm-d's prefix-cache-aware routing. See [The ModelServer API](#the-modelserver-api) |
+| | `ai.cndev.nl/v1alpha1 MCPServer` | Retrieval and agent memory over a stack's or cluster's database as MCP tools, a key per client. See [The MCPServer API](#the-mcpserver-api) |
 | | `postgres.cndev.nl/v1alpha1 PostgresCluster` | ~10 lines of YAML into a production CloudNativePG setup (below) |
 | | `cache.cndev.nl/v1alpha1 ValkeyCache` | An exact or semantic cache. See [The ValkeyCache API](#the-valkeycache-api) |
 | Platform | `platform.cndev.nl/v1alpha1 Project`, `Location` | A team's namespace with its own Prometheus and Grafana, and the clusters workloads run in. See [The Project API](#the-project-api), [Locations](#locations) |
@@ -583,6 +584,86 @@ stays internal. The connection Secret keeps the in-cluster addresses.
 Needs, in each location: the Valkey operator and Envoy Gateway + Agent Router
 ([`deps/`](../deps/README.md#7-envoy-gateway--agent-router-locations-with-model-gateways)).
 
+## The MCPServer API
+
+An MCP server for a Project's agents: the knowledge base (`search`, `fetch`, and with
+`retrieval.ingest` `add_document`, `delete_document`) and their memory (`remember`, `recall`,
+`forget`) as MCP tools over streamable HTTP, on the Project's own database. It runs
+[basis-mcp](../mcp/) in the Project's location; agents there connect to
+`http://<name>.<namespace>.svc/mcp` with `Authorization: Bearer <key>`:
+
+```yaml
+apiVersion: ai.cndev.nl/v1alpha1
+kind: MCPServer
+metadata:
+  name: support-kb
+  namespace: demo
+spec:
+  database:
+    stack: support-bot                   # or cluster: <PostgresCluster>, with credentialsSecretRef
+  embeddings:
+    model: text-embedding-3-small        # a model of the stack's gateway; unset, full-text search only
+  retrieval:
+    ingest: true                         # agents add and delete documents
+  memory:
+    scope: client                        # each client its own memories (default); shared, everyone's
+  clients:
+    - name: claude-code
+    - name: support-bot
+      tools: [search, fetch, recall]     # the others don't exist for it
+```
+
+See [`examples/mcpserver.yaml`](examples/mcpserver.yaml) and
+[`apis/mcpserver/definition.yaml`](apis/mcpserver/definition.yaml).
+
+**Where the data lives.** In the database the server names: a GenAIStack's (as the stack's role,
+from its connection Secret `<stack>-connection`, which also brings the stack's gateway for the
+embeddings) or a PostgresCluster's (as the role of `database.credentialsSecretRef`, or the database
+owner through CloudNativePG's `<cluster>-app`; the embeddings through `embeddings.gateway`, with the
+server's own client key there). The server creates `mcp.documents` and `mcp.memories` on the primary,
+with a GIN index for the full-text side and an HNSW index (cosine) for the vectors, sized to the
+model's dimensions. `retrieval.table` points `search` and `fetch` at a documents table of your own
+instead, only read, through `retrieval.columns`; create its indexes yourself. Nothing leaves the
+Project: the documents, memories and vectors are in its database, and the embeddings come from its
+own gateway (a hosted model, or a self-hosted one on a ModelServer).
+
+**Search.** Hybrid by default with an embeddings model: pgvector's cosine distance and PostgreSQL's
+full-text rank (`websearch_to_tsquery`, `retrieval.textSearchConfig`) each rank candidates, fused by
+reciprocal rank. `mode: vector` or `text` uses one. When the model can't be reached, hybrid search
+falls back to full text (the result says so), and what is stored meanwhile is embedded later. A
+search can filter on a document's metadata (`{"team": "support"}`, JSON containment).
+
+**Memory.** One self-contained memory per `remember`, with tags; `recall` ranks a client's memories
+like a search (both sides always), or returns the most recent without a query. With `scope: client`
+a client only recalls and forgets its own; `shared` pools them, each tagged with who wrote it.
+`retentionDays` deletes older ones.
+
+**Clients and keys.** Every client gets a key, generated once into Secret `<name>-keys` on the
+control plane and copied to the location, where the server re-reads it without a restart: removing
+a client or passing its `expiresAt` revokes its key. A client with `tools` sees only those
+(`tools/list`), the rest don't exist for it. Each call writes one JSON line to the server's stdout
+(`"basis":"mcp"`: client, tool, outcome, duration, the id it touched; never the query or the
+content): the portal's audit trail.
+
+| Composed resource | Where | Notes |
+|---|---|---|
+| `Secret <name>-keys` | control plane, copied to each site's location | A key per client, generated once and kept |
+| `ConfigMap <name>-config` | each site's location (Object) | basis-mcp's `config.json`: tables, search mode, memory scope, the clients and their tools; a change rolls the pods (`ai.cndev.nl/config-hash`) |
+| `Deployment <name>`, `Service <name>:80` | each site's location | basis-mcp, `replicas` in the active site (`recovery.replicas` in the standby), stateless (any replica answers any request), ready once it has its database and tables; non-root, read-only root filesystem, no service account token. `PodDisruptionBudget <name>` with more than one replica |
+| `Secret <name>-database`, `<name>-embeddings` | each site's location, with `database.cluster` | The role's credentials and the server's key at `embeddings.gateway`, copied from the control plane (never in an Object spec) |
+| `PodMonitor <name>-mcp` | each site's location | `basis_mcp_*`: calls per tool, client and outcome, their duration and hits, the embeddings model's calls, `basis_mcp_database_ready` |
+| `PrometheusRule <name>-mcp-alerts` | each site's location with replicas | `BasisMCPServerDown`, `BasisMCPServerDatabaseNotReady`, `BasisMCPServerErrors`, `BasisMCPServerSlow` (thresholds in `spec.alerts`), with embeddings `BasisMCPServerEmbeddingsFailing` |
+| `GrafanaDashboard <name>-mcp` | control plane | Calls, failures and latency per tool, calls per client, hits per search, the embeddings model, database readiness, backfilled embeddings and expired memories (`status.dashboardUid`) |
+
+With `recovery.enabled` a standby runs in the Project's recovery location too (the database must be
+geo-replicated: the stack's `recovery`, the cluster's `geoReplication`). The active site is where the
+database's primary runs, and moves with a switchover; the standby answers `search`, `fetch` and
+`recall` from the replica and refuses writes until then. Agents reach it internally only, in each
+site's location (an `expose` like the gateway's is a next step); from elsewhere, a port-forward.
+[`apis/mcpserver/policies.yaml`](apis/mcpserver/policies.yaml) refuses a server without a Project
+location. The location needs nothing installed beyond the Prometheus Operator; a cluster's database
+needs the `vector` extension for embeddings (a stack's has it).
+
 ## Locations
 
 The control plane runs Crossplane, these APIs and the portal, but no databases. The databases run
@@ -860,6 +941,11 @@ apis/modelserver/definition.yaml           ModelServer XRD (namespaced): a self-
 apis/modelserver/composition.yaml          one pipeline step: function-basis
 apis/modelserver/policies.yaml             servers only in a Project's open locations
 function/modelserver/                      the ModelServer composition in Go: LLMInferenceService, token, monitoring per site
+apis/mcpserver/definition.yaml             MCPServer XRD (namespaced): retrieval and agent memory over a database, clients, sites
+apis/mcpserver/composition.yaml            one pipeline step: function-basis
+apis/mcpserver/policies.yaml               MCP servers only in a Project's open locations
+function/mcpserver/                        the MCPServer composition in Go: client keys, basis-mcp (../mcp) and its
+                                           config, Service, monitoring per site
 apis/valkeycache/definition.yaml           ValkeyCache XRD (namespaced): an exact or semantic Valkey cache
 apis/valkeycache/composition.yaml          one pipeline step: function-basis
 function/valkeycache/                      the ValkeyCache composition in Go: password Secret, ValkeyCluster,
@@ -878,7 +964,7 @@ install/                                   Crossplane, function-basis, provider-
                                            migrate-to-basis.sh (from the cnpg names)
 examples/                                  PostgresClusters (incl. a geo-replicated and a restored one), a Project, the
                                            project-defaults EnvironmentConfig, a ValkeyCache, a ModelServer, a
-                                           ModelGateway, GenAIStacks (single site and geo)
+                                           ModelGateway, GenAIStacks (single site and geo), an MCPServer
 tests/render/<api>/                        offline render + schema validation tests per API
 tests/render/rendertest/                   their assertions (one Go file per API)
 ```

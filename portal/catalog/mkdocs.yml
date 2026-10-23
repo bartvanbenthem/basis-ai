@@ -12,6 +12,7 @@ nav:
       - GenAI stacks: ai/genai-stacks.md
       - Model gateways: ai/model-gateways.md
       - Model servers: ai/model-servers.md
+      - MCP servers: ai/mcp-servers.md
       - Agents and MCP: ai/agents.md
   - Building blocks:
       - Context / RAG (PostgreSQL):

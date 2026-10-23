@@ -1,0 +1,27 @@
+# Both sites, after the stack switched over to the recovery site: the
+# server runs there with spec.replicas, the protected site as the standby.
+# Hybrid search with embeddings from the stack's gateway, agents can ingest.
+apiVersion: ai.cndev.nl/v1alpha1
+kind: MCPServer
+metadata:
+  name: kb
+  namespace: ai-team
+spec:
+  database:
+    stack: support
+  embeddings:
+    model: text-embedding-3-small
+  retrieval:
+    ingest: true
+  replicas: 3
+  recovery:
+    enabled: true
+    replicas: 1
+  alerts:
+    errorRatePercent: 10
+status:
+  sites:
+    - site: protected
+      location: si-ske-demo
+    - site: recovery
+      location: onprem-ams

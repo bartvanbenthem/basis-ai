@@ -1,0 +1,46 @@
+# An MCP server over the support-bot stack's database (examples/genaistack.yaml)
+# in the demo Project's location: a knowledge base agents search and fill,
+# and a memory per agent, as MCP tools. The documents and memories live in
+# the stack's PostgreSQL (tables mcp.documents and mcp.memories, which the
+# server creates); the embeddings come from the stack's gateway, so add the
+# model to the stack's models first:
+#
+#   - name: text-embedding-3-small
+#     endpoint: https://api.openai.com/v1
+#     apiKeySecretRef: {name: openai}
+#
+# (or a self-hosted one: a ModelServer serving e.g. BAAI/bge-m3, see
+# modelserver.yaml). Agents in the location connect to
+#
+#   http://support-kb.demo.svc/mcp        (streamable HTTP)
+#   Authorization: Bearer <key>           (Secret demo/support-kb-keys, key = client)
+#
+# e.g. Claude Code, through a port-forward from your machine:
+#
+#   kubectl -n demo port-forward svc/support-kb 8080:80
+#   claude mcp add --transport http support-kb http://localhost:8080/mcp \
+#     --header "Authorization: Bearer $(kubectl -n demo get secret support-kb-keys -o jsonpath='{.data.claude-code}' | base64 -d)"
+#
+# Each client's memories are its own (memory.scope: shared to pool them);
+# support-bot may only search and recall.
+apiVersion: ai.cndev.nl/v1alpha1
+kind: MCPServer
+metadata:
+  name: support-kb
+  namespace: demo
+spec:
+  database:
+    stack: support-bot
+  embeddings:
+    model: text-embedding-3-small
+  retrieval:
+    ingest: true                # add_document and delete_document, to fill it
+    textSearchConfig: english
+  memory:
+    retentionDays: 180
+  clients:
+    - name: claude-code
+      owner: platform-team
+    - name: support-bot
+      tools: [search, fetch, recall]
+  # recovery: {enabled: true}   # with the stack's recovery: a standby that follows its database

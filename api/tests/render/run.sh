@@ -41,7 +41,7 @@ API_ROOT="$(cd "${HERE}/../.." && pwd)"
 OPERATOR_CHARTS="$(cd "${API_ROOT}/../deps/cnpg/charts" && pwd)"
 # Built from ../../function by this script; never pulled.
 FUNCTION_IMAGE="${FUNCTION_IMAGE:-localhost/function-basis:render}"
-read -r -a APIS <<<"${RENDER_APIS:-postgrescluster project location valkeycache modelserver modelgateway genaistack}"
+read -r -a APIS <<<"${RENDER_APIS:-postgrescluster project location valkeycache modelserver modelgateway mcpserver genaistack}"
 
 if [[ -z "${DOCKER_HOST:-}" && -S "/run/user/${UID}/podman/podman.sock" ]]; then
   export DOCKER_HOST="unix:///run/user/${UID}/podman/podman.sock"

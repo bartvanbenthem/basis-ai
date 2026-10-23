@@ -183,6 +183,31 @@ describe('PostgresClusterEntityProvider', () => {
     });
   });
 
+  it('maps an MCPServer to an mcp-server Resource that depends on its database', () => {
+    const project = { name: 'payments', ready: true, synced: true, deleting: false, deletionProtection: true, prometheus: true, grafana: true, locations: [] };
+    const server = {
+      apiVersion: 'ai.cndev.nl/v1alpha1',
+      kind: 'MCPServer',
+      metadata: { name: 'kb', namespace: 'payments', labels: { 'backstage.io/owner': 'team-ai' } },
+      spec: { database: { stack: 'bot' }, embeddings: { model: 'text-embedding-3-small' } },
+      status: { dashboardUid: 'basis-mcp-abc' },
+    };
+    const entity = make().toMcpEntity(server, project);
+    expect(entity).toMatchObject({
+      metadata: {
+        name: 'payments--kb.mcp',
+        description: 'MCP server over GenAIStack bot: search, fetch, remember, recall, forget; hybrid search, 1 client(s)',
+        annotations: { 'ai.cndev.nl/mcpserver': 'payments/kb' },
+        tags: ['genai', 'mcp', 'agents', 'rag', 'memory'],
+      },
+      spec: { type: 'mcp-server', owner: 'team-ai', dependsOn: ['resource:default/payments', 'resource:default/payments--bot.stack'] },
+    });
+    expect(entity.metadata.links).toContainEqual({ url: 'https://grafana.example.com/d/basis-mcp-abc', title: 'Grafana dashboard' });
+    // Over a cluster: its entity, without a suffix.
+    const overCluster = make().toMcpEntity({ ...server, spec: { database: { cluster: 'payments-db' } } });
+    expect(overCluster.spec?.dependsOn).toEqual(['resource:default/payments--payments-db']);
+  });
+
   it('falls back to the default owner', () => {
     const entity = make().toEntity({ ...cluster, metadata: { name: 'a', namespace: 'b' } });
     expect(entity.spec?.owner).toBe('group:default/guests');
