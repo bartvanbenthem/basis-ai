@@ -24,6 +24,22 @@ function setup(allow = true) {
       },
     ]),
   };
+  const mcp = {
+    list: jest.fn(async () => [
+      {
+        apiVersion: 'ai.cndev.nl/v1alpha1',
+        kind: 'MCPServer',
+        metadata: { name: 'kb', namespace: 'demo' },
+        spec: {
+          database: { stack: 'bot' },
+          embeddings: { model: 'text-embedding-3-small' },
+          clients: [{ name: 'claude-code' }, { name: 'bot', tools: ['search', 'recall'] }, { name: 'old' }],
+        },
+        status: { expiredClients: ['old'] },
+      },
+    ]),
+    apply: jest.fn(async () => ({})),
+  };
   registerActions({
     actionsRegistry: { register: (a: any) => actions.set(a.name, a) },
     permissions: mockServices.permissions.mock({
@@ -33,24 +49,85 @@ function setup(allow = true) {
     stacks: stacks as any,
     gateways: gateways as any,
     servers: servers as any,
+    mcp: mcp as any,
   });
   const run = (name: string, input: unknown) => {
     const a = actions.get(name);
     return a.action({ input: a.schema.input(z).parse(input), credentials: mockCredentials.user(), logger: mockServices.logger.mock() });
   };
-  return { actions, stacks, gateways, servers, run };
+  return { actions, stacks, gateways, servers, mcp, run };
 }
 
 describe('MCP actions', () => {
   it('registers the platform tools', () => {
     expect([...setup().actions.keys()].sort()).toEqual([
       'create-genai-stack',
+      'create-mcp-server',
       'create-model-gateway',
       'list-genai-stacks',
+      'list-mcp-servers',
       'list-model-gateways',
       'list-model-servers',
       'list-projects',
     ]);
+  });
+
+  it('lists MCP servers with each client\'s tools, not the expired ones', async () => {
+    const { output } = await setup().run('list-mcp-servers', { project: 'demo' });
+    expect(output.servers[0]).toEqual({
+      name: 'kb',
+      project: 'demo',
+      ready: false,
+      endpoint: 'http://kb.demo.svc/mcp',
+      database: 'GenAIStack/bot',
+      tools: ['search', 'fetch', 'remember', 'recall', 'forget'],
+      clients: [
+        { name: 'claude-code', tools: ['search', 'fetch', 'remember', 'recall', 'forget'] },
+        { name: 'bot', tools: ['search', 'recall'] },
+      ],
+      search: 'hybrid',
+      memoryScope: 'client',
+      keysSecret: 'kb-keys',
+    });
+  });
+
+  it('creates an MCP server over a stack, a dry run unless asked', async () => {
+    const { run, mcp } = setup();
+    const { output } = await run('create-mcp-server', {
+      project: 'demo',
+      name: 'kb',
+      stack: 'bot',
+      embeddingsModel: 'text-embedding-3-small',
+      sharedMemory: true,
+      clients: [{ name: 'bot', tools: ['search'] }],
+    });
+    expect(output).toEqual({
+      created: false,
+      name: 'kb',
+      project: 'demo',
+      endpoint: 'http://kb.demo.svc/mcp',
+      keysSecret: 'kb-keys',
+      portalPath: '/basis/mcp-servers/demo/kb',
+    });
+    expect(mcp.apply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dryRun: true,
+        createOnly: true,
+        spec: {
+          database: { stack: 'bot' },
+          recovery: { enabled: false },
+          retrieval: { ingest: false },
+          memory: { enabled: true, scope: 'shared' },
+          embeddings: { model: 'text-embedding-3-small' },
+          clients: [{ name: 'bot', tools: ['search'] }],
+        },
+      }),
+    );
+  });
+
+  it('refuses MCP servers without the permission', async () => {
+    await expect(setup(false).run('list-mcp-servers', {})).rejects.toThrow('basis.mcp.read');
+    await expect(setup(false).run('create-mcp-server', { project: 'demo', name: 'kb', stack: 'bot' })).rejects.toThrow('basis.mcp.create');
   });
 
   it('lists model servers with the name to give their gateway models', async () => {

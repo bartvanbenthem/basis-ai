@@ -1,5 +1,5 @@
 # What the portal's backend may do on the control plane: manage
-# GenAIStacks, ModelGateways, PostgresClusters and ValkeyCaches, create and change Projects, list namespaces, register
+# GenAIStacks, ModelGateways, ModelServers, MCPServers, PostgresClusters and ValkeyCaches, create and change Projects, list namespaces, register
 # locations: Location objects plus their kubeconfigs (bottom), and read the
 # COSI driver's keys for the Buckets page (bottom). It never
 # touches CNPG objects directly -- every write goes through the
@@ -31,10 +31,11 @@ rules:
   - apiGroups: [cache.cndev.nl]
     resources: [valkeycaches]
     verbs: [get, list, watch, create, update, patch, delete]
-  # GenAI stacks, model gateways and model servers: the same; a stack's
-  # connection Secret and a gateway's client keys are read in the location.
+  # GenAI stacks, model gateways, model servers and MCP servers: the same; a
+  # stack's connection Secret and a gateway's or MCP server's client keys are
+  # read in the location.
   - apiGroups: [ai.cndev.nl]
-    resources: [genaistacks, modelgateways, modelservers]
+    resources: [genaistacks, modelgateways, modelservers, mcpservers]
     verbs: [get, list, watch, create, update, patch, delete]
   # Projects (namespace + Prometheus + Grafana): list them for the project
   # picker, create new ones, change their settings, and delete them once they

@@ -13,6 +13,10 @@ import type {
   GatewayKey,
   GenAIStack,
   GenAIStackSummary,
+  MCPServer,
+  MCPServerDetails,
+  MCPServerSummary,
+  McpKey,
   ModelGateway,
   ModelGatewaySummary,
   ModelServer,
@@ -209,6 +213,15 @@ export interface BasisApi {
   patchServer(namespace: string, name: string, request: PatchRequest & { owner?: string | null }): Promise<ModelServer>;
   /** Deletes the server: its GPUs are freed, gateways' models on it stop answering. */
   deleteServer(namespace: string, name: string): Promise<void>;
+  listMcpServers(namespace?: string): Promise<MCPServerSummary[]>;
+  /** The MCP server, its pods and events in its sites. */
+  getMcpServer(namespace: string, name: string): Promise<MCPServerDetails>;
+  /** The clients' API keys. */
+  getMcpKeys(namespace: string, name: string): Promise<McpKey[]>;
+  createMcpServer(request: CreateClusterRequest): Promise<MCPServer>;
+  patchMcpServer(namespace: string, name: string, request: PatchRequest & { owner?: string | null }): Promise<MCPServer>;
+  /** Deletes the server: agents lose its tools; the documents and memories stay in the database. */
+  deleteMcpServer(namespace: string, name: string): Promise<void>;
 }
 
 export const basisApiRef = createApiRef<BasisApi>().with({
@@ -515,6 +528,34 @@ export class BasisClient implements BasisApi {
 
   async deleteServer(namespace: string, name: string) {
     await this.#request(`/servers/${enc(namespace)}/${enc(name)}`, { method: 'DELETE' });
+  }
+
+  async listMcpServers(namespace?: string) {
+    const query = namespace ? `?namespace=${enc(namespace)}` : '';
+    return (await this.#request<{ items: MCPServerSummary[] }>(`/mcp-servers${query}`)).items;
+  }
+
+  getMcpServer(namespace: string, name: string) {
+    return this.#request<MCPServerDetails>(`/mcp-servers/${enc(namespace)}/${enc(name)}`);
+  }
+
+  async getMcpKeys(namespace: string, name: string) {
+    return (await this.#request<{ items: McpKey[] }>(`/mcp-servers/${enc(namespace)}/${enc(name)}/keys`)).items;
+  }
+
+  createMcpServer(request: CreateClusterRequest) {
+    return this.#request<MCPServer>('/mcp-servers', { method: 'POST', body: JSON.stringify(request) });
+  }
+
+  patchMcpServer(namespace: string, name: string, request: PatchRequest & { owner?: string | null }) {
+    return this.#request<MCPServer>(`/mcp-servers/${enc(namespace)}/${enc(name)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async deleteMcpServer(namespace: string, name: string) {
+    await this.#request(`/mcp-servers/${enc(namespace)}/${enc(name)}`, { method: 'DELETE' });
   }
 
   async #request<T>(path: string, init?: RequestInit): Promise<T> {

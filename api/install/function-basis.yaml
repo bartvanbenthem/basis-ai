@@ -7,4 +7,4 @@ kind: Function
 metadata:
   name: function-basis
 spec:
-  package: ghcr.io/bartvanbenthem/function-basis:v0.4.6
+  package: ghcr.io/bartvanbenthem/function-basis:v0.4.7

@@ -9,6 +9,7 @@ import type {
   GenAIStackSummary,
   ModelGatewaySummary,
   ModelServerSummary,
+  MCPServerSummary,
 } from '@internal/backstage-plugin-basis-common';
 import { ReactNode } from 'react';
 
@@ -77,6 +78,17 @@ export function serverHealth(s: ModelServerSummary): Health {
   return s.message?.includes("can't apply") ? 'degraded' : 'progressing';
 }
 
+/**
+ * An MCP server is healthy once it answers in every site; degraded when the
+ * composition reports a problem (no such stack or cluster, no client at the
+ * gateway, no recovery site), progressing while its pods get ready.
+ */
+export function mcpHealth(s: MCPServerSummary): Health {
+  if (s.deleting) return 'deleting';
+  if (s.ready) return 'healthy';
+  return s.message && !s.message.startsWith('Waiting') ? 'degraded' : 'progressing';
+}
+
 /** `label` replaces the health's own word, e.g. "Reachable" for healthy. */
 export const StatusDot = ({ health: h, label }: { health: Health; label?: string }) => {
   const { color } = HEALTH[h];
@@ -106,6 +118,8 @@ export const GatewayHealthBadge = ({ gateway }: { gateway: ModelGatewaySummary }
 );
 
 export const ServerHealthBadge = ({ server }: { server: ModelServerSummary }) => <StatusDot health={serverHealth(server)} />;
+
+export const McpHealthBadge = ({ server }: { server: MCPServerSummary }) => <StatusDot health={mcpHealth(server)} />;
 
 export const ProjectHealthBadge = ({ project }: { project: ProjectSummary }) => (
   <StatusDot health={projectHealth(project)} />

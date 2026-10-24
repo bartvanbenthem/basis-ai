@@ -43,6 +43,17 @@
   tokenSecretRef {name, key=HF_TOKEN}}; replicas=1 (0 = stopped); resources {cpu=4, memory=16Gi,
   gpus=1, gpuResource=nvidia.com/gpu}; image; args[] (--flag=value); routing {prefixCacheAware=true};
   scheduling {nodeSelector, tolerations}; recovery {enabled, replicas=1}; alerts.
+- MCPServer (`ai.cndev.nl/v1alpha1`, short `mcps`): an MCP server (streamable HTTP) at
+  `http://<name>.<project>.svc/mcp` with tools search, fetch (+ add_document, delete_document with
+  retrieval.ingest), remember, recall, forget over a database; Authorization: Bearer <key>, a key
+  per client in Secret `<name>-keys`. spec: database {stack | cluster (one of them), name=app,
+  credentialsSecretRef {name} (cluster; required with recovery)}; embeddings {model (unset: full
+  text only), dimensions, gateway + client (cluster only; a stack uses its gateway)};
+  retrieval {enabled=true, mode=hybrid|vector|text (hybrid needs a model), topK=8,
+  textSearchConfig=simple, ingest=false, table (schema.table of your own, only read; no ingest),
+  columns {id=id, content=content, title, source, metadata, embedding}}; memory {enabled=true,
+  scope=client|shared, retentionDays}; clients[] {name, owner, tools[], expiresAt} = [agents];
+  replicas=2; recovery {enabled, replicas=1}; alerts.
 - PostgresCluster (`postgres.cndev.nl/v1alpha1`, short `pgc`): highly available PostgreSQL on
   CloudNativePG. spec: size (catalog), instances, storage {size}, profile (vector = pgvector,
   VectorChord, pg_search; needs postgresVersion 18), postgresVersion, database {extensions},
@@ -61,5 +72,6 @@
 - [GenAI stacks](ai/genai-stacks.md): settings, the connection Secret, sharing a gateway, switching sites
 - [Model gateways](ai/model-gateways.md): models, clients and keys
 - [Model servers](ai/model-servers.md): self-hosted models, prefix-cache-aware routing, GPUs
+- [MCP servers](ai/mcp-servers.md): a knowledge base and agent memory as MCP tools, keys, search modes
 - [Agents and MCP](ai/agents.md): the MCP tools and the API for agents
 - [API reference](api.md): every field, its default and rules (OpenAPI, generated from the XRDs)

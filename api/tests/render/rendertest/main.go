@@ -7,7 +7,7 @@
 //	    the manifest inside every provider-kubernetes Object
 //	rendertest assert <api> <case> <empty|observed> <render-output.yaml> [dashboard.json]
 //	    semantic assertions on `crossplane render` output (postgrescluster.go, project.go, location.go, valkeycache.go,
-//	    modelserver.go, modelgateway.go, genaistack.go)
+//	    modelserver.go, modelgateway.go, mcpserver.go, genaistack.go)
 package main
 
 import (
@@ -68,7 +68,7 @@ func main() {
 			usage()
 		}
 		core := map[string]bool{"v1": true, "rbac.authorization.k8s.io/v1": true, "networking.k8s.io/v1": true,
-			"apiregistration.k8s.io/v1": true, "batch/v1": true}
+			"apiregistration.k8s.io/v1": true, "batch/v1": true, "apps/v1": true, "policy/v1": true}
 		var manifests []M
 		err = filterDocs(args[0], args[1], func(d M) []M {
 			if str(d, "kind") == "Result" {
@@ -275,6 +275,12 @@ func assert(api, kase, state, path string, rest []string) int {
 			assertModelServer(r)
 			return r.report(fmt.Sprintf("FAIL modelserver/%s (%s):", kase, state),
 				fmt.Sprintf("ok   modelserver/%s (%s)", kase, state))
+		}
+	case "mcpserver":
+		if r, err = loadRender(kase, state, path, "MCPServer"); err == nil {
+			assertMCPServer(r)
+			return r.report(fmt.Sprintf("FAIL mcpserver/%s (%s):", kase, state),
+				fmt.Sprintf("ok   mcpserver/%s (%s)", kase, state))
 		}
 	case "valkeycache":
 		if r, err = loadRender(kase, state, path, "ValkeyCache"); err == nil {

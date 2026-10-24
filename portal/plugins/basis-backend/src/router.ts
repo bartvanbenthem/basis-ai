@@ -23,6 +23,11 @@ import {
   basisGatewayDeletePermission,
   basisGatewayReadPermission,
   basisGatewayUpdatePermission,
+  basisMcpCreatePermission,
+  basisMcpCredentialsReadPermission,
+  basisMcpDeletePermission,
+  basisMcpReadPermission,
+  basisMcpUpdatePermission,
   basisServerCreatePermission,
   basisServerDeletePermission,
   basisServerReadPermission,
@@ -33,11 +38,13 @@ import {
   basisStackReadPermission,
   basisStackUpdatePermission,
   GenAIStackSummary,
+  MCPServerSummary,
   ModelGatewaySummary,
   ModelServerSummary,
   STACK_OWNER_LABEL,
   stackPromotionPatch,
   summarizeGateway,
+  summarizeMcpServer,
   summarizeServer,
   summarizeStack,
   basisBucketReadPermission,
@@ -89,6 +96,7 @@ import { BasisKubernetesService } from './service/BasisKubernetesService';
 import { MAX_KUBECONFIG_BYTES } from './service/kubeconfig';
 import { LocationService, withTimeout } from './service/LocationService';
 import { GatewayService } from './service/GatewayService';
+import { McpService } from './service/McpService';
 import { ProviderKeyService } from './service/ProviderKeyService';
 import { ServerService } from './service/ServerService';
 import { StackService } from './service/StackService';
@@ -280,6 +288,12 @@ function withServerProject(summary: ModelServerSummary, project: Project | undef
   return { ...summary, project: project.metadata.name, grafanaUrl: project.status?.grafana?.url || undefined };
 }
 
+/** Adds the MCP server's Project (same name as its namespace) and that project's Grafana. */
+function withMcpProject(summary: MCPServerSummary, project: Project | undefined): MCPServerSummary {
+  if (!project) return summary;
+  return { ...summary, project: project.metadata.name, grafanaUrl: project.status?.grafana?.url || undefined };
+}
+
 /** Adds the cache's Project (same name as its namespace) and that project's Grafana. */
 function withCacheProject(summary: ValkeyCacheSummary, project: Project | undefined): ValkeyCacheSummary {
   if (!project) return summary;
@@ -300,10 +314,17 @@ export async function createRouter(options: {
   stacks: StackService;
   gateways: GatewayService;
   servers: ServerService;
+  mcp: McpService;
   providerKeys: ProviderKeyService;
 }): Promise<express.Router> {
-  const { httpAuth, permissions, config, k8s, locations, buckets, volumes, audit, cost, valkey, stacks, gateways, servers } =
+  const { httpAuth, permissions, config, k8s, locations, buckets, volumes, audit, cost, valkey, stacks, gateways, servers, mcp } =
     options;
+  /** The MCP servers in a project over a stack's or a cluster's database. */
+  const mcpServersOn = async (ns: string, kind: 'stack' | 'cluster', db: string) =>
+    (await mcp.list(ns))
+      .filter(m => m.spec.database?.[kind] === db)
+      .map(m => m.metadata.name)
+      .sort();
   const keys = options.providerKeys;
   /** A stack's or gateway's models, in its spec. */
   const stackModels = (spec: Record<string, any> | undefined) => spec?.gateway?.models;
@@ -571,8 +592,14 @@ export async function createRouter(options: {
     const p = z.object({ name }).safeParse(req.params);
     if (!p.success) throw new InputError(p.error.toString());
     await k8s.getProject(p.data.name);
-    // Deleting the project deletes its namespace, and with it every
+    // Deleting the project deletes its namespace, and with it every MCPServer,
     // GenAIStack, ModelGateway, ModelServer, PostgresCluster and ValkeyCache: only an empty project goes.
+    const mcpNames = (await mcp.list(p.data.name)).map(m => m.metadata.name);
+    if (mcpNames.length) {
+      throw new ConflictError(
+        `Project ${p.data.name} still has MCP servers: ${mcpNames.sort().join(', ')}; delete them first`,
+      );
+    }
     const stackNames = (await stacks.list(p.data.name)).map(s => s.metadata.name);
     if (stackNames.length) {
       throw new ConflictError(
@@ -795,6 +822,10 @@ export async function createRouter(options: {
   router.delete('/stacks/:namespace/:name', async (req, res) => {
     await authorize(req, basisStackDeletePermission);
     const p = params(req);
+    const users = await mcpServersOn(p.namespace, 'stack', p.name);
+    if (users.length) {
+      throw new ConflictError(`GenAIStack ${p.name} is served by MCP server(s) ${users.join(', ')}; delete them first`);
+    }
     await stacks.delete(p.namespace, p.name);
     res.status(202).json({ status: 'deleting' });
   });
@@ -975,6 +1006,73 @@ export async function createRouter(options: {
     res.status(202).json({ status: 'deleting' });
   });
 
+  // MCP servers (ai.cndev.nl MCPServer): retrieval and agent memory over a
+  // stack's or cluster's database as MCP tools, a key per client. The spec
+  // goes to the XR as-is: the XRD validates it.
+  router.get('/mcp-servers', async (req, res) => {
+    await authorize(req, basisMcpReadPermission);
+    const q = z.object({ namespace: namespace.optional() }).safeParse(req.query);
+    if (!q.success) throw new InputError(q.error.toString());
+    const [items, projects] = await Promise.all([mcp.list(q.data.namespace), k8s.listProjects()]);
+    const byName = new Map(projects.map(p => [p.metadata.name, p]));
+    res.json({
+      items: items.map(m => {
+        const project = byName.get(m.metadata.namespace);
+        return withMcpProject(summarizeMcpServer(m, project), project);
+      }),
+    });
+  });
+
+  router.get('/mcp-servers/:namespace/:name', async (req, res) => {
+    await authorize(req, basisMcpReadPermission);
+    const p = params(req);
+    const [resource, project] = await Promise.all([
+      mcp.get(p.namespace, p.name),
+      k8s.getProject(p.namespace).catch(() => undefined),
+    ]);
+    const workload = await mcp.workload(resource, location => locations.kubeConfig(location));
+    res.json({ summary: withMcpProject(summarizeMcpServer(resource, project), project), resource, ...workload });
+  });
+
+  router.get('/mcp-servers/:namespace/:name/keys', async (req, res) => {
+    await authorize(req, basisMcpReadPermission);
+    await authorize(req, basisMcpCredentialsReadPermission);
+    const p = params(req);
+    // Carries API keys: keep them out of every cache.
+    res.set('Cache-Control', 'no-store');
+    res.json({ items: await mcp.keys(p.namespace, p.name, location => locations.kubeConfig(location)) });
+  });
+
+  router.post('/mcp-servers', async (req, res) => {
+    await authorize(req, basisMcpCreatePermission);
+    const parsed = createSchema.safeParse(req.body);
+    if (!parsed.success) throw new InputError(parsed.error.toString());
+    const { owner, ...rest } = parsed.data;
+    const created = await mcp.apply({
+      ...rest,
+      labels: owner ? { 'backstage.io/owner': owner } : undefined,
+      createOnly: true,
+    });
+    res.status(parsed.data.dryRun ? 200 : 201).json(created);
+  });
+
+  router.patch('/mcp-servers/:namespace/:name', async (req, res) => {
+    await authorize(req, basisMcpUpdatePermission);
+    const p = params(req);
+    const parsed = patchSchema.safeParse(req.body);
+    if (!parsed.success) throw new InputError(parsed.error.toString());
+    const { spec, owner, dryRun } = parsed.data;
+    res.json(await mcp.patch({ ...p, spec, labels: ownerLabel(owner), dryRun }));
+  });
+
+  router.delete('/mcp-servers/:namespace/:name', async (req, res) => {
+    await authorize(req, basisMcpDeletePermission);
+    const p = params(req);
+    await mcp.get(p.namespace, p.name);
+    await mcp.delete(p.namespace, p.name);
+    res.status(202).json({ status: 'deleting' });
+  });
+
   router.post('/clusters', async (req, res) => {
     await authorize(req, basisClusterCreatePermission);
     const parsed = createSchema.safeParse(req.body);
@@ -1088,6 +1186,10 @@ export async function createRouter(options: {
     await authorize(req, basisClusterDeletePermission);
     const p = params(req);
     assertNotStackOwned('PostgresCluster', await k8s.get(p.namespace, p.name));
+    const users = await mcpServersOn(p.namespace, 'cluster', p.name);
+    if (users.length) {
+      throw new ConflictError(`PostgresCluster ${p.name} is served by MCP server(s) ${users.join(', ')}; delete them first`);
+    }
     await k8s.delete(p.namespace, p.name);
     res.status(202).json({ status: 'deleting' });
   });

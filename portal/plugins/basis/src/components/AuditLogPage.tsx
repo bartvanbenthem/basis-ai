@@ -38,12 +38,14 @@ const SOURCES: Array<{ id: SourceFilter; label: string }> = [
   { id: 'kubernetes', label: 'Kubernetes' },
   { id: 'postgresql', label: 'PostgreSQL' },
   { id: 'gateway', label: 'Model gateways' },
+  { id: 'mcp', label: 'MCP servers' },
 ];
 
 const SOURCE_LABELS: Record<AuditSource, string> = {
   kubernetes: 'Kubernetes',
   postgresql: 'PostgreSQL',
   gateway: 'Model gateway',
+  mcp: 'MCP server',
 };
 const ALL = '__all__';
 
@@ -76,8 +78,9 @@ const matches = (e: AuditEntry, query: string) =>
 /**
  * A project's audit trail: the Kubernetes events of its namespace on the
  * control plane and in its locations, the pgaudit records of its
- * PostgreSQL clusters and the calls through its model gateways. The project lives in ?project=<name> so the project
- * page can link to it.
+ * PostgreSQL clusters, the calls through its model gateways and the tool
+ * calls on its MCP servers. The project lives in ?project=<name> so the
+ * project page can link to it.
  */
 export const AuditLogPage = () => {
   const api = useApi(basisApiRef);
@@ -137,6 +140,7 @@ export const AuditLogPage = () => {
     const records = all.filter(e => e.source === 'postgresql');
     const calls = all.filter(e => e.source === 'gateway');
     const callTokens = calls.reduce((n, e) => n + (e.tokens?.input ?? 0) + (e.tokens?.output ?? 0), 0);
+    const toolCalls = all.filter(e => e.source === 'mcp');
     const oldest = all[all.length - 1]?.time;
     const audited = (log?.clusters.length ?? 0) - unaudited.length;
     return [
@@ -161,6 +165,11 @@ export const AuditLogPage = () => {
         label: 'Model gateway calls',
         value: calls.length,
         hint: `${callTokens.toLocaleString()} tokens, ${calls.filter(e => e.type !== '2xx').length} not OK`,
+      },
+      {
+        label: 'MCP tool calls',
+        value: toolCalls.length,
+        hint: `${toolCalls.filter(e => e.type === 'error').length} failed`,
       },
     ];
   }, [all, log, unaudited]);
@@ -214,6 +223,11 @@ export const AuditLogPage = () => {
             {e.gateway && (
               <Text variant="body-x-small" color="secondary">
                 {e.gateway}
+              </Text>
+            )}
+            {e.mcpServer && (
+              <Text variant="body-x-small" color="secondary">
+                {e.mcpServer}
               </Text>
             )}
           </Flex>
@@ -293,7 +307,7 @@ export const AuditLogPage = () => {
     <>
       <Header
         title="Audit logs"
-        description="Kubernetes events of a project's namespace, on the control plane and in its locations, the pgaudit records of its PostgreSQL clusters, and the calls through its model gateways (client, model, tokens; no prompts)"
+        description="Kubernetes events of a project's namespace, on the control plane and in its locations, the pgaudit records of its PostgreSQL clusters, the calls through its model gateways (client, model, tokens; no prompts) and the tool calls on its MCP servers (client, tool, outcome; no queries)"
         customActions={
           <Flex gap="3" align="center">
             {project && projectLink && (

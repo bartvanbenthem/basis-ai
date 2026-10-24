@@ -9,6 +9,7 @@ them against the schema: types, defaults, enums and rules.
 | `ai.cndev.nl/v1alpha1` | `GenAIStack` (`gstack`) | in a Project's namespace | [GenAIStack API](/catalog/default/api/genaistack/definition) |
 | `ai.cndev.nl/v1alpha1` | `ModelGateway` (`mgw`) | in a Project's namespace | [ModelGateway API](/catalog/default/api/modelgateway/definition) |
 | `ai.cndev.nl/v1alpha1` | `ModelServer` (`msrv`) | in a Project's namespace | [ModelServer API](/catalog/default/api/modelserver/definition) |
+| `ai.cndev.nl/v1alpha1` | `MCPServer` (`mcps`) | in a Project's namespace | [MCPServer API](/catalog/default/api/mcpserver/definition) |
 | `postgres.cndev.nl/v1alpha1` | `PostgresCluster` (`pgc`) | in a Project's namespace | [PostgresCluster API](/catalog/default/api/postgrescluster/definition) |
 | `cache.cndev.nl/v1alpha1` | `ValkeyCache` (`vcache`) | in a Project's namespace | [ValkeyCache API](/catalog/default/api/valkeycache/definition) |
 | `platform.cndev.nl/v1alpha1` | `Project` (`proj`) | cluster | [Project API](/catalog/default/api/project/definition) |

@@ -3499,6 +3499,667 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: API
 metadata:
+  description: An MCP server with retrieval and agent memory over a Project's database, a key per client, in its site(s) (ai.cndev.nl/v1alpha1)
+  name: mcpserver
+  tags:
+    - kubernetes
+    - crossplane
+  title: MCPServer API
+spec:
+  definition: |
+    components:
+      schemas:
+        MCPServer:
+          description: |-
+            An MCP server with retrieval and agent memory over a Project's database (basis-mcp), in its site(s).
+
+            Rules:
+            - MCPServer names are lowercase letters, digits and "-", start with a letter, max 40 characters
+          properties:
+            apiVersion:
+              enum:
+                - ai.cndev.nl/v1alpha1
+              type: string
+            kind:
+              enum:
+                - MCPServer
+              type: string
+            metadata:
+              $ref: '#/components/schemas/ObjectMeta'
+            spec:
+              description: |-
+                Rules:
+                - retrieval.mode hybrid and vector need embeddings.model; without one, retrieval is full-text (mode text)
+                - with database.cluster, embeddings.model needs embeddings.gateway (a ModelGateway in this namespace that serves it)
+                - a stack's server uses the stack's gateway for embeddings; embeddings.gateway and client are for database.cluster
+                - recovery with database.cluster needs database.credentialsSecretRef (a role of the cluster's spec.roles), the same in both sites
+              properties:
+                alerts:
+                  default: {}
+                  description: 'Thresholds of the server''s alerts in the Project''s Prometheus (per site): the share of failed tool calls and the 95th percentile of their duration. A server without a ready replica or database always alerts.'
+                  properties:
+                    disabled:
+                      default: false
+                      description: No alerts for this server.
+                      type: boolean
+                    errorRatePercent:
+                      default: 5
+                      maximum: 100
+                      minimum: 0
+                      type: number
+                    latencySeconds:
+                      default: 2
+                      minimum: 0
+                      type: number
+                  type: object
+                clients:
+                  default:
+                    - name: agents
+                  description: 'Who may call the server: each client gets an API key of its own, generated once into Secret <name>-keys (the client''s name is the key). Removing a client revokes its key, and so does passing its expiresAt.'
+                  items:
+                    properties:
+                      expiresAt:
+                        description: The key's last day (YYYY-MM-DD). After it the key is revoked; a later date makes a new key.
+                        format: date
+                        type: string
+                      name:
+                        description: The client, e.g. an agent, an app or a team. Its memories are its own.
+                        pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$
+                        type: string
+                      owner:
+                        description: Who to ask about this key, a person or a group.
+                        maxLength: 100
+                        type: string
+                      tools:
+                        description: The tools this client may call; unset, all the server serves. The others don't exist for it.
+                        items:
+                          enum:
+                            - search
+                            - fetch
+                            - add_document
+                            - delete_document
+                            - remember
+                            - recall
+                            - forget
+                          type: string
+                        maxItems: 7
+                        type: array
+                    required:
+                      - name
+                    type: object
+                  maxItems: 100
+                  type: array
+                crossplane:
+                  description: 'Set by Crossplane: how it composes this resource. Leave it out; the platform''s composition (mcpserver) is the only one, and Crossplane fills in the rest.'
+                  properties:
+                    compositionRef:
+                      description: 'The Composition that composes this resource (default: mcpserver).'
+                      properties:
+                        name:
+                          type: string
+                      required:
+                        - name
+                      type: object
+                    compositionRevisionRef:
+                      description: The Composition revision in use; Crossplane sets it.
+                      properties:
+                        name:
+                          type: string
+                      required:
+                        - name
+                      type: object
+                    compositionRevisionSelector:
+                      description: Selects the Composition revision by labels (with compositionUpdatePolicy Manual).
+                      properties:
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      required:
+                        - matchLabels
+                      type: object
+                    compositionSelector:
+                      description: Selects a Composition by labels instead of compositionRef.
+                      properties:
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      required:
+                        - matchLabels
+                      type: object
+                    compositionUpdatePolicy:
+                      default: Automatic
+                      description: 'Automatic: move to a new Composition revision as soon as there is one. Manual: stay on compositionRevisionRef.'
+                      enum:
+                        - Automatic
+                        - Manual
+                      type: string
+                    resourceRefs:
+                      description: The resources Crossplane composed for this one (read-only).
+                      items:
+                        properties:
+                          apiVersion:
+                            description: ""
+                            type: string
+                          kind:
+                            description: ""
+                            type: string
+                          name:
+                            description: ""
+                            type: string
+                        required:
+                          - apiVersion
+                          - kind
+                        type: object
+                      type: array
+                  type: object
+                database:
+                  description: |-
+                    Where the documents and memories live: a GenAIStack's database (its own role and connection Secret, its gateway for the embeddings) or a PostgresCluster in this namespace. The server follows its primary: the active site is where it runs.
+
+                    Rules:
+                    - database names a stack or a cluster, one of them
+                    - a stack brings its database and role; credentialsSecretRef and name are for a cluster
+                  properties:
+                    cluster:
+                      description: A PostgresCluster in this namespace, with the vector extension for embeddings.
+                      pattern: ^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$
+                      type: string
+                    credentialsSecretRef:
+                      description: A kubernetes.io/basic-auth Secret in this namespace (username, password) of a role in the cluster's spec.roles, copied to the location(s). Unset, the database owner through CloudNativePG's <cluster>-app Secret in the protected location.
+                      properties:
+                        name:
+                          type: string
+                      required:
+                        - name
+                      type: object
+                    name:
+                      description: The cluster's database; app (the bootstrap database) when unset.
+                      pattern: ^[a-z_][a-z0-9_]{0,62}$
+                      type: string
+                    stack:
+                      description: A GenAIStack in this namespace.
+                      pattern: ^[a-z]([-a-z0-9]{0,26}[a-z0-9])?$
+                      type: string
+                  type: object
+                embeddings:
+                  description: 'Vectors for semantic search and recall, from an OpenAI-compatible /embeddings endpoint: the stack''s gateway, or with database.cluster embeddings.gateway. Unset, search and recall are full-text only. Stored without an embedding when the model is down, a document or memory is embedded later.'
+                  properties:
+                    client:
+                      description: The server's client at that gateway (its spec.clients); the MCPServer's name by default.
+                      pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$
+                      type: string
+                    dimensions:
+                      description: Ask the model for this many dimensions (models that can shorten their vectors).
+                      maximum: 16000
+                      minimum: 1
+                      type: integer
+                    gateway:
+                      description: With database.cluster, a ModelGateway in this namespace serving the model.
+                      pattern: ^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$
+                      type: string
+                    model:
+                      description: The embeddings model, as the gateway names it, e.g. text-embedding-3-small or a ModelServer's (e.g. BAAI/bge-m3). Changing it to one with other dimensions needs new tables (retrieval.table, a new server).
+                      maxLength: 200
+                      minLength: 1
+                      type: string
+                  type: object
+                image:
+                  description: Another basis-mcp image, e.g. from a registry of your own; the platform's by default.
+                  maxLength: 500
+                  type: string
+                memory:
+                  default: {}
+                  description: 'The agents'' memory tools: remember, recall and forget, in the server''s own mcp.memories table.'
+                  properties:
+                    enabled:
+                      default: true
+                      type: boolean
+                    retentionDays:
+                      description: Memories older than this are deleted; unset, kept.
+                      maximum: 3650
+                      minimum: 1
+                      type: integer
+                    scope:
+                      default: client
+                      description: client (default), each client recalls only its own memories; shared, every client all of them.
+                      enum:
+                        - client
+                        - shared
+                      type: string
+                  type: object
+                recovery:
+                  default: {}
+                  description: 'A standby in the Project''s recovery location (the Project needs one, and the database geo replication): it serves search, fetch and recall from the replica, and every tool once the database''s primary moves there.'
+                  properties:
+                    enabled:
+                      default: false
+                      type: boolean
+                    replicas:
+                      default: 1
+                      description: Replicas in the standby site; it gets spec.replicas once active.
+                      maximum: 10
+                      minimum: 0
+                      type: integer
+                  type: object
+                replicas:
+                  default: 2
+                  description: Server replicas in the active site.
+                  maximum: 10
+                  minimum: 1
+                  type: integer
+                resources:
+                  default: {}
+                  description: Per replica. memory is request and limit.
+                  properties:
+                    cpu:
+                      default: 250m
+                      pattern: ^[0-9]+(\.[0-9]+)?m?$
+                      type: string
+                    memory:
+                      default: 256Mi
+                      description: Mi or Gi.
+                      pattern: ^[0-9]+(Mi|Gi)$
+                      type: string
+                  type: object
+                retrieval:
+                  default: {}
+                  description: |-
+                    The knowledge base tools: search (hybrid by default: vector distance and full-text rank, fused by reciprocal rank) and fetch.
+
+                    Rules:
+                    - ingest writes the server's own table; a retrieval.table of yours is only read
+                  properties:
+                    columns:
+                      description: 'With table: its columns. id and content are required, the others optional: metadata (jsonb, for search filters) and embedding (a vector(n) of the same model).'
+                      properties:
+                        content:
+                          default: content
+                          pattern: ^[a-z_][a-z0-9_]{0,62}$
+                          type: string
+                        embedding:
+                          pattern: ^[a-z_][a-z0-9_]{0,62}$
+                          type: string
+                        id:
+                          default: id
+                          pattern: ^[a-z_][a-z0-9_]{0,62}$
+                          type: string
+                        metadata:
+                          pattern: ^[a-z_][a-z0-9_]{0,62}$
+                          type: string
+                        source:
+                          pattern: ^[a-z_][a-z0-9_]{0,62}$
+                          type: string
+                        title:
+                          pattern: ^[a-z_][a-z0-9_]{0,62}$
+                          type: string
+                      type: object
+                    enabled:
+                      default: true
+                      type: boolean
+                    ingest:
+                      default: false
+                      description: Also add_document and delete_document, so agents can fill the knowledge base.
+                      type: boolean
+                    mode:
+                      description: hybrid (default with embeddings.model), vector, or text (default without).
+                      enum:
+                        - hybrid
+                        - vector
+                        - text
+                      type: string
+                    table:
+                      description: A documents table of your own (schema.table), only read, through columns. Unset, the server's own mcp.documents (id, title, source, content, metadata jsonb, embedding), which it creates and indexes.
+                      pattern: ^[a-z_][a-z0-9_]{0,62}\.[a-z_][a-z0-9_]{0,62}$
+                      type: string
+                    textSearchConfig:
+                      default: simple
+                      description: PostgreSQL's text search configuration for the full-text side, e.g. simple, english or dutch.
+                      pattern: ^[a-z_][a-z0-9_]{0,62}$
+                      type: string
+                    topK:
+                      default: 8
+                      description: Hits per search unless the agent asks for another number.
+                      maximum: 50
+                      minimum: 1
+                      type: integer
+                  type: object
+              required:
+                - database
+              type: object
+            status:
+              properties:
+                activeSite:
+                  description: Where the database's primary runs, and the server with spec.replicas.
+                  type: string
+                clients:
+                  type: integer
+                conditions:
+                  description: Conditions of the resource, one per type. Crossplane sets Ready (every composed resource is ready) and Synced (the last reconcile succeeded); the composition adds its own, e.g. PostgresReady.
+                  items:
+                    properties:
+                      lastTransitionTime:
+                        format: date-time
+                        type: string
+                      message:
+                        description: Human-readable detail
+                        type: string
+                      observedGeneration:
+                        format: int64
+                        type: integer
+                      reason:
+                        description: Machine-readable reason, e.g. Available, ReconcileSuccess
+                        type: string
+                      status:
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                        type: string
+                      type:
+                        description: e.g. Ready, Synced
+                        type: string
+                    required:
+                      - type
+                      - status
+                      - reason
+                      - lastTransitionTime
+                    type: object
+                  type: array
+                dashboardUid:
+                  description: The server's dashboard in the Project's Grafana, at <grafana>/d/<uid>.
+                  type: string
+                database:
+                  description: The database, as GenAIStack/<name> or PostgresCluster/<name>.
+                  type: string
+                endpoint:
+                  description: The MCP endpoint (streamable HTTP) for agents in each site's location.
+                  type: string
+                expiredClients:
+                  description: Clients past their expiresAt; their keys are revoked.
+                  items:
+                    type: string
+                  type: array
+                keysSecret:
+                  description: Secret in this namespace with an API key per client.
+                  type: string
+                message:
+                  type: string
+                ready:
+                  type: boolean
+                sites:
+                  items:
+                    properties:
+                      active:
+                        type: boolean
+                      location:
+                        type: string
+                      ready:
+                        type: boolean
+                      replicas:
+                        type: integer
+                      site:
+                        type: string
+                    type: object
+                  type: array
+                toolCount:
+                  type: integer
+                tools:
+                  description: The tools the server serves.
+                  items:
+                    type: string
+                  type: array
+              type: object
+          required:
+            - apiVersion
+            - kind
+            - metadata
+          type: object
+        ObjectMeta:
+          description: Standard Kubernetes object metadata (the fields that matter here).
+          properties:
+            annotations:
+              additionalProperties:
+                type: string
+              type: object
+            labels:
+              additionalProperties:
+                type: string
+              type: object
+            name:
+              type: string
+            namespace:
+              type: string
+          required:
+            - name
+          type: object
+      securitySchemes:
+        bearerAuth:
+          description: A Kubernetes token (OIDC or ServiceAccount) with RBAC on mcpservers.ai.cndev.nl
+          scheme: bearer
+          type: http
+    info:
+      description: |-
+        An MCP server with retrieval and agent memory over a Project's database (basis-mcp), in its site(s).
+
+        A Crossplane composite resource on the platform's control plane, namespaced: it lives in its Project's namespace. Use it with `kubectl` (short name `mcps`), GitOps, or the Kubernetes API below; the portal and its software templates create it the same way. This is the CRD Crossplane makes of the XRD (api/apis): the platform's fields plus Crossplane's own (spec.crossplane, status.conditions), so it is what the API server validates: the schema, its defaults and the rules listed under each field.
+      title: MCPServer (ai.cndev.nl/v1alpha1)
+      version: v1alpha1
+    openapi: 3.0.3
+    paths:
+      /apis/ai.cndev.nl/v1alpha1/namespaces/{namespace}/mcpservers:
+        get:
+          operationId: listMCPServer
+          responses:
+            "200":
+              content:
+                application/json:
+                  schema:
+                    properties:
+                      items:
+                        items:
+                          $ref: '#/components/schemas/MCPServer'
+                        type: array
+                    type: object
+              description: OK
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: List mcpservers in a namespace
+          tags:
+            - MCPServer
+        parameters:
+          - description: The Project's namespace
+            in: path
+            name: namespace
+            required: true
+            schema:
+              type: string
+        post:
+          operationId: createMCPServer
+          parameters:
+            - description: 'All: validate (schema, rules, admission policies) without persisting'
+              in: query
+              name: dryRun
+              schema:
+                enum:
+                  - All
+                type: string
+          requestBody:
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/MCPServer'
+            required: true
+          responses:
+            "201":
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/MCPServer'
+              description: Created
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "409":
+              description: Already exists
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Create a MCPServer
+          tags:
+            - MCPServer
+      /apis/ai.cndev.nl/v1alpha1/namespaces/{namespace}/mcpservers/{name}:
+        delete:
+          operationId: deleteMCPServer
+          responses:
+            "200":
+              description: Deletion started
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Delete a MCPServer
+          tags:
+            - MCPServer
+        get:
+          operationId: readMCPServer
+          responses:
+            "200":
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/MCPServer'
+              description: OK
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Read a MCPServer
+          tags:
+            - MCPServer
+        parameters:
+          - description: The Project's namespace
+            in: path
+            name: namespace
+            required: true
+            schema:
+              type: string
+          - description: MCPServer name
+            in: path
+            name: name
+            required: true
+            schema:
+              type: string
+        patch:
+          description: JSON merge patch (only the fields sent change, null removes one) or server-side apply.
+          operationId: patchMCPServer
+          parameters:
+            - description: 'All: validate (schema, rules, admission policies) without persisting'
+              in: query
+              name: dryRun
+              schema:
+                enum:
+                  - All
+                type: string
+          requestBody:
+            content:
+              application/apply-patch+yaml:
+                schema:
+                  type: object
+              application/merge-patch+json:
+                schema:
+                  type: object
+            required: true
+          responses:
+            "200":
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/MCPServer'
+              description: OK
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Change fields of a MCPServer
+          tags:
+            - MCPServer
+        put:
+          operationId: replaceMCPServer
+          parameters:
+            - description: 'All: validate (schema, rules, admission policies) without persisting'
+              in: query
+              name: dryRun
+              schema:
+                enum:
+                  - All
+                type: string
+          requestBody:
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/MCPServer'
+            required: true
+          responses:
+            "200":
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/MCPServer'
+              description: OK
+            "401":
+              description: Not authenticated
+            "403":
+              description: Not allowed (RBAC), or refused by an admission policy
+            "404":
+              description: Not found
+            "409":
+              description: 'Conflict: changed since read (resourceVersion)'
+            "422":
+              description: 'Invalid: the schema or one of its rules rejects it'
+          summary: Replace a MCPServer
+          tags:
+            - MCPServer
+    security:
+      - bearerAuth: []
+    servers:
+      - description: The control plane's Kubernetes API server
+        url: https://{apiserver}
+        variables:
+          apiserver:
+            default: kubernetes.default.svc
+    tags:
+      - description: An MCP server with retrieval and agent memory over a Project's database (basis-mcp), in its site(s).
+        name: MCPServer
+  lifecycle: experimental
+  owner: guests
+  system: basis
+  type: openapi
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
   description: 'A self-hosted model: vLLM on KServe with llm-d''s prefix-cache-aware routing, in a Project''s site(s) (ai.cndev.nl/v1alpha1)'
   name: modelserver
   tags:

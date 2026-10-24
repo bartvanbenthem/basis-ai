@@ -17,8 +17,10 @@ import { StackService, stackServiceRef } from './service/StackService';
 import { GatewayService, gatewayServiceRef } from './service/GatewayService';
 import { ProviderKeyService, providerKeyServiceRef } from './service/ProviderKeyService';
 import { ServerService, serverServiceRef } from './service/ServerService';
+import { McpService, mcpServiceRef } from './service/McpService';
 import {
   GenAIStack,
+  MCPServer,
   ModelGateway,
   ModelServer,
   PostgresCluster,
@@ -268,6 +270,39 @@ function fakeServers(items: ModelServer[] = []) {
   };
 }
 
+const kbServer: MCPServer = {
+  apiVersion: 'ai.cndev.nl/v1alpha1',
+  kind: 'MCPServer',
+  metadata: { name: 'kb', namespace: 'demo' },
+  spec: { database: { stack: 'bot' }, embeddings: { model: 'text-embedding-3-small' }, retrieval: { ingest: true } },
+  status: {
+    activeSite: 'protected',
+    endpoint: 'http://kb.demo.svc/mcp',
+    tools: ['search', 'fetch', 'add_document', 'delete_document', 'remember', 'recall', 'forget'],
+    sites: [{ site: 'protected', location: 'dc-a', active: true, replicas: 2, ready: true }],
+    conditions: [{ type: 'Ready', status: 'True' }],
+  },
+};
+
+function fakeMcp(items: MCPServer[] = []) {
+  return {
+    list: jest.fn(async (_ns?: string) => items),
+    get: jest.fn(async (ns: string, name: string) => {
+      const found = items.find(m => m.metadata.namespace === ns && m.metadata.name === name);
+      if (!found) throw new NotFoundError(`MCPServer ${ns}/${name} not found`);
+      return found;
+    }),
+    keys: jest.fn(async () => [{ client: 'agents', key: 'mcp-key' }]),
+    workload: jest.fn(async () => ({
+      pods: [{ name: 'kb-7f9c-x2', location: 'dc-a', role: 'active', phase: 'Running', ready: true, restarts: 0 }],
+      events: [],
+    })),
+    apply: jest.fn(async (o: any) => ({ ...kbServer, metadata: { name: o.name, namespace: o.namespace } })),
+    patch: jest.fn(async () => kbServer),
+    delete: jest.fn(async () => undefined),
+  };
+}
+
 function fakeAudit() {
   return {
     list: jest.fn(async ({ project }: { project: string }) => ({ project, items: [], clusters: [] })),
@@ -286,6 +321,7 @@ async function start(
   gateways = fakeGateways(),
   writtenKeys: Array<{ owner: string; keys: Record<string, string> }> = [],
   servers = fakeServers(),
+  mcp = fakeMcp(),
 ) {
   const { server } = await startTestBackend({
     features: [
@@ -334,6 +370,11 @@ async function start(
         service: serverServiceRef,
         deps: {},
         factory: () => servers as unknown as ServerService,
+      }),
+      createServiceFactory({
+        service: mcpServiceRef,
+        deps: {},
+        factory: () => mcp as unknown as McpService,
       }),
       createServiceFactory({
         service: providerKeyServiceRef,
@@ -1350,6 +1391,80 @@ describe('basis backend', () => {
       const res = await request(await startWith(fakeServers([llamaServer]), fakeGateways(), true, k8s)).delete('/api/basis/projects/demo');
       expect(res.status).toBe(409);
       expect(res.body.error.message).toContain('model servers: llama');
+    });
+  });
+
+  describe('mcp servers', () => {
+    const startWith = (mcp: ReturnType<typeof fakeMcp>, allow = true, k8s = fakeK8s(), stacks = fakeStacks()) =>
+      start(k8s, allow, fakeLocations(), fakeBuckets(), fakeVolumes(), fakeAudit(), fakeValkey(), stacks, fakeGateways(), [], fakeServers(), mcp);
+
+    it('lists servers with their database, tools and endpoint', async () => {
+      const res = await request(await startWith(fakeMcp([kbServer]))).get('/api/basis/mcp-servers?namespace=demo');
+      expect(res.status).toBe(200);
+      expect(res.body.items[0]).toMatchObject({
+        name: 'kb',
+        databaseKind: 'GenAIStack',
+        database: 'bot',
+        mode: 'hybrid',
+        ingest: true,
+        endpoint: 'http://kb.demo.svc/mcp',
+        ready: true,
+        project: 'demo',
+        grafanaUrl: 'http://grafana-demo.example.com',
+      });
+    });
+
+    it('shows its pods; keys need their own permission and are never cached', async () => {
+      const mcp = fakeMcp([kbServer]);
+      const server = await startWith(mcp);
+      const res = await request(server).get('/api/basis/mcp-servers/demo/kb');
+      expect(res.status).toBe(200);
+      expect(res.body.pods[0]).toMatchObject({ name: 'kb-7f9c-x2', role: 'active' });
+      const keys = await request(server).get('/api/basis/mcp-servers/demo/kb/keys');
+      expect(keys.status).toBe(200);
+      expect(keys.headers['cache-control']).toBe('no-store');
+      expect(keys.body.items).toEqual([{ client: 'agents', key: 'mcp-key' }]);
+      expect((await request(await startWith(fakeMcp([kbServer]), false)).get('/api/basis/mcp-servers/demo/kb/keys')).status).toBe(403);
+    });
+
+    it('creates and changes through the XR; refuses without the permission', async () => {
+      const mcp = fakeMcp([kbServer]);
+      const body = { name: 'wiki', namespace: 'demo', spec: { database: { cluster: 'orders-db' } }, owner: 'team-ai' };
+      expect((await request(await startWith(mcp)).post('/api/basis/mcp-servers').send(body)).status).toBe(201);
+      expect(mcp.apply).toHaveBeenCalledWith(
+        expect.objectContaining({ createOnly: true, spec: body.spec, labels: { 'backstage.io/owner': 'team-ai' } }),
+      );
+      const patch = { spec: { memory: { scope: 'shared' } } };
+      expect((await request(await startWith(mcp)).patch('/api/basis/mcp-servers/demo/kb').send(patch)).status).toBe(200);
+      expect(mcp.patch).toHaveBeenCalledWith(expect.objectContaining({ namespace: 'demo', name: 'kb', spec: patch.spec }));
+      expect((await request(await startWith(fakeMcp(), false)).post('/api/basis/mcp-servers').send(body)).status).toBe(403);
+    });
+
+    it('deletes a server; 404 for one that does not exist', async () => {
+      const mcp = fakeMcp([kbServer]);
+      expect((await request(await startWith(mcp)).delete('/api/basis/mcp-servers/demo/kb')).status).toBe(202);
+      expect(mcp.delete).toHaveBeenCalledWith('demo', 'kb');
+      expect((await request(await startWith(fakeMcp())).delete('/api/basis/mcp-servers/demo/nope')).status).toBe(404);
+    });
+
+    it("won't delete the stack or cluster a server serves from", async () => {
+      const stacks = fakeStacks();
+      const res = await request(await startWith(fakeMcp([kbServer]), true, fakeK8s(), stacks)).delete('/api/basis/stacks/demo/bot');
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toContain('MCP server(s) kb');
+      expect(stacks.delete).not.toHaveBeenCalled();
+
+      const overCluster: MCPServer = { ...kbServer, spec: { database: { cluster: 'orders-db' } } };
+      const k8s = fakeK8s();
+      const res2 = await request(await startWith(fakeMcp([overCluster]), true, k8s)).delete('/api/basis/clusters/demo/orders-db');
+      expect(res2.status).toBe(409);
+      expect(k8s.delete).not.toHaveBeenCalled();
+    });
+
+    it("won't delete a project with MCP servers", async () => {
+      const res = await request(await startWith(fakeMcp([kbServer]))).delete('/api/basis/projects/demo');
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toContain('MCP servers: kb');
     });
   });
 

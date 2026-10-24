@@ -20,6 +20,7 @@ import {
   basisKubernetesServiceRef,
 } from '../service/BasisKubernetesService';
 import { GatewayService, gatewayServiceRef } from '../service/GatewayService';
+import { McpService, mcpServiceRef } from '../service/McpService';
 import { ServerService, serverServiceRef } from '../service/ServerService';
 import { StackService, stackServiceRef } from '../service/StackService';
 import { ValkeyService, valkeyServiceRef } from '../service/ValkeyService';
@@ -30,6 +31,8 @@ import {
   CLUSTER_ANNOTATION,
   GATEWAY_ANNOTATION,
   GenAIStack,
+  MCP_ANNOTATION,
+  MCPServer,
   ModelGateway,
   ModelServer,
   serverGPUs,
@@ -42,6 +45,7 @@ import {
   summarize,
   summarizeCache,
   summarizeGateway,
+  summarizeMcpServer,
   summarizeServer,
   summarizeProject,
   ValkeyCache,
@@ -65,9 +69,12 @@ import {
  * - a GenAIStack becomes a Resource of type "genai-stack" named
  *   "<namespace>--<name>.stack", dependsOn its project, database, caches and
  *   gateway.
+ * - an MCPServer becomes a Resource of type "mcp-server" named
+ *   "<namespace>--<name>.mcp", dependsOn its project and the stack or
+ *   cluster whose database it serves.
  *
  * Project names can't contain "--" (enforced by the XRD), and cluster,
- * cache, gateway and server names no ".", so none of them collide.
+ * cache, gateway, server and MCP server names no ".", so none of them collide.
  */
 export class PostgresClusterEntityProvider implements EntityProvider {
   #connection?: EntityProviderConnection;
@@ -81,6 +88,7 @@ export class PostgresClusterEntityProvider implements EntityProvider {
     private readonly stacks?: Pick<StackService, 'list'>,
     private readonly gateways?: Pick<GatewayService, 'list'>,
     private readonly servers?: Pick<ServerService, 'list'>,
+    private readonly mcp?: Pick<McpService, 'list'>,
   ) {}
 
   getProviderName() {
@@ -97,13 +105,14 @@ export class PostgresClusterEntityProvider implements EntityProvider {
 
   async refresh() {
     if (!this.#connection) return;
-    const [clusters, projects, caches, stacks, gateways, servers] = await Promise.all([
+    const [clusters, projects, caches, stacks, gateways, servers, mcpServers] = await Promise.all([
       this.k8s.list(),
       this.k8s.listProjects(),
       this.valkey?.list() ?? Promise.resolve([]),
       this.stacks?.list() ?? Promise.resolve([]),
       this.gateways?.list() ?? Promise.resolve([]),
       this.servers?.list() ?? Promise.resolve([]),
+      this.mcp?.list() ?? Promise.resolve([]),
     ]);
     const byName = new Map(projects.map(p => [p.metadata.name, summarizeProject(p)]));
     const entities = [
@@ -113,13 +122,14 @@ export class PostgresClusterEntityProvider implements EntityProvider {
       ...stacks.map(s => this.toStackEntity(s, byName.get(s.metadata.namespace))),
       ...gateways.map(g => this.toGatewayEntity(g, byName.get(g.metadata.namespace))),
       ...servers.map(s => this.toServerEntity(s, byName.get(s.metadata.namespace))),
+      ...mcpServers.map(m => this.toMcpEntity(m, byName.get(m.metadata.namespace))),
     ];
     await this.#connection.applyMutation({
       type: 'full',
       entities: entities.map(entity => ({ entity, locationKey: this.getProviderName() })),
     });
     this.logger.debug(
-      `Synced ${projects.length} Projects, ${clusters.length} PostgresClusters, ${caches.length} ValkeyCaches, ${gateways.length} ModelGateways, ${servers.length} ModelServers and ${stacks.length} GenAIStacks into the catalog`,
+      `Synced ${projects.length} Projects, ${clusters.length} PostgresClusters, ${caches.length} ValkeyCaches, ${gateways.length} ModelGateways, ${servers.length} ModelServers, ${mcpServers.length} MCPServers and ${stacks.length} GenAIStacks into the catalog`,
     );
   }
 
@@ -335,6 +345,53 @@ export class PostgresClusterEntityProvider implements EntityProvider {
     };
   }
 
+  /** `project`: the Project whose namespace the MCP server is in, if any. */
+  toMcpEntity(server: MCPServer, project?: ProjectSummary): Entity {
+    const { name, namespace, labels = {} } = server.metadata;
+    const s = summarizeMcpServer(server);
+    const location = `basis:mcp/${namespace}/${name}`;
+    const links = [
+      {
+        url: `${this.options.appBaseUrl.replace(/\/$/, '')}/basis/mcp-servers/${namespace}/${name}`,
+        title: 'BASIS portal',
+      },
+    ];
+    const grafanaUrl = project?.grafanaUrl ?? this.options.grafanaUrl?.replace(/\{namespace\}/g, namespace);
+    if (s.dashboardUid && grafanaUrl) {
+      links.push({ url: `${grafanaUrl.replace(/\/$/, '')}/d/${s.dashboardUid}`, title: 'Grafana dashboard' });
+    }
+    const database =
+      s.databaseKind === 'GenAIStack' ? `${namespace}--${s.database}.stack` : `${namespace}--${s.database}`;
+    const dependsOn = [
+      ...(project ? [`resource:default/${project.name}`] : []),
+      ...(s.database ? [`resource:default/${database.slice(0, 63)}`] : []),
+    ];
+    return {
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Resource',
+      metadata: {
+        name: `${namespace}--${name}.mcp`.slice(0, 63),
+        title: `${name} (${namespace})`,
+        description: `MCP server over ${s.databaseKind} ${s.database}: ${s.tools.join(', ')}; ${s.mode} search, ${s.clients.length} client(s)`,
+        annotations: {
+          [ANNOTATION_LOCATION]: location,
+          [ANNOTATION_ORIGIN_LOCATION]: location,
+          [MCP_ANNOTATION]: `${namespace}/${name}`,
+          'backstage.io/kubernetes-namespace': namespace,
+          'backstage.io/kubernetes-label-selector': `app.kubernetes.io/name=basis-mcp,ai.cndev.nl/mcpserver=${name}`,
+        },
+        tags: ['genai', 'mcp', 'agents', ...(s.retrieval ? ['rag'] : []), ...(s.memory ? ['memory'] : [])],
+        links,
+      },
+      spec: {
+        type: 'mcp-server',
+        owner: labels['backstage.io/owner'] ?? this.options.defaultOwner,
+        ...(labels['backstage.io/system'] ? { system: labels['backstage.io/system'] } : {}),
+        dependsOn,
+      },
+    };
+  }
+
   /** `project`: the Project whose namespace the cache is in, if any. */
   toCacheEntity(cache: ValkeyCache, project?: ProjectSummary): Entity {
     const { name, namespace, labels = {} } = cache.metadata;
@@ -409,8 +466,9 @@ export const catalogModuleBasis = createBackendModule({
         stacks: stackServiceRef,
         gateways: gatewayServiceRef,
         servers: serverServiceRef,
+        mcp: mcpServiceRef,
       },
-      async init({ catalog, config, logger, scheduler, k8s, valkey, stacks, gateways, servers }) {
+      async init({ catalog, config, logger, scheduler, k8s, valkey, stacks, gateways, servers, mcp }) {
         const seconds = config.getOptionalNumber('basis.catalog.refreshSeconds') ?? 30;
         catalog.addEntityProvider(
           new PostgresClusterEntityProvider(
@@ -425,6 +483,7 @@ export const catalogModuleBasis = createBackendModule({
             stacks,
             gateways,
             servers,
+            mcp,
           ),
         );
       },

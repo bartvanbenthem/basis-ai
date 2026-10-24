@@ -1,0 +1,21 @@
+# The Project (both sites), and a geo-replicated GenAIStack whose database's
+# primary moved to the recovery site.
+apiVersion: platform.cndev.nl/v1alpha1
+kind: Project
+metadata:
+  name: ai-team
+spec:
+  locations:
+    protected: si-ske-demo
+    recovery: onprem-ams
+---
+apiVersion: ai.cndev.nl/v1alpha1
+kind: GenAIStack
+metadata:
+  name: support
+  namespace: ai-team
+spec:
+  recovery:
+    enabled: true
+status:
+  activeSite: recovery

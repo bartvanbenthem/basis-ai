@@ -1,0 +1,376 @@
+# MCPServer: a namespaced Crossplane v2 composite resource for an MCP server
+# in a Project: retrieval over a database (search, fetch, and with
+# retrieval.ingest add_document and delete_document) and the agents' memory
+# (remember, recall, forget) as MCP tools, for agents such as Claude Code,
+# Codex or an app's own, each with an API key of its own.
+#
+# basis-mcp (../../../mcp) runs it in the Project's protected location, plus
+# a standby in its recovery location with spec.recovery.enabled. Agents in a
+# location reach it at http://<name>.<namespace>.svc/mcp (streamable HTTP)
+# with Authorization: Bearer <key>. The documents and memories live in the
+# database: a GenAIStack's (spec.database.stack, its role and its gateway
+# for the embeddings) or a PostgresCluster's (spec.database.cluster). Search
+# is hybrid: pgvector over embeddings from the Project's model gateway, and
+# PostgreSQL's full-text search. Memories are each client's own unless
+# spec.memory.scope is shared.
+#
+# Composed by function-basis (../../function/mcpserver).
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: mcpservers.ai.cndev.nl
+spec:
+  group: ai.cndev.nl
+  scope: Namespaced
+  names:
+    kind: MCPServer
+    plural: mcpservers
+    shortNames: [mcps]
+    categories: [crossplane, basis, ai]
+  defaultCompositionRef:
+    name: mcpserver
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      additionalPrinterColumns:
+        - name: Database
+          type: string
+          jsonPath: .status.database
+        - name: Tools
+          type: integer
+          jsonPath: .status.toolCount
+        - name: Clients
+          type: integer
+          jsonPath: .status.clients
+        - name: Active-Site
+          type: string
+          jsonPath: .status.activeSite
+        - name: Endpoint
+          type: string
+          jsonPath: .status.endpoint
+          priority: 1
+        - name: Embeddings
+          type: string
+          jsonPath: .spec.embeddings.model
+          priority: 1
+        # Crossplane appends SYNCED, READY, COMPOSITION and AGE itself.
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: An MCP server with retrieval and agent memory over a Project's database (basis-mcp), in its site(s).
+          x-kubernetes-validations:
+            # The Deployment and Service are <name>, the keys Secret <name>-keys.
+            - rule: "self.metadata.name.matches('^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$')"
+              message: MCPServer names are lowercase letters, digits and "-", start with a letter, max 40 characters
+          properties:
+            spec:
+              type: object
+              required: [database]
+              x-kubernetes-validations:
+                - rule: "!has(self.retrieval) || !has(self.retrieval.mode) || self.retrieval.mode == 'text' || (has(self.embeddings) && has(self.embeddings.model))"
+                  message: retrieval.mode hybrid and vector need embeddings.model; without one, retrieval is full-text (mode text)
+                - rule: "!has(self.database.cluster) || !has(self.embeddings) || !has(self.embeddings.model) || has(self.embeddings.gateway)"
+                  message: with database.cluster, embeddings.model needs embeddings.gateway (a ModelGateway in this namespace that serves it)
+                - rule: "!has(self.database.stack) || !has(self.embeddings) || (!has(self.embeddings.gateway) && !has(self.embeddings.client))"
+                  message: a stack's server uses the stack's gateway for embeddings; embeddings.gateway and client are for database.cluster
+                - rule: "!has(self.recovery) || !has(self.recovery.enabled) || !self.recovery.enabled || !has(self.database.cluster) || has(self.database.credentialsSecretRef)"
+                  message: recovery with database.cluster needs database.credentialsSecretRef (a role of the cluster's spec.roles), the same in both sites
+              properties:
+                database:
+                  type: object
+                  description: >-
+                    Where the documents and memories live: a GenAIStack's database (its own role and
+                    connection Secret, its gateway for the embeddings) or a PostgresCluster in this
+                    namespace. The server follows its primary: the active site is where it runs.
+                  x-kubernetes-validations:
+                    - rule: "has(self.stack) != has(self.cluster)"
+                      message: database names a stack or a cluster, one of them
+                    - rule: "!has(self.stack) || (!has(self.credentialsSecretRef) && !has(self.name))"
+                      message: a stack brings its database and role; credentialsSecretRef and name are for a cluster
+                  properties:
+                    stack:
+                      type: string
+                      description: A GenAIStack in this namespace.
+                      pattern: '^[a-z]([-a-z0-9]{0,26}[a-z0-9])?$'
+                    cluster:
+                      type: string
+                      description: A PostgresCluster in this namespace, with the vector extension for embeddings.
+                      pattern: '^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$'
+                    name:
+                      type: string
+                      # No schema default: it would make every stack's server fail the rule above.
+                      description: The cluster's database; app (the bootstrap database) when unset.
+                      pattern: '^[a-z_][a-z0-9_]{0,62}$'
+                    credentialsSecretRef:
+                      type: object
+                      description: >-
+                        A kubernetes.io/basic-auth Secret in this namespace (username, password) of a role
+                        in the cluster's spec.roles, copied to the location(s). Unset, the database owner
+                        through CloudNativePG's <cluster>-app Secret in the protected location.
+                      required: [name]
+                      properties:
+                        name:
+                          type: string
+                embeddings:
+                  type: object
+                  description: >-
+                    Vectors for semantic search and recall, from an OpenAI-compatible /embeddings endpoint:
+                    the stack's gateway, or with database.cluster embeddings.gateway. Unset, search and
+                    recall are full-text only. Stored without an embedding when the model is down, a
+                    document or memory is embedded later.
+                  properties:
+                    model:
+                      type: string
+                      description: >-
+                        The embeddings model, as the gateway names it, e.g. text-embedding-3-small or a
+                        ModelServer's (e.g. BAAI/bge-m3). Changing it to one with other dimensions needs
+                        new tables (retrieval.table, a new server).
+                      minLength: 1
+                      maxLength: 200
+                    dimensions:
+                      type: integer
+                      description: Ask the model for this many dimensions (models that can shorten their vectors).
+                      minimum: 1
+                      maximum: 16000
+                    gateway:
+                      type: string
+                      description: With database.cluster, a ModelGateway in this namespace serving the model.
+                      pattern: '^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$'
+                    client:
+                      type: string
+                      description: The server's client at that gateway (its spec.clients); the MCPServer's name by default.
+                      pattern: '^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$'
+                retrieval:
+                  type: object
+                  description: >-
+                    The knowledge base tools: search (hybrid by default: vector distance and full-text
+                    rank, fused by reciprocal rank) and fetch.
+                  default: {}
+                  x-kubernetes-validations:
+                    - rule: "!has(self.ingest) || !self.ingest || !has(self.table)"
+                      message: ingest writes the server's own table; a retrieval.table of yours is only read
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: true
+                    table:
+                      type: string
+                      description: >-
+                        A documents table of your own (schema.table), only read, through columns. Unset,
+                        the server's own mcp.documents (id, title, source, content, metadata jsonb,
+                        embedding), which it creates and indexes.
+                      pattern: '^[a-z_][a-z0-9_]{0,62}\.[a-z_][a-z0-9_]{0,62}$'
+                    columns:
+                      type: object
+                      description: >-
+                        With table: its columns. id and content are required, the others optional:
+                        metadata (jsonb, for search filters) and embedding (a vector(n) of the same model).
+                      properties:
+                        id:
+                          type: string
+                          default: id
+                          pattern: '^[a-z_][a-z0-9_]{0,62}$'
+                        content:
+                          type: string
+                          default: content
+                          pattern: '^[a-z_][a-z0-9_]{0,62}$'
+                        title:
+                          type: string
+                          pattern: '^[a-z_][a-z0-9_]{0,62}$'
+                        source:
+                          type: string
+                          pattern: '^[a-z_][a-z0-9_]{0,62}$'
+                        metadata:
+                          type: string
+                          pattern: '^[a-z_][a-z0-9_]{0,62}$'
+                        embedding:
+                          type: string
+                          pattern: '^[a-z_][a-z0-9_]{0,62}$'
+                    mode:
+                      type: string
+                      description: hybrid (default with embeddings.model), vector, or text (default without).
+                      enum: [hybrid, vector, text]
+                    topK:
+                      type: integer
+                      description: Hits per search unless the agent asks for another number.
+                      minimum: 1
+                      maximum: 50
+                      default: 8
+                    textSearchConfig:
+                      type: string
+                      description: PostgreSQL's text search configuration for the full-text side, e.g. simple, english or dutch.
+                      default: simple
+                      pattern: '^[a-z_][a-z0-9_]{0,62}$'
+                    ingest:
+                      type: boolean
+                      description: Also add_document and delete_document, so agents can fill the knowledge base.
+                      default: false
+                memory:
+                  type: object
+                  description: >-
+                    The agents' memory tools: remember, recall and forget, in the server's own
+                    mcp.memories table.
+                  default: {}
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: true
+                    scope:
+                      type: string
+                      description: client (default), each client recalls only its own memories; shared, every client all of them.
+                      enum: [client, shared]
+                      default: client
+                    retentionDays:
+                      type: integer
+                      description: Memories older than this are deleted; unset, kept.
+                      minimum: 1
+                      maximum: 3650
+                clients:
+                  type: array
+                  description: >-
+                    Who may call the server: each client gets an API key of its own, generated once
+                    into Secret <name>-keys (the client's name is the key). Removing a client revokes
+                    its key, and so does passing its expiresAt.
+                  maxItems: 100
+                  default: [{name: agents}]
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [name]
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name:
+                        type: string
+                        description: The client, e.g. an agent, an app or a team. Its memories are its own.
+                        pattern: '^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$'
+                      owner:
+                        type: string
+                        description: Who to ask about this key, a person or a group.
+                        maxLength: 100
+                      tools:
+                        type: array
+                        description: The tools this client may call; unset, all the server serves. The others don't exist for it.
+                        maxItems: 7
+                        items:
+                          type: string
+                          enum: [search, fetch, add_document, delete_document, remember, recall, forget]
+                      expiresAt:
+                        type: string
+                        format: date
+                        description: >-
+                          The key's last day (YYYY-MM-DD). After it the key is revoked; a later date makes
+                          a new key.
+                replicas:
+                  type: integer
+                  description: Server replicas in the active site.
+                  minimum: 1
+                  maximum: 10
+                  default: 2
+                resources:
+                  type: object
+                  description: Per replica. memory is request and limit.
+                  default: {}
+                  properties:
+                    cpu:
+                      type: string
+                      pattern: '^[0-9]+(\.[0-9]+)?m?$'
+                      default: 250m
+                    memory:
+                      type: string
+                      description: Mi or Gi.
+                      pattern: '^[0-9]+(Mi|Gi)$'
+                      default: 256Mi
+                recovery:
+                  type: object
+                  description: >-
+                    A standby in the Project's recovery location (the Project needs one, and the database
+                    geo replication): it serves search, fetch and recall from the replica, and every tool
+                    once the database's primary moves there.
+                  default: {}
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    replicas:
+                      type: integer
+                      description: Replicas in the standby site; it gets spec.replicas once active.
+                      minimum: 0
+                      maximum: 10
+                      default: 1
+                image:
+                  type: string
+                  description: Another basis-mcp image, e.g. from a registry of your own; the platform's by default.
+                  maxLength: 500
+                alerts:
+                  type: object
+                  description: >-
+                    Thresholds of the server's alerts in the Project's Prometheus (per site): the share of
+                    failed tool calls and the 95th percentile of their duration. A server without a ready
+                    replica or database always alerts.
+                  default: {}
+                  properties:
+                    errorRatePercent:
+                      type: number
+                      minimum: 0
+                      maximum: 100
+                      default: 5
+                    latencySeconds:
+                      type: number
+                      minimum: 0
+                      default: 2
+                    disabled:
+                      type: boolean
+                      description: No alerts for this server.
+                      default: false
+            status:
+              type: object
+              properties:
+                ready:
+                  type: boolean
+                message:
+                  type: string
+                activeSite:
+                  type: string
+                  description: Where the database's primary runs, and the server with spec.replicas.
+                endpoint:
+                  type: string
+                  description: The MCP endpoint (streamable HTTP) for agents in each site's location.
+                keysSecret:
+                  type: string
+                  description: Secret in this namespace with an API key per client.
+                clients:
+                  type: integer
+                tools:
+                  type: array
+                  description: The tools the server serves.
+                  items:
+                    type: string
+                toolCount:
+                  type: integer
+                database:
+                  type: string
+                  description: The database, as GenAIStack/<name> or PostgresCluster/<name>.
+                dashboardUid:
+                  type: string
+                  description: The server's dashboard in the Project's Grafana, at <grafana>/d/<uid>.
+                expiredClients:
+                  type: array
+                  description: Clients past their expiresAt; their keys are revoked.
+                  items:
+                    type: string
+                sites:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      site:
+                        type: string
+                      location:
+                        type: string
+                      active:
+                        type: boolean
+                      replicas:
+                        type: integer
+                      ready:
+                        type: boolean

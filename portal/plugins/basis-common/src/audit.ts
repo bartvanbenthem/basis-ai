@@ -9,8 +9,12 @@
  *   pgaudit.log parameter) from the stdout of each PostgreSQL instance.
  *   CloudNativePG loads pgaudit as soon as a pgaudit.* parameter is set and
  *   logs its records as JSON lines with logger "pgaudit".
+ * - gateway: the calls through the project's ModelGateways (their Envoy
+ *   access logs: client, model, tokens, outcome).
+ * - mcp: the tool calls on the project's MCPServers (basis-mcp's stdout:
+ *   client, tool, outcome; never the query or the content).
  */
-export type AuditSource = 'kubernetes' | 'postgresql' | 'gateway';
+export type AuditSource = 'kubernetes' | 'postgresql' | 'gateway' | 'mcp';
 
 /** Where control-plane events come from, in the location column. */
 export const CONTROL_PLANE = 'control-plane';
@@ -43,6 +47,8 @@ export interface AuditEntry {
   gateway?: string;
   /** gateway: the request's tokens, input and output. */
   tokens?: { input?: number; output?: number };
+  /** mcp: the MCPServer that served it. */
+  mcpServer?: string;
 }
 
 /** A PostgresCluster in the project and whether pgaudit records anything for it. */
@@ -160,5 +166,41 @@ export function parseGatewayLine(line: string): AuditEntry | undefined {
     type: status === undefined ? 'unknown' : `${Math.floor(status / 100)}xx`,
     client: s(r.source),
     ...(input !== undefined || output !== undefined ? { tokens: { input, output } } : {}),
+  };
+}
+
+/**
+ * One line of an MCPServer's audit log (basis-mcp's stdout, field "basis":
+ * "mcp"): which client called which tool and how it went, with the id of the
+ * document or memory it touched. Never the query or the content. Undefined
+ * for any other line.
+ */
+export function parseMcpLine(line: string): AuditEntry | undefined {
+  if (!line.includes('"basis":"mcp"')) return undefined;
+  let r: Record<string, unknown>;
+  try {
+    r = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  if (r.basis !== 'mcp') return undefined;
+  const outcome = text(r.outcome) ?? 'unknown';
+  const results = num(r.results);
+  const parts = [
+    outcome,
+    ...(results !== undefined ? [`${results} result(s)`] : []),
+    `${num(r.duration_ms) ?? '-'} ms`,
+    ...(text(r.error) ? [text(r.error) as string] : []),
+  ];
+  return {
+    source: 'mcp',
+    time: text(r.time),
+    location: '',
+    actor: text(r.client) ?? 'unknown',
+    action: text(r.tool) ?? 'tool',
+    object: text(r.id),
+    message: parts.join(', '),
+    type: outcome,
+    mcpServer: text(r.server),
   };
 }

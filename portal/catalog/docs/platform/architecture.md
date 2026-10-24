@@ -39,7 +39,7 @@ run) and optionally a **recovery** location (replica clusters).
   state. `status.message` says what is missing.
 - **One function composes every API.** function-basis (Go) dispatches on the XR's kind: Project
   (namespaces, RBAC, Prometheus, Grafana, bucket), Location (provider config, checks),
-  PostgresCluster, ValkeyCache, ModelServer, ModelGateway and GenAIStack. Each is a package with unit tests, and
+  PostgresCluster, ValkeyCache, ModelServer, ModelGateway, MCPServer and GenAIStack. Each is a package with unit tests, and
   every case is rendered and validated against the real CRD schemas in CI (`make -C api test`).
 - **A stack owns what it composes.** A GenAIStack composes the building blocks (PostgresCluster,
   ValkeyCache, ModelGateway) as XRs next to it, labelled `ai.cndev.nl/genaistack`; an admission
@@ -76,7 +76,8 @@ run) and optionally a **recovery** location (replica clusters).
 Every API works this way: `ValkeyCache` composes a ValkeyCluster, a PodMonitor and a
 PrometheusRule in the location and a dashboard in the Project's Grafana; `ModelGateway` Agent Router
 in each site; `ModelServer` a KServe LLMInferenceService (vLLM, llm-d's scheduler) on the location's
-GPUs. The planned layers (guardrails, MCP servers per Project; see
+GPUs; `MCPServer` basis-mcp (a Deployment, its config and keys) next to the database it serves.
+The planned layers (guardrails, agent traces; see
 [Platform scope](../scope.md)) follow the same pattern: a namespaced API object per service in the
 Project's namespace on the control plane, composed by Crossplane into the Project's locations, with
 its metrics in the Project's Prometheus and Grafana. The control plane stays free of workloads; GPUs

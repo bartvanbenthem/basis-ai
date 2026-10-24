@@ -3,7 +3,7 @@
 # ../function), provider-kubernetes
 # (which places everything in the locations), the RBAC Crossplane needs, and
 # the Location, Project, PostgresCluster, ValkeyCache, ModelServer,
-# ModelGateway and GenAIStack APIs (XRDs + Compositions +
+# ModelGateway, GenAIStack and MCPServer APIs (XRDs + Compositions +
 # admission policies) into the control plane cluster your current kubeconfig
 # context points at. Idempotent -- safe to re-run. Register the locations the
 # databases run in afterwards with add-location.sh.
@@ -120,6 +120,12 @@ kubectl apply -f "${API_DIR}/genaistack/composition.yaml"
 sed "s/system:serviceaccount:crossplane-system:crossplane'/system:serviceaccount:${CROSSPLANE_NAMESPACE}:crossplane'/" \
   "${API_DIR}/genaistack/policies.yaml" | kubectl apply -f -
 
+echo "==> MCPServer XRD + Composition + admission policy"
+kubectl apply -f "${API_DIR}/mcpserver/definition.yaml"
+kubectl wait xrd/mcpservers.ai.cndev.nl --for=condition=Established --timeout=120s
+kubectl apply -f "${API_DIR}/mcpserver/composition.yaml"
+kubectl apply -f "${API_DIR}/mcpserver/policies.yaml"
+
 EXAMPLES="$(cd "${SCRIPT_DIR}/.." && pwd)/examples"
 echo "==> Done. Try:"
 echo "      $(dirname "$0")/add-location.sh <name> <kubeconfig>   # each cluster databases run in"
@@ -130,3 +136,4 @@ echo "      kubectl apply -f ${EXAMPLES}/valkeycache.yaml     # needs the Valkey
 echo "      kubectl apply -f ${EXAMPLES}/modelserver.yaml     # needs KServe (and GPUs) in the location"
 echo "      kubectl apply -f ${EXAMPLES}/modelgateway.yaml    # needs Envoy Gateway + Agent Router in the location"
 echo "      kubectl apply -f ${EXAMPLES}/genaistack.yaml      # the same, plus the Valkey operator"
+echo "      kubectl apply -f ${EXAMPLES}/mcpserver.yaml       # retrieval and memory over that stack, for agents"

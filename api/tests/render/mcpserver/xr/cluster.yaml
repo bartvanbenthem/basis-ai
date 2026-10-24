@@ -1,0 +1,37 @@
+# Over a documents table of your own in a PostgresCluster (only read), as a
+# role of its own, with embeddings through a shared gateway; clients with
+# tools of their own, one expired; memory shared, kept 90 days; one replica.
+apiVersion: ai.cndev.nl/v1alpha1
+kind: MCPServer
+metadata:
+  name: wiki
+  namespace: ai-team
+spec:
+  database:
+    cluster: docs
+    name: wiki
+    credentialsSecretRef:
+      name: wiki-reader
+  embeddings:
+    model: BAAI/bge-m3
+    gateway: shared
+  retrieval:
+    table: public.chunks
+    columns:
+      content: body
+      title: heading
+      source: url
+      metadata: attrs
+      embedding: vec
+    textSearchConfig: english
+  memory:
+    scope: shared
+    retentionDays: 90
+  clients:
+    - name: claude-code
+      owner: platform-team
+    - name: support-bot
+      tools: [search, fetch, recall]
+    - name: intern
+      expiresAt: "2026-01-31"
+  replicas: 1

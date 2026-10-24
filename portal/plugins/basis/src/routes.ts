@@ -218,3 +218,27 @@ export const editServerRouteRef = createSubRouteRef({
   parent: rootRouteRef,
   path: '/servers/:namespace/:name/edit',
 });
+
+/** /basis/mcp-servers -- the MCP servers (retrieval and agent memory). */
+export const mcpServersRouteRef = createSubRouteRef({
+  parent: rootRouteRef,
+  path: '/mcp-servers',
+});
+
+/** /basis/mcp-servers/create -- the create-MCP-server form. */
+export const createMcpServerRouteRef = createSubRouteRef({
+  parent: rootRouteRef,
+  path: '/mcp-servers/create',
+});
+
+/** /basis/mcp-servers/:namespace/:name -- one MCP server. */
+export const mcpServerRouteRef = createSubRouteRef({
+  parent: rootRouteRef,
+  path: '/mcp-servers/:namespace/:name',
+});
+
+/** /basis/mcp-servers/:namespace/:name/edit -- change an MCP server's tools, clients, search and memory. */
+export const editMcpServerRouteRef = createSubRouteRef({
+  parent: rootRouteRef,
+  path: '/mcp-servers/:namespace/:name/edit',
+});

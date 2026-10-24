@@ -1,7 +1,9 @@
 # Agents and MCP
 
 Agents such as Claude Code and Codex can use the platform the way a person does: through its API,
-within the same permissions. Two ways in:
+within the same permissions. And they can use what the platform runs for them: a Project's
+knowledge base and a memory of their own, through an [MCP server](mcp-servers.md). Two ways in to
+the platform itself:
 
 - **MCP tools.** The portal serves the platform as MCP tools (Backstage's MCP actions).
 - **The Kubernetes API.** Every BASIS object is a Kubernetes resource with a schema, admission
@@ -17,8 +19,11 @@ deletion protection.
 | `basis:list-projects` | Projects and their locations |
 | `basis:list-genai-stacks` | Stacks: health, active site, gateway, connection Secret |
 | `basis:list-model-gateways` | Gateways: endpoint, models, clients |
+| `basis:list-model-servers` | Self-hosted models: the served name, replicas, GPUs |
+| `basis:list-mcp-servers` | MCP servers: endpoint, database, tools, each client's tools |
 | `basis:create-genai-stack` | Validates (default) or creates a stack |
 | `basis:create-model-gateway` | Validates (default) or creates a gateway |
+| `basis:create-mcp-server` | Validates (default) or creates an MCP server over a stack's or cluster's database |
 
 These are the action ids; MCP clients list them as tools. Next to them, the catalog's and the
 software templates' tools.
@@ -27,7 +32,7 @@ software templates' tools.
   you the plan first.
 - Every tool runs as you, with your `basis.*` permissions.
 - No tool hands out credentials. An app mounts its stack's connection Secret; a person reads gateway
-  keys in the portal.
+  and MCP server keys in the portal.
 
 Connect a client to the portal's MCP endpoint, e.g. Claude Code:
 
@@ -37,6 +42,14 @@ claude mcp add --transport http basis https://<portal>/api/mcp-actions/v1
 
 The client signs in to the portal; see Backstage's
 [MCP actions](https://backstage.io/docs/ai/mcp-actions) for tokens and client registration.
+
+## A knowledge base and memory for agents
+
+The portal's tools are for building on the platform. An agent's work also needs context: the Project's
+documents, and what it learned last time. An [MCP server](mcp-servers.md) serves both from the
+Project's own database, with a key per agent: `search` and `fetch` (plus `add_document` with
+ingest), `remember`, `recall` and `forget`. An agent can order one itself with
+`basis:create-mcp-server`; a person then hands it its key.
 
 ## The Kubernetes API
 

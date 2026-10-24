@@ -20,6 +20,7 @@ The platform currently provides these building blocks, separately or wired toget
 | Layer | Component |
 |---|---|
 | Model gateway | `ModelGateway`: [Agent Router](https://github.com/theagentrouter/agent-router) (formerly Envoy AI Gateway) on [Envoy Gateway](https://gateway.envoyproxy.io) (CNCF), an internal, OpenAI-compatible endpoint that routes to hosted and self-hosted models, with provider keys kept in the platform and an API key per client, retries and fallbacks between models, rate limits, and a latency dashboard with alerts; a stack's own or shared by stacks and agents |
+| Agent context and memory | `MCPServer`: an MCP server per Project ([basis-mcp](mcp/)) with retrieval over a stack's database (hybrid pgvector and full-text search) and the agents' memory as tools, a key per agent, tools per agent, an audit line per call; the data and the embeddings stay in the Project |
 | Self-hosted models | `ModelServer`: [vLLM](https://docs.vllm.ai/) on [KServe](https://kserve.github.io/website/) in the Project's site(s), GPUs per replica, with [llm-d](https://llm-d.ai/)'s prefix-cache-aware routing behind a gateway, and metrics, alerts and a dashboard |
 | Context / RAG | PostgreSQL on [CloudNativePG](https://cloudnative-pg.io/) (CNPG) with [pgvector](https://github.com/pgvector/pgvector), VectorChord and pg_search |
 | Cache | Exact and semantic caches on [Valkey](https://valkey.io/), run by the [valkey-io operator](https://github.com/valkey-io/valkey-operator), with valkey-search for vector (KNN) lookups |
@@ -40,9 +41,15 @@ What a team gets:
   image) on the Project's GPUs with vLLM; a gateway's model names it, and llm-d's scheduler sends
   each request to the replica that has its prompt's prefix cached (see
   [ModelServer](api/README.md#the-modelserver-api)).
-- **For agents:** the portal serves the platform as MCP tools (list projects, stacks and gateways;
-  create stacks and gateways, validated first), within the caller's permissions, and the docs
-  publish an `llms.txt`.
+- **For agents:** the portal serves the platform as MCP tools (list projects, stacks, gateways and
+  MCP servers; create stacks, gateways and MCP servers, validated first), within the caller's
+  permissions, and the docs publish an `llms.txt`.
+- **MCP servers for retrieval and memory:** an `MCPServer` gives a Project's agents its knowledge
+  base (`search`, `fetch`, optionally `add_document`) and a memory of their own (`remember`,
+  `recall`, `forget`) as MCP tools, over a GenAIStack's or PostgresCluster's database, with
+  embeddings from the Project's gateway. Each agent gets a key and, if you like, only some tools;
+  each call is in the Project's audit log (who, which tool, outcome; never the query). See
+  [MCPServer](api/README.md#the-mcpserver-api).
 - **Self-service:** one `PostgresCluster` API object, or a form in the Backstage portal, gives a
   team a highly available cluster, internal to its location by default (external access through a
   LoadBalancer is an opt-in, limited to the clients' CIDRs), with connection pooling (PgBouncer), in a size (SKU) from the
@@ -113,8 +120,9 @@ See [Locations](api/README.md#locations) for how to configure this.
 | Folder | What | Built with |
 |---|---|---|
 | [`deps/`](deps/) | Every operator the platform builds on: cert-manager, Prometheus Operator, grafana-operator, ingress, CloudNativePG with the Barman Cloud plugin and image catalog ([`deps/cnpg/`](deps/cnpg/), charts **vendored in this repo**), the Valkey operator, Envoy Gateway + Agent Router, KServe; the `demo` Project | Helm, kubectl |
-| [`api/`](api/) | Three levels of APIs. **Product:** `GenAIStack` (`ai.cndev.nl/v1alpha1`): database, caches, gateway and wiring per site. **Building blocks:** `ModelGateway` (`ai.cndev.nl/v1alpha1`): an OpenAI-compatible gateway with a key per client; `ModelServer` (`ai.cndev.nl/v1alpha1`): a self-hosted model, vLLM on KServe with llm-d's routing; `PostgresCluster` (`postgres.cndev.nl/v1alpha1`): everything a production CNPG cluster needs, including metrics, alerts and the CNPG Grafana dashboard; `ValkeyCache` (`cache.cndev.nl/v1alpha1`): an exact or semantic Valkey cache. **Platform:** `Project` (`platform.cndev.nl/v1alpha1`): a namespace with its own Prometheus and Grafana, RoleBindings, an optional quota and deletion protection; `Location`: a cluster workloads run in. Everything in the locations is placed through provider-kubernetes; every composition is Go, in one composition function, function-basis ([`api/function/`](api/function/)) | Crossplane v2, Go |
-| [`portal/`](portal/) | Portal to create projects, GenAI stacks, model gateways, model servers, clusters and caches and to inspect them; catalog integration, Software Templates and MCP tools for agents | Backstage (new frontend + backend system) |
+| [`api/`](api/) | Three levels of APIs. **Product:** `GenAIStack` (`ai.cndev.nl/v1alpha1`): database, caches, gateway and wiring per site. **Building blocks:** `ModelGateway` (`ai.cndev.nl/v1alpha1`): an OpenAI-compatible gateway with a key per client; `ModelServer` (`ai.cndev.nl/v1alpha1`): a self-hosted model, vLLM on KServe with llm-d's routing; `MCPServer` (`ai.cndev.nl/v1alpha1`): retrieval and agent memory as MCP tools over a stack's or cluster's database; `PostgresCluster` (`postgres.cndev.nl/v1alpha1`): everything a production CNPG cluster needs, including metrics, alerts and the CNPG Grafana dashboard; `ValkeyCache` (`cache.cndev.nl/v1alpha1`): an exact or semantic Valkey cache. **Platform:** `Project` (`platform.cndev.nl/v1alpha1`): a namespace with its own Prometheus and Grafana, RoleBindings, an optional quota and deletion protection; `Location`: a cluster workloads run in. Everything in the locations is placed through provider-kubernetes; every composition is Go, in one composition function, function-basis ([`api/function/`](api/function/)) | Crossplane v2, Go |
+| [`mcp/`](mcp/) | basis-mcp, the MCP server every `MCPServer` runs: streamable HTTP, a key per client, hybrid search (pgvector + full text) and memory in PostgreSQL, Prometheus metrics, an audit line per call | Go, MCP Go SDK, pgx |
+| [`portal/`](portal/) | Portal to create projects, GenAI stacks, model gateways, model servers, MCP servers, clusters and caches and to inspect them; catalog integration, Software Templates and MCP tools for agents | Backstage (new frontend + backend system) |
 
 ## Install
 
@@ -156,6 +164,16 @@ api/install/install.sh                                # rolls it out, then the A
 See [function-basis](api/README.md#function-basis) for the details (logging in to ghcr.io, the
 package must be public or Crossplane needs a pull secret, rolling back).
 
+`MCPServer`s run basis-mcp's image, `ghcr.io/bartvanbenthem/basis-mcp` at the tag in
+`api/function/mcpserver`'s `DefaultImage`. When [`mcp/`](mcp/) changes, publish it the same way
+before the function version that names it:
+
+```sh
+make -C mcp test-db                         # unit tests, the store against PostgreSQL with pgvector
+make -C mcp push VERSION=<version>          # docker build + push to ghcr.io (public, or a pull secret per location)
+# set <version> in api/function/mcpserver/compose.go (DefaultImage) and mcp/Makefile, then publish function-basis
+```
+
 See [Locations](api/README.md#locations) for the protected and recovery sites and
 geo replication. The portal also runs on the control plane: see
 [`portal/README.md`](portal/README.md).
@@ -165,7 +183,8 @@ geo replication. The portal also runs on the control plane: see
 | Command | Needs | Covers |
 |---|---|---|
 | `deps/cnpg/verify.sh` | helm | vendored charts lint and render with the production values |
-| `make -C api test` | Go, crossplane CLI, Docker/podman | function-basis's unit tests (the switchover state machine, the guards that refuse to tear down a running database, parameter precedence); every composition renders (PostgresCluster: 23 cases incl. sizes and extensions from their catalogs, geo-replicated, switchover, failover, draining, pinned sites, no Project, the Project's COSI backup bucket, restores from the bucket and from a store of its own; Project: 9 incl. both sites, a COSI bucket with its inventory of backup folders, one with a name too long for S3, a second grant waiting for the first, an unregistered location, and governance with the price catalog (labels, cost rules, budget alerts); Location: 3 incl. the optional Valkey operator, Agent Router and KServe; ValkeyCache: 4 incl. semantic, recovery site and no Project; ModelServer: 3 incl. both sites with a stopped standby and a Hugging Face token, and CPU only; ModelGateway: 4 incl. a standby that serves, an exposed one, monthly token caps and self-hosted models; GenAIStack: 2 incl. geo after a switchover; empty and observed); output, and the manifests inside provider-kubernetes Objects, validated against the real CRD schemas; status/readiness/dashboard/alert/project-wiring/topology assertions |
+| `make -C api test` | Go, crossplane CLI, Docker/podman | function-basis's unit tests (the switchover state machine, the guards that refuse to tear down a running database, parameter precedence); every composition renders (PostgresCluster: 23 cases incl. sizes and extensions from their catalogs, geo-replicated, switchover, failover, draining, pinned sites, no Project, the Project's COSI backup bucket, restores from the bucket and from a store of its own; Project: 9 incl. both sites, a COSI bucket with its inventory of backup folders, one with a name too long for S3, a second grant waiting for the first, an unregistered location, and governance with the price catalog (labels, cost rules, budget alerts); Location: 3 incl. the optional Valkey operator, Agent Router and KServe; ValkeyCache: 4 incl. semantic, recovery site and no Project; ModelServer: 3 incl. both sites with a stopped standby and a Hugging Face token, and CPU only; ModelGateway: 4 incl. a standby that serves, an exposed one, monthly token caps and self-hosted models; MCPServer: 3 incl. a cluster's table of your own with a role and gateway embeddings, and both sites after a switchover; GenAIStack: 2 incl. geo after a switchover; empty and observed); output, and the manifests inside provider-kubernetes Objects, validated against the real CRD schemas; status/readiness/dashboard/alert/project-wiring/topology assertions |
+| `make -C mcp test-db` | Go, podman | basis-mcp: config and SQL-name validation, keys (reload, revocation), the embeddings client, every tool over HTTP with the MCP SDK's client (per-client tools, auth, audit lines without content, metrics), and the store against PostgreSQL with pgvector: hybrid and full-text search, metadata filters, the full-text index in use, memory per client and shared, backfill after the model was down, retention, a table of your own, dimension changes, a read-only replica, replicas preparing at once (`make -C mcp test` skips the database) |
 | `cd portal && yarn tsc && yarn test:all` | node 22 | backend (REST API incl. caches, permissions, catalog provider, scaffolder action) and frontend (forms, list page) |
 | `hack/e2e-kind.sh` | kind, helm, Docker/podman, `fs.inotify.max_user_instances` ≥ 512 | a control plane and one location on kind, installed as documented: Project goes Ready in both, a PostgresCluster in it goes Ready in the location (no CNPG on the control plane), `psql` through PgBouncer, the location's Prometheus scrapes it and remote-writes to the project's Prometheus on the control plane, its Grafana has the dashboard, then a ValkeyCache with the Valkey operator in the location: Ready, password required, metrics on both Prometheuses, alerts, its dashboard in Grafana; deletion guardrails hold, deletes cascade |
 | `hack/e2e-locations.sh` | kind, helm, Docker/podman, `fs.inotify.max_user_instances` ≥ 512 | a control plane, a protected and a recovery location, MinIO as the shared object store: a Project with both sites, a geo-replicated PostgresCluster, a row written in the protected site shows up in the recovery site, a point-in-time restore into a new cluster stops at the target time and archives to a folder of its own, a switchover promotes it (writes work, the old primary follows), turning geo replication off switches back first and loses nothing, the policy and XRD rules reject what they should |
@@ -179,7 +198,7 @@ Next steps for the platform.
 
 | Item | What |
 |---|---|
-| Governance for agents | Grow BASIS into the platform side of agents (see [Platform scope](portal/catalog/docs/scope.md)). Token budgets and caps, an audit log per call and model residency per classification exist; next: PII redaction and guardrail models at the `ModelGateway`; MCP servers per Project for retrieval and agent memory; OpenTelemetry traces of agent runs (tool calls, tokens, cost); self-hosted inference with vLLM on KServe for embeddings, guardrail models and air-gapped sites. Each as a self-service API object per Project |
+| Governance for agents | Grow BASIS into the platform side of agents (see [Platform scope](portal/catalog/docs/scope.md)). Token budgets and caps, an audit log per call, model residency per classification and MCP servers per Project for retrieval and agent memory exist; next: PII redaction and guardrail models at the `ModelGateway`; an external endpoint for `MCPServer`s (like the gateway's `expose`) and the GenAIStack composing one; OpenTelemetry traces of agent runs (tool calls, tokens, cost); self-hosted inference with vLLM on KServe for embeddings, guardrail models and air-gapped sites. Each as a self-service API object per Project |
 | Automatic major upgrades | Opt-in in-place `pg_upgrade` to the next major in a maintenance window: pre-flight checks (health, extensions, recent backup), a fresh base backup afterwards, statistics refreshed; geo-replicated clusters too |
 | Self-fencing at each site | Prevents split brain on a failover. Today the site that is cut off is not fenced: it can't receive the update, so its primary keeps taking writes. With this, the primary site keeps renewing a lease somewhere both sites can reach (the object store or a witness in a third site), and a small agent in each site sets `cnpg.io/fencedInstances` on its own cluster when the lease can't be renewed. A failover is only allowed once the lease has expired plus a safety margin, so there is never more than one primary (as in Patroni-style setups) |
 | Maintenance windows | A window per cluster or Project in which image rollouts, restarts and upgrades may run, instead of whenever the catalog or spec changes |
