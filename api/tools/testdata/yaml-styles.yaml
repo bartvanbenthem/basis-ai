@@ -1,0 +1,67 @@
+$ref: 1
+_x: 1
+"200": 1
+"401": 1
+B: 1
+a: 1
+at: '@x'
+b9: 1
+b10: 1
+big: 1e+06
+bool: "true"
+co: a:b
+colon: 'a: b'
+colonend: 'a:'
+dash: '- a'
+date: "2026-01-01"
+dot: ".5"
+e: "1e3"
+emoji: "hi \U0001F600"
+empty: ""
+emptymap: {}
+emptyseq: []
+excl: '!x'
+f: 0.5
+float: "1.5"
+hash: 'a #b'
+hash16: 08332717038e4651
+hex: "0x1F"
+inf: ".inf"
+int: 3
+lead: ' x'
+lt: <<
+map:
+  b: true
+minus: '-'
+multi: |-
+  a
+
+  b
+multi_nl: |
+  a
+multitrail: "a \nb"
+nul: "null"
+"null": null
+num: "18"
+path: /apis/{name}
+pct: 50%
+plain: a b
+q: '?'
+quote: 'it''s: x'
+ref: '#/components'
+seq:
+  - x
+  - j:
+      - 1
+      - 2
+    k: 1
+star: '*a'
+tab: "a\tb"
+tick: '`x'
+tilde: "~"
+trail: 'x '
+under: "1_000"
+x_: 1
+x08: "0755"
+xA: 1
+"yes": "yes"

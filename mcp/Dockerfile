@@ -1,15 +1,17 @@
 # basis-mcp, the MCP server of an MCPServer. Build from the mcp directory:
 #   docker build -t basis-mcp .
-FROM docker.io/library/golang:1.26 AS build
+FROM docker.io/library/rust:1.93-trixie AS build
 WORKDIR /src
-ENV CGO_ENABLED=0
 ARG VERSION=dev
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /basis-mcp .
+COPY Cargo.toml Cargo.lock ./
+COPY src/ src/
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/src/target \
+    VERSION=${VERSION} cargo build --release --locked \
+ && cp target/release/basis-mcp /basis-mcp
 
-FROM gcr.io/distroless/static-debian12:nonroot
+# glibc as the build stage's (Debian 13)
+FROM gcr.io/distroless/cc-debian13:nonroot
 COPY --from=build /basis-mcp /basis-mcp
 EXPOSE 8080 9090
 USER nonroot:nonroot

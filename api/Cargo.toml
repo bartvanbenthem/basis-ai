@@ -1,0 +1,17 @@
+# The api's Rust workspace: function-basis (every API's composition) and the
+# tools around it (tools/: assets and OpenAPI generation, render-test
+# assertions, fixtures, the package cache for e2e).
+[workspace]
+resolver = "3"
+members = ["function", "tools"]
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+# A small, static function image.
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

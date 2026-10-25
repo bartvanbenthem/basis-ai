@@ -1,0 +1,75 @@
+vector_index:
+  target_databases: ["*"]
+  query: |
+    SELECT current_database() AS datname
+         , n.nspname AS schemaname
+         , i.relname AS indexname
+         , t.relname AS tablename
+         , am.amname AS method
+         , pg_relation_size(i.oid) AS size_bytes
+         , GREATEST(t.reltuples, 0) AS table_rows
+    FROM pg_index x
+    JOIN pg_class i ON i.oid = x.indexrelid
+    JOIN pg_class t ON t.oid = x.indrelid
+    JOIN pg_am am ON am.oid = i.relam
+    JOIN pg_namespace n ON n.oid = i.relnamespace
+    WHERE am.amname IN ('hnsw', 'ivfflat', 'vchordrq', 'vchordg', 'bm25')
+  metrics:
+    - datname:
+        usage: LABEL
+        description: Database
+    - schemaname:
+        usage: LABEL
+        description: Schema of the index
+    - indexname:
+        usage: LABEL
+        description: Vector or BM25 index
+    - tablename:
+        usage: LABEL
+        description: Table the index is on
+    - method:
+        usage: LABEL
+        description: Index access method (hnsw, ivfflat, vchordrq, vchordg, bm25)
+    - size_bytes:
+        usage: GAUGE
+        description: Size of the index on disk (bytes); to answer fast it should fit in shared_buffers and the page cache
+    - table_rows:
+        usage: GAUGE
+        description: Estimated rows in the indexed table (pg_class.reltuples)
+create_index_progress:
+  primary: true
+  query: |
+    SELECT datname
+         , pid::text AS pid
+         , command
+         , phase
+         , COALESCE(blocks_total, 0) AS blocks_total
+         , COALESCE(blocks_done, 0) AS blocks_done
+         , COALESCE(tuples_total, 0) AS tuples_total
+         , COALESCE(tuples_done, 0) AS tuples_done
+    FROM pg_stat_progress_create_index
+  metrics:
+    - datname:
+        usage: LABEL
+        description: Database
+    - pid:
+        usage: LABEL
+        description: Backend building the index
+    - command:
+        usage: LABEL
+        description: CREATE INDEX, CREATE INDEX CONCURRENTLY, REINDEX or REINDEX CONCURRENTLY
+    - phase:
+        usage: LABEL
+        description: Current phase of the build
+    - blocks_total:
+        usage: GAUGE
+        description: Blocks to process in the current phase
+    - blocks_done:
+        usage: GAUGE
+        description: Blocks processed in the current phase
+    - tuples_total:
+        usage: GAUGE
+        description: Tuples to process in the current phase
+    - tuples_done:
+        usage: GAUGE
+        description: Tuples processed in the current phase

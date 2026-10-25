@@ -1,15 +1,19 @@
 # function-basis. Build from the api directory:
 #   docker build -f function/Dockerfile -t function-basis .
-FROM docker.io/library/golang:1.26 AS build
+FROM docker.io/library/rust:1.93-trixie AS build
 WORKDIR /src
-ENV CGO_ENABLED=0
-COPY go.mod go.sum ./
-RUN go mod download
+# The workspace: the function and the tools beside it (a member, so it must be there).
+COPY Cargo.toml Cargo.lock ./
 COPY function/ function/
-RUN go build -trimpath -ldflags="-s -w" -o /function ./function
+COPY tools/ tools/
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/src/target \
+    cargo build --release --locked -p function-basis --bin function-basis \
+ && cp target/release/function-basis /function-basis
 
-FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /function /function
+# glibc as the build stage's (Debian 13)
+FROM gcr.io/distroless/cc-debian13:nonroot
+COPY --from=build /function-basis /function-basis
 EXPOSE 9443
 USER nonroot:nonroot
-ENTRYPOINT ["/function"]
+ENTRYPOINT ["/function-basis"]

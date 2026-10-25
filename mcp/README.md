@@ -14,23 +14,24 @@ tools over streamable HTTP, on the Project's PostgreSQL. For using it, see
 ## How it works
 
 ```text
- agent ── POST /mcp, Bearer <key> ──▶ auth (keys dir) ──▶ the client's mcp.Server (its tools only)
+ agent ── POST /mcp, Bearer <key> ──▶ auth (keys dir) ──▶ the client's MCP server (its tools only)
                                                               │
                                      embeddings (OPENAI_BASE_URL/embeddings) ◀─┤
                                                               ▼
                                      PostgreSQL (DATABASE_URL): pgvector + full text
 ```
 
-- **Stateless streamable HTTP** (`JSONResponse`), so any replica answers any request and the
-  Service needs no session affinity. Each client gets an `mcp.Server` holding only the tools it
-  may call; `tools/list` shows nothing else.
+- **Stateless streamable HTTP** (JSON responses, [rmcp](https://github.com/modelcontextprotocol/rust-sdk),
+  the official MCP Rust SDK), so any replica answers any request and the Service needs no session
+  affinity. Each client gets an MCP server holding only the tools it may call; `tools/list` shows
+  nothing else.
 - **Keys** are the files of a mounted Secret (file name = client), re-read every 15s, so revoking
   needs no restart. A key holder the config doesn't list gets no tools.
 - **Search** ranks candidates by cosine distance (`<=>`, HNSW index) and by `ts_rank_cd` over
   `websearch_to_tsquery` (GIN index on the same expression), `topK × 4` each, and fuses them by
   reciprocal rank (k = 60). If the model fails, hybrid search returns full-text hits with a warning.
-- **Tables** are created on the primary under a transaction-level advisory lock, so replicas that
-  start together don't race. The vector dimensions come from the existing column, or else from
+- **Tables** are created on the primary under an advisory lock taken before the DDL's transaction,
+  so replicas that start together don't race (one that waited sees what the other created). The vector dimensions come from the existing column, or else from
   asking the model once. A model with other dimensions than the column's is refused. On a replica
   (`pg_is_in_recovery()`) the server creates nothing and refuses writes with a clear error.
 - **Backfill** embeds rows stored without a vector (the model was down, or `embeddings.model` came
@@ -46,7 +47,7 @@ answer; the log says what it waits for.
 
 | | |
 |---|---|
-| `--config` | `config.json`, written by the composition (`server.Config`: the spec with defaults applied) |
+| `--config` | `config.json`, written by the composition (`config::Config`: the spec with defaults applied) |
 | `--keys` | Directory with a file per client holding its key |
 | `DATABASE_URL` (+ `PGUSER`, `PGPASSWORD`) | The database; libpq's variables fill in what the URL leaves out |
 | `OPENAI_BASE_URL`, `OPENAI_API_KEY` | The embeddings endpoint (the Project's ModelGateway) and the server's key there |
@@ -57,16 +58,16 @@ answer; the log says what it waits for.
 ## Develop
 
 ```sh
-make test       # vet, unit tests with -race; the store's tests are skipped
+make test       # clippy, unit tests; the store's tests are skipped
 make test-db    # the same, plus the store against pgvector/pgvector:pg18 in podman
 make image      # docker build, tagged ghcr.io/bartvanbenthem/basis-mcp:$(VERSION)
 make push       # and push it
 ```
 
 The store's tests run against any PostgreSQL with pgvector:
-`BASIS_MCP_TEST_DATABASE_URL=postgres://app:test@127.0.0.1:55432/app go test ./...`. Each test
+`BASIS_MCP_TEST_DATABASE_URL=postgres://app:test@127.0.0.1:55432/app cargo test`. Each test
 works in a schema of its own and drops it afterwards.
 
-A release: bump `VERSION` here and `DefaultImage` in
-[`api/function/mcpserver/compose.go`](../api/function/mcpserver/compose.go), `make push`, then
+A release: bump `VERSION` here and `DEFAULT_IMAGE` in
+[`api/function/src/mcpserver.rs`](../api/function/src/mcpserver.rs), `make push`, then
 publish function-basis as usual ([README](../README.md#install)).

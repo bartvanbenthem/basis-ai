@@ -13,7 +13,7 @@ Crossplane **v2** composite resources on three levels:
 | Platform | `platform.cndev.nl/v1alpha1 Project`, `Location` | A team's namespace with its own Prometheus and Grafana, and the clusters workloads run in. See [The Project API](#the-project-api), [Locations](#locations) |
 
 A stack composes building blocks next to it and owns them (label `ai.cndev.nl/genaistack`; an
-admission policy lets only Crossplane change them). Every composition is Go, in one composition
+admission policy lets only Crossplane change them). Every composition is Rust, in one composition
 function, [function-basis](#function-basis).
 
 The APIs run on a **control plane**: a Kubernetes cluster with Crossplane (and the portal) that
@@ -176,12 +176,14 @@ spec:
   provider-kubernetes `Object`s; only the `GrafanaDashboard` and the Project's own objects are
   composed directly. RBAC is a ClusterRole for exactly those kinds, aggregated into Crossplane's
   own ServiceAccount ([`install/rbac.yaml`](install/rbac.yaml)), instead of `*/*`.
-- The PostgresCluster composition is Go: a composition function of its own, function-basis
-  ([`function/`](function/)), with typed inputs, the switchover state machine as a pure function
-  ([`topology.go`](function/postgrescluster/topology.go)) and unit tests. It emits only the fields
-  it sets (not the upstream CNPG Go types, which would apply defaulted and empty fields to every
-  running cluster). Every other API runs on it too, a package each (`function/<api>`), the Project
-  and Location compositions included.
+- The PostgresCluster composition is Rust: a composition function of its own, function-basis
+  ([`function/`](function/), on the official
+  [function-sdk-rust](https://github.com/crossplane/function-sdk-rust)), with typed inputs, the
+  switchover state machine as a pure function
+  ([`topology.rs`](function/src/postgrescluster/topology.rs)) and unit tests. It emits only the
+  fields it sets (not the upstream CNPG types, which would apply defaulted and empty fields to every
+  running cluster). Every other API runs on it too, a module each (`function/src/<api>`), the
+  Project and Location compositions included.
 - Readiness is set explicitly per resource, so `function-auto-ready` isn't needed. The custom
   `PostgresReady` condition is a function condition, not hand-written `status.conditions`.
 - The dashboard JSON and alert rules are kept as readable sources in `src/`; `make generate`
@@ -354,7 +356,7 @@ See [`examples/valkeycache.yaml`](examples/valkeycache.yaml) (with a LiteLLM con
   The PodMonitor labels every series with `cluster` (the cache), `shard` and `node`; semantic caches
   add valkey-search's module metrics to the exporter.
 
-The composition is Go, in function-basis ([`function/valkeycache`](function/valkeycache)), like
+The composition is Rust, in function-basis ([`function/src/valkeycache.rs`](function/src/valkeycache.rs)), like
 PostgresCluster's: the dashboard and alerts are readable sources in `src/`, which `make generate`
 prepares as the function's embedded assets.
 
@@ -907,10 +909,10 @@ taken after the switchover: restore from before it out of the protected site's f
 ```
 apis/postgrescluster/definition.yaml       XRD (the API contract)
 apis/postgrescluster/composition.yaml      one pipeline step: function-basis
-function/                                  function-basis: every API's composition in Go (fn.go dispatches on the kind)
-function/postgrescluster/                  what gets composed (compose.go), per location (member.go),
-                                           the primary/switchover state machine (topology.go), status
-function/postgrescluster/assets/           what it embeds: monitoring queries, GENERATED dashboard and alerts
+function/                                  function-basis: every API's composition in Rust (src/function.rs dispatches on the kind)
+function/src/postgrescluster/              what gets composed (mod.rs), per location (member.rs),
+                                           the primary/switchover state machine (topology.rs), status
+function/assets/postgrescluster/           what it embeds: monitoring queries, GENERATED dashboard and alerts
 function/package/                          its Crossplane package metadata (make function-xpkg)
 apis/postgrescluster/sizes.yaml            the size catalog (EnvironmentConfig postgres-sizes), installed once
 apis/postgrescluster/extensions.yaml       the extension catalog (EnvironmentConfig postgres-extensions), installed once
@@ -922,43 +924,44 @@ apis/location/definition.yaml              Location XRD (cluster-scoped): anothe
 apis/location/composition.yaml             one pipeline step: function-basis
 apis/project/definition.yaml               Project XRD (cluster-scoped)
 apis/project/composition.yaml              one pipeline step: function-basis
-function/project/                          the Project composition in Go: namespaces, Prometheus, Grafana,
+function/src/project/                      the Project composition: namespaces, Prometheus, Grafana,
                                            access, quota, backup bucket (COSI) per location
-function/location/                         the Location composition in Go: ClusterProviderConfig, checks
+function/src/location.rs                   the Location composition: ClusterProviderConfig, checks
 apis/project/policies.yaml                 deletion protection, PostgresClusters only in a Project's
                                            sites, unschedulable locations
 apis/genaistack/definition.yaml            GenAIStack XRD (namespaced): retrieval, cache, gateway and wiring per site
 apis/genaistack/composition.yaml           one pipeline step: function-basis
 apis/genaistack/policies.yaml              deletion protection; stacks only in a Project's open locations;
                                            what a stack composes only changes through it
-function/genaistack/                       the GenAIStack composition in Go: child PostgresCluster/ValkeyCaches/
+function/src/genaistack.rs                 the GenAIStack composition: child PostgresCluster/ValkeyCaches/
                                            ModelGateway and the connection Secret per site
 apis/modelgateway/definition.yaml          ModelGateway XRD (namespaced): models, clients, sites
 apis/modelgateway/composition.yaml         one pipeline step: function-basis
 apis/modelgateway/policies.yaml            gateways only in a Project's open locations
-function/modelgateway/                     the ModelGateway composition in Go: client keys, Agent Router per site
+function/src/modelgateway.rs               the ModelGateway composition: client keys, Agent Router per site
 apis/modelserver/definition.yaml           ModelServer XRD (namespaced): a self-hosted model (vLLM on KServe, llm-d)
 apis/modelserver/composition.yaml          one pipeline step: function-basis
 apis/modelserver/policies.yaml             servers only in a Project's open locations
-function/modelserver/                      the ModelServer composition in Go: LLMInferenceService, token, monitoring per site
+function/src/modelserver.rs                the ModelServer composition: LLMInferenceService, token, monitoring per site
 apis/mcpserver/definition.yaml             MCPServer XRD (namespaced): retrieval and agent memory over a database, clients, sites
 apis/mcpserver/composition.yaml            one pipeline step: function-basis
 apis/mcpserver/policies.yaml               MCP servers only in a Project's open locations
-function/mcpserver/                        the MCPServer composition in Go: client keys, basis-mcp (../mcp) and its
+function/src/mcpserver.rs                  the MCPServer composition: client keys, basis-mcp (../mcp) and its
                                            config, Service, monitoring per site
 apis/valkeycache/definition.yaml           ValkeyCache XRD (namespaced): an exact or semantic Valkey cache
 apis/valkeycache/composition.yaml          one pipeline step: function-basis
-function/valkeycache/                      the ValkeyCache composition in Go: password Secret, ValkeyCluster,
+function/src/valkeycache.rs                the ValkeyCache composition: password Secret, ValkeyCluster,
                                            PodMonitor, PrometheusRule, GrafanaDashboard
-function/valkeycache/assets/               what it embeds: GENERATED dashboard and alerts
+function/assets/valkeycache/               what it embeds: GENERATED dashboard and alerts
 src/dashboards/valkey-cache.json           the Valkey cache Grafana dashboard
 src/alerts/valkey-cache-rules.yaml         the Valkey cache alerts
 apis/valkeycache/policies.yaml             ValkeyCaches only in an open location of their Project (spec.site)
-hack/generate/                             prepares src/ as the function's assets, and the APIs' OpenAPI documents for the portal (../portal/catalog)
-hack/xpkgcache/                            seeds Crossplane's package cache (e2e on kind, no registry)
-hack/observe/                              generates tests/render observed-state fixtures
-hack/alertrules/                           writes src/alerts/ for hack/refresh-alerts.sh
-internal/doc/                              shared YAML helpers for the Go tools
+tools/                                     the development tools (Rust, a workspace member like function/):
+tools/src/bin/generate.rs                  prepares src/ as the function's assets, and the APIs' OpenAPI documents for the portal (../portal/catalog)
+tools/src/bin/xpkgcache.rs                 seeds Crossplane's package cache (e2e on kind, no registry)
+tools/src/bin/observe.rs                   generates tests/render observed-state fixtures
+tools/src/bin/alertrules.rs                writes src/alerts/ for hack/refresh-alerts.sh
+tools/src/yaml.rs                          YAML written byte for byte as Go's yaml.v3 wrote it, so generated files stay stable
 install/                                   Crossplane, function-basis, provider-kubernetes, RBAC,
                                            install/uninstall, add-location.sh, migrate-locations.sh,
                                            migrate-to-basis.sh (from the cnpg names)
@@ -966,7 +969,7 @@ examples/                                  PostgresClusters (incl. a geo-replica
                                            project-defaults EnvironmentConfig, a ValkeyCache, a ModelServer, a
                                            ModelGateway, GenAIStacks (single site and geo), an MCPServer
 tests/render/<api>/                        offline render + schema validation tests per API
-tests/render/rendertest/                   their assertions (one Go file per API)
+tools/src/bin/rendertest/                  their assertions (one file per API)
 ```
 
 ## Install
@@ -1038,9 +1041,10 @@ XRDs exist, the short names `pgc`, `proj` and `loc` match both groups, so name t
 
 ## function-basis
 
-The platform's Go compositions run in one composition function, built from
-[`function/`](function/) (a package per API, dispatched by kind in
-[`function/fn.go`](function/fn.go)) and published as a Crossplane package to
+The platform's compositions run in one composition function, written in Rust on Crossplane's
+[function-sdk-rust](https://github.com/crossplane/function-sdk-rust), built from
+[`function/`](function/) (a module per API, dispatched by kind in
+[`function/src/function.rs`](function/src/function.rs)) and published as a Crossplane package to
 `ghcr.io/bartvanbenthem/function-basis`. The Compositions only name it
 (`functionRef: function-basis`), so a new version of the function changes how every XR of those
 APIs is composed without touching the Compositions.
@@ -1062,7 +1066,7 @@ a fix that composes the same objects a patch bump.
 
 ### Publish a version
 
-Needs Go, the crossplane CLI and Docker or podman. Log in to ghcr.io with a **classic** personal
+Needs Rust (cargo), the crossplane CLI and Docker or podman. Log in to ghcr.io with a **classic** personal
 access token with the `write:packages` scope (a fine-grained token or one without that scope gets
 `DENIED`). Read the token without echoing it, so it's never typed into a hidden password prompt:
 
@@ -1125,8 +1129,8 @@ registry.
 
 ### When the API group or version changes
 
-The function only composes the groups, versions and kinds compiled into it (the `...GVK`
-variables in [`function/fn.go`](function/fn.go)). Changing the group or version in
+The function only composes the groups, versions and kinds compiled into it (the `kind` match in
+[`function/src/function.rs`](function/src/function.rs)). Changing the group or version in
 [`apis/postgrescluster/definition.yaml`](apis/postgrescluster/definition.yaml) therefore takes a new
 function version too. Without one, every PostgresCluster of the new group stays `SYNCED=False` with:
 
@@ -1135,14 +1139,14 @@ cannot compose resources: pipeline step "compose" returned a fatal result:
 function-basis doesn't compose cnpg.example.com/v1alpha1, Kind=PostgresCluster
 ```
 
-Change `postgresClusterGVK` together with the XRD and Composition. Then publish and roll out a new
+Change its `PostgresCluster` arm together with the XRD and Composition. Then publish and roll out a new
 version (above) before, or together with, applying the new XRD. The same holds for every API:
 function-basis composes them all.
 
 ### Develop and test it
 
 ```sh
-make unit                         # go test ./function/...
+make unit                         # cargo clippy + cargo test, function-basis and tools
 make test                         # + every case rendered through the function built from this checkout
 ../hack/e2e-kind.sh               # kind: the function from this checkout, no registry needed
 ```
@@ -1189,7 +1193,7 @@ that location's.
 
 ```sh
 make generate   # after editing src/ (dashboard, alerts) or an XRD (the portal's API reference)
-make unit       # go test ./function/...: the switchover state machine, the refusals, parameter precedence
+make unit       # cargo test: the switchover state machine, the refusals, parameter precedence
 make test       # make unit, then crossplane render for every API, PostgresCluster through the
                 # function built from this checkout (PostgresCluster: 23 cases incl. sizes (from the
                 # catalog, retired, changed to or created with an unknown one), extensions (the
@@ -1206,7 +1210,7 @@ make test       # make unit, then crossplane render for every API, PostgresClust
                 # the CNPG/Barman/Prometheus/Grafana/provider-kubernetes/ClusterUsage CRDs
                 # (manifests inside Objects too), assertions
 RENDER_FUNCTION=local CROSSPLANE_BINARY=<crossplane core binary> tests/render/run.sh   # the same without Docker
-go run ./hack/observe project full   # regenerate an observed-state fixture after changing a composition
+cargo run -p basis-tools --bin observe -- project full   # regenerate an observed-state fixture after changing a composition
 make function-push FUNCTION_VERSION=<version>   # publish the function: see "function-basis" above
 # crossplane render doesn't resolve namespaced extra resources (Crossplane itself does), so the
 # render tests can't show COSI's credentials Secrets being unpacked; they check the rest.

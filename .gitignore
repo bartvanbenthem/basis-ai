@@ -8,3 +8,6 @@ env/
 # make -C api function-xpkg
 api/_output/
 
+
+# cargo build output
+target/

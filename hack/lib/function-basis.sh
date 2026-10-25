@@ -27,7 +27,7 @@ local_function_basis() {
 
   local cache="${work}/package-cache" ref
   rm -rf "${cache}" && mkdir -p "${cache}"
-  ref="$(cd "${root}/api" && go run ./hack/xpkgcache function/package ghcr.io/bartvanbenthem/function-basis "${cache}")"
+  ref="$(cd "${root}/api" && cargo run -q -p basis-tools --bin xpkgcache -- function/package ghcr.io/bartvanbenthem/function-basis "${cache}")"
 
   "${k[@]}" create namespace "${ns}" --dry-run=client -o yaml | "${k[@]}" apply -f - >/dev/null
   "${k[@]}" apply -f - >/dev/null <<EOF

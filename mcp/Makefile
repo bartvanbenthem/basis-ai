@@ -1,15 +1,15 @@
 .PHONY: test test-db image push
 
-# basis-mcp, the image every MCPServer runs (api/function/mcpserver's
-# DefaultImage names this tag).
+# basis-mcp, the image every MCPServer runs (api/function/src/mcpserver.rs's
+# DEFAULT_IMAGE names this tag).
 IMAGE ?= ghcr.io/bartvanbenthem/basis-mcp
 VERSION ?= v0.1.0
 TEST_DATABASE_URL ?= postgres://app:test@127.0.0.1:55432/app
 
-# Unit tests; the store's tests are skipped without a database
+# Lints and unit tests; the store's tests are skipped without a database
 test:
-	go vet ./...
-	go test -race ./...
+	cargo clippy --all-targets -- -D warnings
+	cargo test
 
 # Every test, the store's against PostgreSQL with pgvector in a container
 test-db:
@@ -18,7 +18,7 @@ test-db:
 	  docker.io/pgvector/pgvector:pg18 >/dev/null
 	until podman exec basis-mcp-test-pg pg_isready -U app >/dev/null 2>&1; do sleep 1; done
 	podman exec basis-mcp-test-pg psql -U app -c 'CREATE EXTENSION IF NOT EXISTS vector' >/dev/null
-	BASIS_MCP_TEST_DATABASE_URL=$(TEST_DATABASE_URL) go test -race -count=1 ./...; \
+	BASIS_MCP_TEST_DATABASE_URL=$(TEST_DATABASE_URL) cargo test; \
 	  status=$$?; podman rm -f basis-mcp-test-pg >/dev/null; exit $$status
 
 image:
