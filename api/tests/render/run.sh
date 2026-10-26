@@ -164,7 +164,7 @@ for api in "${APIS[@]}"; do
       fi
 
       echo "=== ${api}/${case} (${state}): assertions"
-      "${RT}" assert "${api}" "${case}" "${state}" "${out}" "${API_ROOT}/src/dashboards/cnpg-cluster.json" || fail=1
+      "${RT}" assert "${api}" "${case}" "${state}" "${out}" "${API_ROOT}/monitoring/dashboards/cnpg-cluster.json" || fail=1
       [[ -n "${OUT_KEEP:-}" ]] && cp "${out}" "${OUT_KEEP}/"
     done
   done

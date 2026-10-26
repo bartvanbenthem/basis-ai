@@ -96,7 +96,6 @@ pub fn assert(r: &Render) {
             check(s!(&cfg, "retrieval", "table") == "public.chunks" && eq(at!(&cfg, "retrieval", "own"), json!(false))
                 && s!(&cfg, "retrieval", "columns", "embedding") == "vec" && s!(&cfg, "memory", "scope") == "shared",
                 format!("{s}: a table of your own: {}", repr(Some(&cfg))));
-            // Go's has(cfg, "clients", "intern") reads cfg.intern, which never exists.
             check(eq(at!(&cfg, "clients", "support-bot", "tools"), json!(["search", "fetch", "recall"])) && !has!(&cfg, "clients", "intern"),
                 format!("{s}: clients {}", repr(at!(&cfg, "clients"))));
         }

@@ -5,7 +5,7 @@
 //! generate     the function's embedded assets and the APIs' OpenAPI documents
 //! rendertest   the render tests' filters and assertions
 //! observe      an observed-state fixture for the render tests
-//! alertrules   src/alerts/cnpg-cluster-rules.yaml from the upstream chart
+//! alertrules   monitoring/alerts/cnpg-cluster-rules.yaml from the upstream chart
 //! xpkgcache    a package in a Crossplane package cache (e2e on kind)
 //! ```
 

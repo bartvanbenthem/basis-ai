@@ -186,7 +186,7 @@ spec:
   Project and Location compositions included.
 - Readiness is set explicitly per resource, so `function-auto-ready` isn't needed. The custom
   `PostgresReady` condition is a function condition, not hand-written `status.conditions`.
-- The dashboard JSON and alert rules are kept as readable sources in `src/`; `make generate`
+- The dashboard JSON and alert rules are kept as readable sources in `monitoring/`; `make generate`
   prepares them for the function, which embeds them.
 
 ## The Project API
@@ -357,17 +357,17 @@ See [`examples/valkeycache.yaml`](examples/valkeycache.yaml) (with a LiteLLM con
   add valkey-search's module metrics to the exporter.
 
 The composition is Rust, in function-basis ([`function/src/valkeycache.rs`](function/src/valkeycache.rs)), like
-PostgresCluster's: the dashboard and alerts are readable sources in `src/`, which `make generate`
+PostgresCluster's: the dashboard and alerts are readable sources in `monitoring/`, which `make generate`
 prepares as the function's embedded assets.
 
 | Composed resource | Where | Notes |
 |---|---|---|
 | `Secret <name>-valkey` | control plane | Password generated once and kept; host, port, uri |
-| `GrafanaDashboard <name>-valkey` | control plane | `monitoring.grafanaDashboard.enabled` (default): [`src/dashboards/valkey-cache.json`](src/dashboards/valkey-cache.json) with its own uid (`status.monitoring.dashboardUid`), preselected on this cache: hit ratio, keys, memory of maxmemory, evictions, commands and latency, clients, cluster and replication health, and (collapsed) valkey-search. Panels adapted from redis_exporter's dashboard (MIT) |
+| `GrafanaDashboard <name>-valkey` | control plane | `monitoring.grafanaDashboard.enabled` (default): [`monitoring/dashboards/valkey-cache.json`](monitoring/dashboards/valkey-cache.json) with its own uid (`status.monitoring.dashboardUid`), preselected on this cache: hit ratio, keys, memory of maxmemory, evictions, commands and latency, clients, cluster and replication health, and (collapsed) valkey-search. Panels adapted from redis_exporter's dashboard (MIT) |
 | `Secret <name>-valkey-auth` | location (Object) | Data patched from the one above, never in the Object spec |
 | `ValkeyCluster <name>` | location (Object) | Ready when the operator reports `Ready`; `status.state`, `readyShards` and the message come from it |
 | `PodMonitor <name>-valkey` | location (Object) | `monitoring.enabled` (default) |
-| `PrometheusRule <name>-alerts` | location (Object) | `monitoring.prometheusRule.enabled` (default): [`src/alerts/valkey-cache-rules.yaml`](src/alerts/valkey-cache-rules.yaml), based on the redis-mixin alerts (MIT), scoped to this cache: node down, cluster state, failing slots, replica link down, restarts, writes rejected at maxmemory, connections near maxclients, continuous eviction and a low hit ratio (info). Being at maxmemory alone is normal for a cache and doesn't alert |
+| `PrometheusRule <name>-alerts` | location (Object) | `monitoring.prometheusRule.enabled` (default): [`monitoring/alerts/valkey-cache-rules.yaml`](monitoring/alerts/valkey-cache-rules.yaml), based on the redis-mixin alerts (MIT), scoped to this cache: node down, cluster state, failing slots, replica link down, restarts, writes rejected at maxmemory, connections near maxclients, continuous eviction and a low hit ratio (info). Being at maxmemory alone is normal for a cache and doesn't alert |
 
 The cache runs in the Project's location for `spec.site`: `protected` (the default) or `recovery`
 (the Project needs one), pinned in `status.location` on first use. A Valkey cluster can't span
@@ -917,9 +917,9 @@ function/package/                          its Crossplane package metadata (make
 apis/postgrescluster/sizes.yaml            the size catalog (EnvironmentConfig postgres-sizes), installed once
 apis/postgrescluster/extensions.yaml       the extension catalog (EnvironmentConfig postgres-extensions), installed once
 apis/postgrescluster/policies.yaml         spec.size and every extension must be in their catalogs
-src/dashboards/cnpg-cluster.json           CNPG Grafana dashboard (Apache-2.0)
-src/alerts/cnpg-cluster-rules.yaml         CNPG alerts from the cnpg/cluster chart (hack/refresh-alerts.sh)
-src/alerts/local-rules.yaml                our changes to those alerts (replace upstream rules by name)
+monitoring/dashboards/cnpg-cluster.json    CNPG Grafana dashboard (Apache-2.0)
+monitoring/alerts/cnpg-cluster-rules.yaml  CNPG alerts from the cnpg/cluster chart (hack/refresh-alerts.sh)
+monitoring/alerts/local-rules.yaml         our changes to those alerts (replace upstream rules by name)
 apis/location/definition.yaml              Location XRD (cluster-scoped): another Kubernetes cluster
 apis/location/composition.yaml             one pipeline step: function-basis
 apis/project/definition.yaml               Project XRD (cluster-scoped)
@@ -953,15 +953,15 @@ apis/valkeycache/composition.yaml          one pipeline step: function-basis
 function/src/valkeycache.rs                the ValkeyCache composition: password Secret, ValkeyCluster,
                                            PodMonitor, PrometheusRule, GrafanaDashboard
 function/assets/valkeycache/               what it embeds: GENERATED dashboard and alerts
-src/dashboards/valkey-cache.json           the Valkey cache Grafana dashboard
-src/alerts/valkey-cache-rules.yaml         the Valkey cache alerts
+monitoring/dashboards/valkey-cache.json    the Valkey cache Grafana dashboard
+monitoring/alerts/valkey-cache-rules.yaml  the Valkey cache alerts
 apis/valkeycache/policies.yaml             ValkeyCaches only in an open location of their Project (spec.site)
 tools/                                     the development tools (Rust, a workspace member like function/):
-tools/src/bin/generate.rs                  prepares src/ as the function's assets, and the APIs' OpenAPI documents for the portal (../portal/catalog)
+tools/src/bin/generate.rs                  prepares monitoring/ as the function's assets, and the APIs' OpenAPI documents for the portal (../portal/catalog)
 tools/src/bin/xpkgcache.rs                 seeds Crossplane's package cache (e2e on kind, no registry)
 tools/src/bin/observe.rs                   generates tests/render observed-state fixtures
-tools/src/bin/alertrules.rs                writes src/alerts/ for hack/refresh-alerts.sh
-tools/src/yaml.rs                          YAML written byte for byte as Go's yaml.v3 wrote it, so generated files stay stable
+tools/src/bin/alertrules.rs                writes monitoring/alerts/ for hack/refresh-alerts.sh
+tools/src/yaml.rs                          YAML in one fixed style (yaml.v3's), so generated files stay stable
 install/                                   Crossplane, function-basis, provider-kubernetes, RBAC,
                                            install/uninstall, add-location.sh, migrate-locations.sh,
                                            migrate-to-basis.sh (from the cnpg names)
@@ -1050,7 +1050,7 @@ The platform's compositions run in one composition function, written in Rust on 
 APIs is composed without touching the Compositions.
 
 Publish and roll out a new version whenever anything under `function/` changes, including a new
-API it composes or a new embedded asset from `src/` (`make generate`). A version from before an
+API it composes or a new embedded asset from `monitoring/` (`make generate`). A version from before an
 API was added answers its XRs with `function-basis doesn't compose <group>/<version>, Kind=<kind>`,
 so roll the function out before, or together with, a new API's XRD and Composition:
 
@@ -1192,7 +1192,7 @@ that location's.
 ## Develop
 
 ```sh
-make generate   # after editing src/ (dashboard, alerts) or an XRD (the portal's API reference)
+make generate   # after editing monitoring/ (dashboard, alerts) or an XRD (the portal's API reference)
 make unit       # cargo test: the switchover state machine, the refusals, parameter precedence
 make test       # make unit, then crossplane render for every API, PostgresCluster through the
                 # function built from this checkout (PostgresCluster: 23 cases incl. sizes (from the

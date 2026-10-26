@@ -1,5 +1,5 @@
 # Our changes to the upstream CloudNativePG alerts in cnpg-cluster-rules.yaml,
-# which hack/refresh-alerts.sh overwrites. hack/generate replaces each upstream
+# which hack/refresh-alerts.sh overwrites. `make generate` replaces each upstream
 # rule with the rule of the same name here (a new name is added), with the
 # same placeholders. Re-check these after a refresh.
 #

@@ -64,7 +64,6 @@ pub fn assert(r: &Render) {
                 format!("{s}: the token copied from the Project's Secret: {}", repr(Some(rf))));
             check(s!(srv, "spec", "template", "tolerations", 0, "key") == "nvidia.com/gpu", format!("{s}: tolerations"));
         } else {
-            // Go's has(srv, "spec", "parallelism") reads srv.parallelism, which never exists.
             check(eq(gpu, json!(1)) && !has!(srv, "spec", "parallelism") && !has!(main, "image"), format!("{s}: one GPU, KServe's image: {}", repr(Some(main))));
             check(r.live(&format!("{s}-token")).is_null() && !has!(srv, "spec", "template", "serviceAccountName"), format!("{s}: no token without tokenSecretRef"));
         }

@@ -2,7 +2,7 @@ use basis_tools::{at, has, l, m, s};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
-use crate::{Render, Set, eq, list_str, repr, same_obj_keys, set, unb64_lenient, v};
+use crate::{Render, Set, eq, list_str, repr, same_obj_keys, set, unb64, v};
 
 pub fn assert(r: &Render) {
     if r.kase == "selfhosted" {
@@ -26,7 +26,7 @@ pub fn assert(r: &Render) {
     let got: Set = keys.into_iter().flat_map(|k| k.keys().cloned()).collect();
     check(same_obj_keys(keys, &clients), format!("keys for clients {}, want {}", list_str(&got), list_str(&clients)));
     if !geo && state == "observed" {
-        let raw = unb64_lenient(s!(r.get("keys"), "data", "support-bot"));
+        let raw = unb64(s!(r.get("keys"), "data", "support-bot")).unwrap_or_default();
         check(raw == "bot-key", "support-bot's key must be kept".into());
     }
 
@@ -131,8 +131,7 @@ fn assert_self_hosted(r: &Render) {
                 format!("{site}: qwen through its Service, renamed: {}", repr(Some(&json!(qwen)))));
             check(gpt.len() == 2 && eq(at!(&gpt[1], "priority"), json!(1)), format!("{site}: qwen as gpt-4o-mini's fallback: {}", repr(Some(&json!(gpt)))));
         } else {
-            // Go's has() never sees a map of lists: only the length counts.
-            check(gpt.len() == 1, format!("{site}: no qwen where its server doesn't run: {}", repr(Some(&json!(got)))));
+            check(gpt.len() == 1 && !got.contains_key("qwen"), format!("{site}: no qwen where its server doesn't run: {}", repr(Some(&json!(got)))));
         }
     }
     let backends: Vec<&str> = r.composed.keys().filter(|k| k.ends_with("-backend"))

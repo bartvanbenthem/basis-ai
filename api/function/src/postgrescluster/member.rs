@@ -31,8 +31,8 @@ fn emit<T: Serialize>(manifest: &T, ready: bool) -> Emitted {
     Emitted { manifest: serde_json::to_value(manifest).expect("manifests serialise"), ready, copy_from: String::new(), backup_store: false }
 }
 
-// Vendored sources, prepared by hack/generate (`make generate`) from
-// src/dashboards/cnpg-cluster.json and src/alerts/ with their placeholders
+// Vendored sources, prepared by `make generate` (tools/src/bin/generate.rs) from
+// monitoring/dashboards/cnpg-cluster.json and monitoring/alerts/ with their placeholders
 // for the namespace, cluster name and dashboard uid.
 const DASHBOARD_SOURCE: &str = include_str!("../../assets/postgrescluster/zz_generated.dashboard.json");
 pub(super) const ALERT_RULES_SOURCE: &str = include_str!("../../assets/postgrescluster/zz_generated.alert-rules.yaml");

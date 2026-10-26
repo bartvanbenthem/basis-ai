@@ -483,7 +483,7 @@ fn dig_or(v: &Value, def: Value, path: &[&str]) -> Value {
     dig(v, path).filter(|v| !v.is_null()).cloned().unwrap_or(def)
 }
 
-/// A value Go's composition counted as set.
+/// Whether a value counts as set: not null, "", false or 0.
 fn truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,

@@ -3,7 +3,7 @@
 //! Barman Cloud and Prometheus Operator types serialise defaulted and empty
 //! fields (status, syncReplicaElectionConstraint, ...) that provider-kubernetes
 //! would then apply to every running cluster. A field that may be left out
-//! is skipped when empty, as Go's omitempty did.
+//! is skipped when empty.
 
 use serde::Serialize;
 use serde_json::Value;

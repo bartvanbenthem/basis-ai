@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Re-renders ../src/alerts/cnpg-cluster-rules.yaml from the upstream
+# Re-renders ../monitoring/alerts/cnpg-cluster-rules.yaml from the upstream
 # cnpg/cluster Helm chart's PrometheusRule, with placeholder names that
 # function-basis swaps for each cluster's. Run, review the diff,
-# re-check src/alerts/local-rules.yaml (our replacements for some of these
+# re-check monitoring/alerts/local-rules.yaml (our replacements for some of these
 # rules), then `make generate`.
 #
 #   CLUSTER_CHART_VERSION=0.9.0 hack/refresh-alerts.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUT="${SCRIPT_DIR}/../src/alerts/cnpg-cluster-rules.yaml"
+OUT="${SCRIPT_DIR}/../monitoring/alerts/cnpg-cluster-rules.yaml"
 CLUSTER_CHART_VERSION="${CLUSTER_CHART_VERSION:-}"
 
 helm repo add cnpg https://cloudnative-pg.github.io/charts >/dev/null 2>&1 || true

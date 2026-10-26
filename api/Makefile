@@ -6,7 +6,7 @@ FUNCTION_IMAGE ?= ghcr.io/bartvanbenthem/function-basis
 FUNCTION_VERSION ?= v0.5.0
 XPKG := _output/function-basis-$(FUNCTION_VERSION).xpkg
 
-# Rebuild the function's embedded assets from src/ (dashboards, alert rules)
+# Rebuild the function's embedded assets from monitoring/ (dashboards, alert rules)
 # and the APIs' OpenAPI documents for the portal
 generate:
 	cargo run -q -p basis-tools --bin generate

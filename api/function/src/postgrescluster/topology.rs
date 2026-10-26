@@ -20,7 +20,7 @@ use super::observed::ClusterStatus;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
-    /// Go's zero value: no role decided.
+    /// No role decided.
     #[default]
     #[serde(rename = "")]
     Unset,

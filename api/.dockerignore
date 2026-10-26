@@ -4,5 +4,5 @@ _output/
 tests/
 apis/
 install/
-src/
+monitoring/
 hack/

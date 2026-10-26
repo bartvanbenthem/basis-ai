@@ -1,5 +1,4 @@
-//! Decoding the way the Go compositions did (json.Unmarshal into a struct,
-//! errors ignored): a field of an unexpected type stays at its zero value and
+//! Lenient decoding: a field of an unexpected type stays at its default and
 //! the rest still decodes, so a status field an operator changes in a later
 //! version never blocks a reconcile. Serde stops at the first mismatch; the
 //! `lenient!` structs give every field its own fallback instead.
@@ -21,11 +20,6 @@ where
 /// Decodes a JSON value into T, its default for what doesn't fit.
 pub fn decode<T: DeserializeOwned + Default>(v: &Value) -> T {
     serde_json::from_value(v.clone()).unwrap_or_default()
-}
-
-/// Decodes an optional value (a missing object decodes as the default).
-pub fn decode_opt<T: DeserializeOwned + Default>(v: Option<&Value>) -> T {
-    v.map(decode).unwrap_or_default()
 }
 
 /// A struct whose every field decodes leniently and defaults when missing:

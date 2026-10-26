@@ -64,9 +64,9 @@ pub fn assert(r: &Render) {
     check(s!(&body, "uid") == uid && s!(&body, "title") == format!("Valkey / {ns} / {name}"),
         format!("dashboard uid/title {:?} {:?}", s!(&body, "uid"), s!(&body, "title")));
     check(!s!(dash, "spec", "json").contains("zz"), "dashboard placeholders left".into());
-    let src = doc::load(&doc::root().join("src").join("dashboards").join("valkey-cache.json").to_string_lossy());
+    let src = doc::load(&doc::root().join("monitoring").join("dashboards").join("valkey-cache.json").to_string_lossy());
     check(src.as_ref().is_ok_and(|src| l!(&body, "panels").len() == l!(src, "panels").len()),
-        "dashboard panels differ from src/dashboards/valkey-cache.json".into());
+        "dashboard panels differ from monitoring/dashboards/valkey-cache.json".into());
     for t in l!(&body, "templating", "list") {
         let n = s!(t, "name");
         if n == "namespace" || n == "cluster" {

@@ -363,20 +363,6 @@ export function fromCluster(cluster: PostgresCluster): ClusterForm {
 }
 
 /**
- * Fields that can't change on a running cluster without rebuilding it (or
- * that the XRD makes immutable); the edit form shows them read-only.
- */
-export const IMMUTABLE: ReadonlyArray<keyof ClusterForm> = [
-  'name',
-  'namespace',
-  'postgresVersion',
-  'databaseName',
-  'databaseOwner',
-  'storageClass',
-  'walEnabled',
-];
-
-/**
  * Picks a size ('' for custom resources). Custom starts from the resources of
  * the size it replaces; with `suggestVolumes` (a new cluster) the size's
  * suggested volumes replace the form's.

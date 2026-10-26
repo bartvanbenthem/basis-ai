@@ -112,7 +112,7 @@ fn filter_docs(input: &str, out: &str, keep: impl Fn(&Value) -> Vec<Value>, tail
 
 static NULL: Value = Value::Null;
 
-/// The value or null: absent reads like Go's nil.
+/// The value or null when absent.
 pub fn v(o: Option<&Value>) -> &Value {
     o.unwrap_or(&NULL)
 }
@@ -333,18 +333,4 @@ pub fn all_strings(v: &Value) -> String {
 /// Standard base64, decoded to text.
 pub fn unb64(s: &str) -> Option<String> {
     function_basis::common::util::unb64(s)
-}
-
-/// Standard base64 the way Go's DecodeString reads it when its error is
-/// ignored: what decoded before the first bad group.
-pub fn unb64_lenient(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = String::new();
-    for chunk in b.chunks(4) {
-        match std::str::from_utf8(chunk).ok().filter(|_| chunk.len() == 4).and_then(unb64) {
-            Some(text) => out.push_str(&text),
-            None => break,
-        }
-    }
-    out
 }

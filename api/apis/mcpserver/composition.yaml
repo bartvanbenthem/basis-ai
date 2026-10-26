@@ -1,5 +1,5 @@
-# The MCPServer composition is Go code: function-basis
-# (../../function/mcpserver). See its package documentation for what gets
+# The MCPServer composition is Rust: function-basis
+# (../../function/src/mcpserver.rs). See its module documentation for what gets
 # composed: the clients' keys on the control plane, and basis-mcp's
 # Deployment, Service, config, PodMonitor and PrometheusRule in each of the
 # Project's sites, plus the GrafanaDashboard in the Project's Grafana.

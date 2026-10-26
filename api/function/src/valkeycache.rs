@@ -18,8 +18,8 @@
 //!     podmonitor      PodMonitor <name>-valkey for the redis_exporter sidecar,
 //!                     labelling every series with cluster, shard and node
 //!     prometheusrule  PrometheusRule <name>-alerts: the cache alerts
-//!                     (src/alerts/valkey-cache-rules.yaml) scoped to this cache
-//!     dashboard       GrafanaDashboard <name>-valkey: src/dashboards/valkey-cache.json
+//!                     (monitoring/alerts/valkey-cache-rules.yaml) scoped to this cache
+//!     dashboard       GrafanaDashboard <name>-valkey: monitoring/dashboards/valkey-cache.json
 //!                     with its own title and uid, preselected on this cache
 //!
 //! Location: the Project's location for spec.site, protected (default) or
@@ -153,8 +153,8 @@ pub fn requirements(input: &Input) -> BTreeMap<String, Requirement> {
     BTreeMap::from([(REQUIRED_PROJECT.into(), Requirement::named("platform.cndev.nl/v1alpha1", "Project", "", ns))])
 }
 
-// Vendored sources, prepared by hack/generate (`make generate`) from
-// src/dashboards/valkey-cache.json and src/alerts/valkey-cache-rules.yaml with
+// Vendored sources, prepared by `make generate` (tools/src/bin/generate.rs) from
+// monitoring/dashboards/valkey-cache.json and monitoring/alerts/valkey-cache-rules.yaml with
 // their placeholders for the namespace, cache name and dashboard uid.
 const DASHBOARD_SOURCE: &str = include_str!("../assets/valkeycache/zz_generated.dashboard.json");
 const ALERT_RULES_SOURCE: &str = include_str!("../assets/valkeycache/zz_generated.alert-rules.yaml");

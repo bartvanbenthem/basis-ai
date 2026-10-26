@@ -128,10 +128,9 @@ fn observed(req: &RunFunctionRequest) -> BTreeMap<String, Value> {
 }
 
 /// The resolved requirements as JSON: a name is present once Crossplane has
-/// resolved it. Crossplane < 2 answers in extra_resources.
+/// resolved it.
 fn required(req: &RunFunctionRequest) -> BTreeMap<String, Vec<Value>> {
-    let resolved = if req.required_resources.is_empty() { &req.extra_resources } else { &req.required_resources };
-    resolved
+    req.required_resources
         .iter()
         .map(|(name, items)| {
             let items = items.items.iter().filter_map(|r| r.resource.as_ref().map(resource::struct_to_json)).collect();
@@ -140,7 +139,6 @@ fn required(req: &RunFunctionRequest) -> BTreeMap<String, Vec<Value>> {
         .collect()
 }
 
-#[allow(deprecated)]
 fn set_requirements(rsp: &mut RunFunctionResponse, reqs: &BTreeMap<String, Requirement>) {
     let mut requirements = Requirements::default();
     for (key, r) in reqs {
@@ -154,8 +152,6 @@ fn set_requirements(rsp: &mut RunFunctionResponse, reqs: &BTreeMap<String, Requi
             (None, None) => None,
         };
         let sel = ResourceSelector { api_version: r.api_version.clone(), kind: r.kind.clone(), r#match: m, namespace: r.namespace.clone() };
-        // Crossplane < 2 reads extra_resources.
-        requirements.extra_resources.insert(key.clone(), sel.clone());
         requirements.resources.insert(key.clone(), sel);
     }
     rsp.requirements = Some(requirements);
@@ -206,10 +202,7 @@ mod tests {
         assert_eq!(match_name(&rsp, "project"), "payments");
         assert_eq!(match_name(&rsp, "sizes"), "postgres-sizes");
         assert_eq!(match_name(&rsp, "extensions"), "postgres-extensions");
-        // Crossplane < 2 reads extra_resources.
-        #[allow(deprecated)]
-        let extra = &rsp.requirements.as_ref().unwrap().extra_resources;
-        assert_eq!(extra.len(), 3);
+        assert_eq!(rsp.requirements.as_ref().unwrap().resources.len(), 3);
     }
 
     #[test]

@@ -236,9 +236,9 @@ pub fn assert(r: &mut Render, dashboard_src: &str) {
         }
         check(s!(main, "replica", "self") == "orders-db" && s!(replica, "replica", "self") == "orders-db-onprem-ams",
             "replica.self must be the member's topology name".into());
-        check(has!(main, "initdb", "bootstrap") && eq(at!(replica, "bootstrap"), json!({"recovery": {"source": "orders-db"}})),
+        check(has!(main, "bootstrap", "initdb") && eq(at!(replica, "bootstrap"), json!({"recovery": {"source": "orders-db"}})),
             "the protected site runs initdb, the replica cluster recovers from it".into());
-        check(!has!(main, "serverName", "plugins", 0, "parameters"), "the protected site keeps its archive folder".into());
+        check(!has!(main, "plugins", 0, "parameters", "serverName"), "the protected site keeps its archive folder".into());
         check(s!(replica, "plugins", 0, "parameters", "serverName") == "orders-db-onprem-ams", "the replica cluster archives to its own folder".into());
         check(s!(r.live("recovery-cluster"), "metadata", "name") == "orders-db",
             "every member's Cluster is named after the XR (stable service/secret names)".into());
@@ -263,7 +263,7 @@ pub fn assert(r: &mut Render, dashboard_src: &str) {
         let got = json!([v(at!(main, "replica", "primary")), v(at!(replica, "replica", "primary")),
             v(at!(replica, "replica", "promotionToken")), v(at!(status, "primaryLocation"))]);
         check(equal(&got, &exp), format!("(protected primary, recovery primary, token, status.primaryLocation) {} != {}", repr(Some(&got)), repr(Some(&exp))));
-        check(!has!(main, "promotionToken", "replica"), "the protected site was never promoted here".into());
+        check(!has!(main, "replica", "promotionToken"), "the protected site was never promoted here".into());
         if kase != "draining" {
             check(eq(at!(status, "promotionToken"), exp[2].clone()), format!("status.promotionToken {}", repr(at!(status, "promotionToken"))));
         }
@@ -299,7 +299,7 @@ pub fn assert(r: &mut Render, dashboard_src: &str) {
     } else if !["noproject", "bucketpending", "projectbucket", "restored", "restorepending", "sizeunknown"].contains(&kase) {
         let spec = v(at!(r.live("cluster"), "spec"));
         let ext: Vec<&str> = l!(spec, "externalClusters").iter().map(|e| s!(e, "name")).collect();
-        let want_ext: Vec<&str> = if has!(xr, "restore", "spec") { vec!["restore-source"] } else { vec![] };
+        let want_ext: Vec<&str> = if has!(xr, "spec", "restore") { vec!["restore-source"] } else { vec![] };
         check(!has!(spec, "replica") && ext == want_ext, format!("a single-site cluster has no replica topology: externalClusters {ext:?}"));
         check(s!(status, "primaryLocation") == protected, format!("status.primaryLocation {}", repr(at!(status, "primaryLocation"))));
         check(s!(status, "primarySite") == "protected", format!("status.primarySite {}", repr(at!(status, "primarySite"))));
@@ -424,7 +424,7 @@ pub fn assert(r: &mut Render, dashboard_src: &str) {
             let version = at!(xr, "spec", "postgresVersion").map(function_basis::common::gojson::sprint).unwrap_or_else(|| "17".into());
             check(s!(manifest, "metadata", "annotations", "postgres.cndev.nl/postgres-version") == version, format!("{key}: postgres-version annotation"));
         } else if key.contains("objectstore") {
-            check(!has!(r.get(&key), "postgres.cndev.nl/backup-store", "metadata", "labels"),
+            check(!has!(r.get(&key), "metadata", "labels", "postgres.cndev.nl/backup-store"),
                 format!("{key}: a restore source is not one of this cluster's backup folders"));
         }
     }
@@ -442,8 +442,8 @@ pub fn assert(r: &mut Render, dashboard_src: &str) {
         let uid = s!(xr, "metadata", "uid");
         let own = format!("{name}-{}", &uid[..uid.len().min(8)]);
         let spec = v(at!(r.live("cluster"), "spec"));
-        let database = if has!(xr, "name", "spec", "database") { s!(xr, "spec", "database", "name") } else { "app" };
-        let owner = if has!(xr, "owner", "spec", "database") { s!(xr, "spec", "database", "owner") } else { "app" };
+        let database = if has!(xr, "spec", "database", "name") { s!(xr, "spec", "database", "name") } else { "app" };
+        let owner = if has!(xr, "spec", "database", "owner") { s!(xr, "spec", "database", "owner") } else { "app" };
         let mut want = json!({"source": "restore-source", "database": database, "owner": owner});
         if has!(restore, "targetTime") {
             want["recoveryTarget"] = json!({"targetTime": restore["targetTime"]});

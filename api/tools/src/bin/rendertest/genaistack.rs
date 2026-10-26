@@ -2,7 +2,7 @@ use basis_tools::{at, has, l, m, s};
 use serde_json::json;
 use std::collections::BTreeMap;
 
-use crate::{Render, eq, repr, unb64_lenient};
+use crate::{Render, eq, repr, unb64};
 
 pub fn assert(r: &Render) {
     let (kase, state, status, name, ns) = (r.kase.as_str(), r.state.as_str(), &r.status, r.name.as_str(), r.ns.as_str());
@@ -56,7 +56,6 @@ pub fn assert(r: &Render) {
         check(s!(gw, "spec", "expose", "hostname") == "bot.example.com" && s!(gw, "spec", "expose", "issuer") == "basis",
             format!("gateway: gateway.expose passed on: {}", repr(at!(gw, "spec", "expose"))));
     } else {
-        // Go's has(db, "spec", "expose") reads db.expose, which never exists.
         check(!has!(db, "spec", "expose") && !has!(gw, "spec", "expose"), "nothing exposed without spec.*.expose".into());
     }
 
@@ -69,7 +68,7 @@ pub fn assert(r: &Render) {
     for s in &sites {
         let conn = r.get(&format!("connection-{s}"));
         let data: BTreeMap<&str, String> = m!(conn, "data").into_iter().flatten()
-            .map(|(k, val)| (k.as_str(), unb64_lenient(val.as_str().unwrap_or("")))).collect();
+            .map(|(k, val)| (k.as_str(), unb64(val.as_str().unwrap_or("")).unwrap_or_default())).collect();
         let d = |k: &str| data.get(k).map(String::as_str).unwrap_or("");
         let cache_host = if *s == "recovery" { format!("valkey-{name}-cache-dr") } else { format!("valkey-{name}-cache") };
         let is_active = if *s == active { "true" } else { "false" };

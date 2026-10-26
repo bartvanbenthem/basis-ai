@@ -59,7 +59,7 @@ struct Args {
     debug: bool,
 }
 
-/// ":8080" listens on every interface, as Go's net/http does.
+/// ":8080" listens on every interface.
 fn address(a: &str) -> String {
     if a.starts_with(':') { format!("0.0.0.0{a}") } else { a.to_string() }
 }

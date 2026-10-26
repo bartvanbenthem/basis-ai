@@ -487,7 +487,6 @@ dependencies = [
  "clap",
  "function-sdk-rust",
  "hex",
- "pbjson-types",
  "rand",
  "regex",
  "serde",

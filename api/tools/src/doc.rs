@@ -74,12 +74,11 @@ macro_rules! l {
     };
 }
 
-/// Whether the mapping at a path has a key: has!(v, key, path...). The key
-/// comes first, as in the Go helper it replaces.
+/// Whether the path exists (its value may be null): has!(d, "spec", "expose").
 #[macro_export]
 macro_rules! has {
-    ($v:expr, $key:expr $(, $k:expr)* $(,)?) => {
-        $crate::m!($v $(, $k)*).is_some_and(|m| m.contains_key($key))
+    ($v:expr $(, $k:expr)* $(,)?) => {
+        $crate::at!($v $(, $k)*).is_some()
     };
 }
 

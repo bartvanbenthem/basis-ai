@@ -33,6 +33,8 @@ CRD's en controller (`cosi-system`) en de driver (`cloudian-cosi`) staan allemaa
 4. De Cloudian-driver maakt de bucket aan in HyperStore.
 5. Bij een `BucketAccess` vraagt de sidecar credentials op bij de driver en schrijft deze naar een Kubernetes `Secret`.
 
+Zie [bucket-access.md](bucket-access.md) voor de inhoud van dat Secret en de configuratie-opties.
+
 ## Upgrade-blokkade
 Upstream is COSI gemigreerd van `v1alpha1` naar `v1alpha2`. Deze versies zijn niet compatibel: zowel de CRD's als de gRPC-interface tussen sidecar en driver zijn gewijzigd.
 

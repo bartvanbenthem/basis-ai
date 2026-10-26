@@ -278,7 +278,7 @@ pub fn assert(r: &Render) {
         };
         if host.is_empty() {
             // no Grafana ingress in this case's project-defaults
-            check(!has!(graf, "ingress", "spec") && !has!(status, "url", "grafana"), "no ingress without hostTemplate".into());
+            check(!has!(graf, "spec", "ingress") && !has!(status, "grafana", "url"), "no ingress without hostTemplate".into());
         } else {
             let got = s!(graf, "spec", "ingress", "spec", "rules", 0, "host");
             check(got == host, format!("ingress host {got:?} != {host:?}"));
@@ -368,7 +368,7 @@ fn assert_bucket(r: &Render, bucket_class: &str, sites: &Value, site_locs: &[Str
     check((kase == "bucket-long") == bucket_class.starts_with("prj-"), format!("case {kase} must exercise its class form: {bucket_class}"));
     let cls = r.get("backup-bucketclass");
     check(s!(cls, "metadata", "name").len() <= 27, format!("BucketClass name too long for a bucket name: {}", s!(cls, "metadata", "name")));
-    check(s!(cls, "kind") == "BucketClass" && s!(cls, "metadata", "name") == bucket_class && !has!(cls, "namespace", "metadata")
+    check(s!(cls, "kind") == "BucketClass" && s!(cls, "metadata", "name") == bucket_class && !has!(cls, "metadata", "namespace")
         && s!(cls, "deletionPolicy") == "Retain" && s!(cls, "driverName") == "cloudian-cosi-driver"
         && eq(at!(cls, "parameters"), json!({"storagePolicy": "replicated-3"})),
         format!("BucketClass must keep the backups (Retain) and use the driver from project-defaults: {}", repr(Some(cls))));
@@ -455,8 +455,8 @@ fn assert_bucket(r: &Render, bucket_class: &str, sites: &Value, site_locs: &[Str
         let want_refs: Vec<Value> = ["data", "type"].iter().map(|f| json!({"patchesFrom": {"apiVersion": "v1", "kind": "Secret",
             "name": format!("backup-s3-{loc}"), "namespace": name, "fieldPath": f}})).collect();
         check(s!(o, "spec", "providerConfigRef", "name") == loc && eq(at!(o, "spec", "references"), Value::Array(want_refs))
-            && !has!(o, "data", "spec", "forProvider", "manifest")
-            && !has!(o, "platform.cndev.nl/copy-from", "spec", "forProvider", "manifest", "metadata", "annotations"),
+            && !has!(o, "spec", "forProvider", "manifest", "data")
+            && !has!(o, "spec", "forProvider", "manifest", "metadata", "annotations", "platform.cndev.nl/copy-from"),
             format!("{loc}: backup-check-s3 must copy backup-s3-{loc} from the control plane: {}", repr(at!(o, "spec"))));
         let cj = v(at!(r.get(&format!("location-{loc}-backup-check")), "spec", "forProvider", "manifest"));
         let pod = v(at!(cj, "spec", "jobTemplate", "spec", "template", "spec"));
@@ -477,7 +477,7 @@ fn assert_bucket(r: &Render, bucket_class: &str, sites: &Value, site_locs: &[Str
             && is_int(v(at!(pod, "securityContext", "runAsUser"))),
             format!("{loc}: backup-check CronJob {}", repr(at!(cj, "spec"))));
     }
-    // hack/observe reports each CronJob's last run as successful.
+    // observe reports each CronJob's last run as successful.
     let want: Vec<Value> = site_locs.iter().map(|loc| json!({"location": loc, "state": "Reachable", "lastCheckTime": "2026-01-01T00:05:00Z",
         "lastSuccessTime": "2026-01-01T00:05:04Z"})).collect();
     check(eq(at!(backup, "reachability"), Value::Array(want)), format!("status.backup.reachability {}", repr(at!(backup, "reachability"))));

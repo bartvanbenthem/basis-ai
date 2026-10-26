@@ -1,6 +1,6 @@
 # The platform itself in the catalog: the System its documentation hangs off
 # (TechDocs, mkdocs.yml next to this file). Its APIs are in apis.yaml, which
-# api/hack/generate writes from the XRDs (`make generate` in api/; `make test`
+# api/tools (generate) writes from the XRDs (`make generate` in api/; `make test`
 # fails while it's stale).
 apiVersion: backstage.io/v1alpha1
 kind: System
