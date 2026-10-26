@@ -1,0 +1,35 @@
+[package]
+name = "basis-mcp"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The MCP server of an MCPServer (ai.cndev.nl/v1alpha1): retrieval and agent memory over a Project's PostgreSQL"
+
+[dependencies]
+rmcp = { version = "3.7", default-features = false, features = ["server", "macros", "transport-streamable-http-server"] }
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time", "sync"] }
+tokio-util = "0.7"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "postgres", "json", "chrono", "macros"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+prometheus-client = "0.25"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+schemars = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+clap = { version = "4", features = ["derive"] }
+regex = "1"
+sha2 = "0.10"
+subtle = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+[dev-dependencies]
+rmcp = { version = "3.7", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }
+tempfile = "3"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

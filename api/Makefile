@@ -3,20 +3,22 @@
 # function-basis, the composition function behind every API (Project, Location,
 # PostgresCluster, ValkeyCache, ModelServer, ModelGateway, MCPServer, GenAIStack).
 FUNCTION_IMAGE ?= ghcr.io/bartvanbenthem/function-basis
-FUNCTION_VERSION ?= v0.4.7
+FUNCTION_VERSION ?= v0.5.0
 XPKG := _output/function-basis-$(FUNCTION_VERSION).xpkg
 
 # Rebuild the function's embedded assets from src/ (dashboards, alert rules)
+# and the APIs' OpenAPI documents for the portal
 generate:
-	go run ./hack/generate
+	cargo run -q -p basis-tools --bin generate
 
-# Fail if the embedded assets are stale
+# Fail if a generated file is stale
 check:
-	go run ./hack/generate --check
+	cargo run -q -p basis-tools --bin generate -- --check
 
-# Unit tests of the composition function (Go only)
+# Lints and unit tests of function-basis and the tools
 unit:
-	go test ./function/...
+	cargo clippy --workspace --all-targets -- -D warnings
+	cargo test --workspace
 
 # Unit tests, then offline render + schema validation tests (needs the
 # crossplane CLI and Docker/podman)

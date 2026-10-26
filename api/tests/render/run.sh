@@ -20,9 +20,9 @@
 #     and Envoy Gateway's and Crossplane's ClusterUsage from ../crds. The manifest inside each provider-kubernetes Object (what goes
 #     to a remote location) is validated too. Core kinds (Namespace,
 #     RoleBinding, ...) have no CRD and are skipped.
-#  4. Semantic assertions (rendertest/<api>.go).
+#  4. Semantic assertions (../../tools/src/bin/rendertest/<api>.rs).
 #
-# Requires the crossplane CLI (v2), helm, Go, and a Docker API and CLI (to build the function)
+# Requires the crossplane CLI (v2), helm, cargo, and a Docker API and CLI (to build the function)
 # (rootless podman works: export DOCKER_HOST=unix:///run/user/$UID/podman/podman.sock).
 #
 #   RENDER_FUNCTION=local            run function-basis as a local process instead of
@@ -33,6 +33,8 @@
 #                                    RENDER_FUNCTION=local no Docker is needed (go install
 #                                    github.com/crossplane/crossplane/v2/cmd/crossplane@<version>)
 #   RENDER_APIS="project location"   only these APIs
+#   FUNCTION_PREBUILT=true           use FUNCTION_IMAGE as it is (e.g. a published
+#                                    function-basis) instead of building it
 #   RENDER_OUT=<dir>                 keep the rendered output there (<api>-<case>-<state>.yaml)
 set -euo pipefail
 
@@ -55,19 +57,19 @@ if [[ -n "${RENDER_OUT:-}" ]]; then
 fi
 
 echo "=== build rendertest"
-RT="${OUT}/rendertest"
-(cd "${API_ROOT}" && go build -o "${RT}" ./tests/render/rendertest)
+(cd "${API_ROOT}" && cargo build -q -p basis-tools --bin rendertest --bin generate)
+RT="${API_ROOT}/target/debug/rendertest"
 
 echo "=== generate --check"
-(cd "${API_ROOT}" && go run ./hack/generate --check)
+"${API_ROOT}/target/debug/generate" --check
 
 FUNCTIONS="${OUT}/functions.yaml"
 if [[ "${RENDER_FUNCTION:-docker}" == "local" ]]; then
   # function-basis as a process on this machine (crossplane render's
   # Development runtime): no container runtime needed.
   echo "=== build and start function-basis (local, ${FUNCTION_ADDRESS:=127.0.0.1:9443})"
-  (cd "${API_ROOT}" && go build -o "${OUT}/function-basis" ./function)
-  "${OUT}/function-basis" --insecure --address "${FUNCTION_ADDRESS}" >"${OUT}/function.log" 2>&1 &
+  (cd "${API_ROOT}" && cargo build -q --release -p function-basis --bin function-basis)
+  "${API_ROOT}/target/release/function-basis" --insecure --address "${FUNCTION_ADDRESS}" >"${OUT}/function.log" 2>&1 &
   FUNCTION_PID=$!
   trap 'kill ${FUNCTION_PID} 2>/dev/null; rm -rf "${OUT}"' EXIT
   cat >"${FUNCTIONS}" <<EOF
@@ -82,8 +84,10 @@ spec:
   package: ${FUNCTION_IMAGE}
 EOF
 else
-  echo "=== build function-basis (${FUNCTION_IMAGE})"
-  docker build -q -f "${API_ROOT}/function/Dockerfile" -t "${FUNCTION_IMAGE}" "${API_ROOT}" >/dev/null
+  if [[ "${FUNCTION_PREBUILT:-false}" != "true" ]]; then
+    echo "=== build function-basis (${FUNCTION_IMAGE})"
+    docker build -q -f "${API_ROOT}/function/Dockerfile" -t "${FUNCTION_IMAGE}" "${API_ROOT}" >/dev/null
+  fi
   cat >"${FUNCTIONS}" <<EOF
 apiVersion: pkg.crossplane.io/v1
 kind: Function

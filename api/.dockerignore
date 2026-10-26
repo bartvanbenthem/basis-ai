@@ -1,0 +1,8 @@
+# The function's image needs the workspace manifests, function/ and tools/.
+target/
+_output/
+tests/
+apis/
+install/
+src/
+hack/

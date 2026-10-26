@@ -1,0 +1,25 @@
+wal_archive:
+  query: |
+    SELECT (pg_current_wal_lsn() - '0/0'::pg_lsn)
+             - COALESCE(r.oldest_segment_start,
+                 (pg_current_wal_lsn() - '0/0'::pg_lsn) - (pg_walfile_name_offset(pg_current_wal_lsn())).file_offset)
+             AS pending_bytes
+         , COALESCE(EXTRACT(EPOCH FROM now() - r.oldest_ready), 0) AS oldest_ready_seconds
+    FROM (SELECT NOT pg_is_in_recovery() AS primary_instance) p
+    CROSS JOIN LATERAL (
+      SELECT min(modification) AS oldest_ready
+           , min(('x' || lpad(substr(name, 9, 8), 16, '0'))::bit(64)::bigint::numeric * 4294967296
+               + ('x' || lpad(substr(name, 17, 8), 16, '0'))::bit(64)::bigint
+                 * pg_size_bytes(current_setting('wal_segment_size')))
+               FILTER (WHERE name ~ '^[0-9A-F]{24}\.ready$') AS oldest_segment_start
+      FROM pg_ls_archive_statusdir()
+      WHERE name LIKE '%.ready'
+    ) r
+    WHERE p.primary_instance
+  metrics:
+    - pending_bytes:
+        usage: GAUGE
+        description: WAL written by the primary and not yet archived to the object store (bytes)
+    - oldest_ready_seconds:
+        usage: GAUGE
+        description: Age of the oldest WAL file waiting to be archived (0 when none is waiting)

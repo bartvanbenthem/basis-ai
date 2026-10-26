@@ -138,7 +138,7 @@ The operator is v1alpha1 and marked early development upstream: cluster mode
 only (no standalone or Sentinel), no backups, no modules of its own. The
 `ValkeyCache` composition loads valkey-search for semantic caches through the
 `valkey/valkey-bundle` image, and pins both images
-([`function/valkeycache/compose.go`](../api/function/valkeycache/compose.go), a
+([`function/src/valkeycache.rs`](../api/function/src/valkeycache.rs), a
 new function-basis version); bump them together with this chart. Read the
 [upgrade notes](https://github.com/valkey-io/valkey-helm/tree/main/valkey-operator)
 before a chart upgrade: an operator upgrade can roll every cache's pods.
