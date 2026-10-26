@@ -3,7 +3,7 @@
 # function-basis, the composition function behind every API (Project, Location,
 # PostgresCluster, ValkeyCache, ModelServer, ModelGateway, MCPServer, GenAIStack).
 FUNCTION_IMAGE ?= ghcr.io/bartvanbenthem/function-basis
-FUNCTION_VERSION ?= v0.4.7
+FUNCTION_VERSION ?= v0.5.0
 XPKG := _output/function-basis-$(FUNCTION_VERSION).xpkg
 
 # Rebuild the function's embedded assets from src/ (dashboards, alert rules)
