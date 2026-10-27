@@ -86,9 +86,31 @@ See [`api/examples/`](api/examples/) for every API, and the platform docs in
 
 3. **The portal**, on the control plane: [`portal/README.md`](portal/README.md).
 
-The full walkthrough is [Install](portal/catalog/docs/platform/install.md). To release a new version of
-function-basis or basis-mcp, see [`api/README.md`](api/README.md#releasing-function-basis) and
-[`mcp/README.md`](mcp/README.md).
+The full walkthrough is [Install](portal/catalog/docs/platform/install.md).
+
+### Update function-basis
+
+`install.sh` installs the composition function, function-basis, from ghcr.io at the tag in
+[`api/install/function-basis.yaml`](api/install/function-basis.yaml). Whenever `api/function/`
+changes, publish a new version and roll it out before applying the APIs that need it:
+
+```sh
+make -C api test                                      # unit + render tests
+make -C api function-push FUNCTION_VERSION=<version>  # publish to ghcr.io
+# set <version> in api/install/function-basis.yaml and as FUNCTION_VERSION in api/Makefile, commit
+kubectl apply -f api/install/function-basis.yaml      # on every control plane (or api/install/install.sh)
+```
+
+`MCPServer`s run basis-mcp's image, at the tag in `DEFAULT_IMAGE` in
+`api/function/src/mcpserver.rs`. When [`mcp/`](mcp/) changes, publish it first, then function-basis:
+
+```sh
+make -C mcp test-db
+make -C mcp push VERSION=<version>   # then set <version> in mcp/Makefile and DEFAULT_IMAGE, and publish function-basis
+```
+
+See [Releasing function-basis](api/README.md#releasing-function-basis) for logging in to ghcr.io,
+the package's visibility, and rolling back.
 
 ## Test
 
