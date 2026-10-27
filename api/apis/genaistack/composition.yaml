@@ -1,5 +1,5 @@
-# The GenAIStack composition is Rust: function-basis
-# (../../function/src/genaistack.rs). See its module documentation for what gets
+# The GenAIStack composition is Go code: function-basis
+# (../../function/genaistack). See its package documentation for what gets
 # composed: the child PostgresCluster and ValkeyCaches next to the stack, and
 # per site the gateway (Agent Router) and the connection Secret in the location.
 apiVersion: apiextensions.crossplane.io/v1

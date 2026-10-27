@@ -1,5 +1,5 @@
-# The PostgresCluster composition is Rust: function-basis
-# (../../function/src/postgrescluster/mod.rs). See its module documentation for what
+# The PostgresCluster composition is Go code: function-basis
+# (../../function/postgrescluster). See its package documentation for what
 # gets composed, the sites, the replica topology and the switchover protocol.
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
