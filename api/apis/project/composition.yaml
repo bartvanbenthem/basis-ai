@@ -1,5 +1,5 @@
-# The Project composition is Rust: function-basis
-# (../../function/src/project/mod.rs). See its module documentation for what gets
+# The Project composition is Go code: function-basis
+# (../../function/project). See its package documentation for what gets
 # composed: the namespace on the control plane with the project's Prometheus,
 # Grafana, access and backup bucket (COSI), and per location (wrapped in
 # provider-kubernetes Objects) the namespace, a Prometheus that writes to the

@@ -60,12 +60,18 @@ spec:
 
     - title: Retrieval and cache
       properties:
-        size:
-          title: Database size
+        cpu:
+          title: Database CPU
           type: string
-          description: From the postgres-sizes catalog (api/apis/postgrescluster/sizes.yaml).
-          enum: [xs, s, m, l, xl]
-          default: s
+          description: Per instance, e.g. 500m or 2.
+          default: "1"
+          pattern: '^([0-9]+m|[0-9]+(\.[0-9]+)?)$'
+        memory:
+          title: Database memory
+          type: string
+          description: Per instance (request and limit); PostgreSQL is tuned to it. 8Gi or more for millions of embeddings.
+          default: 4Gi
+          pattern: '^[0-9]+(Mi|Gi)$'
         storageSize:
           title: Database storage
           type: string
@@ -147,7 +153,8 @@ spec:
           recovery:
             enabled: ${{ parameters.recovery }}
           retrieval:
-            size: ${{ parameters.size }}
+            cpu: ${{ parameters.cpu }}
+            memory: ${{ parameters.memory }}
             storageSize: ${{ parameters.storageSize }}
             auditLog: ${{ parameters.auditLog if parameters.auditLog }}
           cache:

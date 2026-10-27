@@ -1,5 +1,5 @@
 # Observed state for xr/governed.yaml (as minimal.yaml's; the cost rules and dashboard
-# are composed either way). Regenerate: cargo run -p basis-tools --bin observe -- project governed
+# are composed either way). Regenerate: go run ./hack/observe project governed
 apiVersion: grafana.integreatly.org/v1beta1
 kind: Grafana
 metadata:

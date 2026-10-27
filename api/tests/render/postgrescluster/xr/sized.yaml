@@ -1,12 +1,14 @@
-# A size from the postgres-sizes catalog (apis/postgrescluster/sizes.yaml):
-# its resources and tuned settings, with spec.postgresql.parameters on top.
+# Resources of its own: PostgreSQL's settings tuned to them, with
+# spec.postgresql.parameters on top.
 apiVersion: postgres.cndev.nl/v1alpha1
 kind: PostgresCluster
 metadata:
   name: orders-db
   namespace: demo
 spec:
-  size: m
+  resources:
+    cpu: "2"
+    memory: 8Gi
   storage:
     size: 50Gi
   postgresql:

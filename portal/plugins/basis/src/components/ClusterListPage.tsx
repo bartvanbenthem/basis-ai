@@ -113,7 +113,7 @@ export const ClusterListPage = () => {
       cell: c => (
         <CellText
           title={`${c.readyInstances}/${c.instances}`}
-          description={c.size ? `size ${c.size.toUpperCase()}` : undefined}
+          description={c.cpu && c.memory ? `${c.cpu} CPU · ${c.memory}` : undefined}
         />
       ),
     },

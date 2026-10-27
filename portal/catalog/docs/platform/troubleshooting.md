@@ -9,13 +9,12 @@ portal shows the same, plus events and pod logs from the location.
 | `status.message` or symptom | Cause | Fix |
 |---|---|---|
 | `Namespace ... is not a Project with a protected location` | The namespace isn't a Project, or its Project has no protected location | Create it in a Project's namespace |
-| `size ... is not in the postgres-sizes catalog` | The size was removed or renamed | Pick a size from the catalog; a running cluster keeps what it has |
 | `backup uses the backup bucket of Project ..., which isn't ready` | COSI hasn't provisioned the bucket yet | Check the Project's `status.backup` and the COSI driver |
 | `geoReplication is enabled, but Project ... has no recovery location` | The Project has no recovery site | Add `spec.locations.recovery` to the Project |
 | `Waiting for CNPG Cluster ...` for long | Pods don't start in the location | The portal's events and logs, or `kubectl get pods` in the location |
 | `extensions ... are mounted from images, which needs postgresVersion 18` | An image extension on an older PostgreSQL | Use PostgreSQL 18, or drop the extension |
 | A pod fails to mount an extension image | The location doesn't support image volumes | The location's **Image volumes** health check |
-| `Synced=False`, e.g. `... has composed resources but no site` | The function refuses to render a desired state that would tear down a running database (an input went missing) | Restore the input it names (the Project, `status.sites`, the size catalog); `kubectl get function function-basis` |
+| `Synced=False`, e.g. `... has composed resources but no site` | The function refuses to render a desired state that would tear down a running database (an input went missing) | Restore the input it names (the Project, `status.sites`); `kubectl get function function-basis` |
 
 ## Stacks, gateways and caches
 

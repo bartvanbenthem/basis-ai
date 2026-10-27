@@ -1,30 +1,24 @@
-.PHONY: generate crds check unit test function-image function-xpkg function-push install uninstall
+.PHONY: generate check unit test function-image function-xpkg function-push install uninstall
 
 # function-basis, the composition function behind every API (Project, Location,
 # PostgresCluster, ValkeyCache, ModelServer, ModelGateway, MCPServer, GenAIStack).
 FUNCTION_IMAGE ?= ghcr.io/bartvanbenthem/function-basis
-FUNCTION_VERSION ?= v0.5.0
+FUNCTION_VERSION ?= v0.5.1
 XPKG := _output/function-basis-$(FUNCTION_VERSION).xpkg
 
 # Rebuild the function's embedded assets from monitoring/ (dashboards, alert rules)
 # and the APIs' OpenAPI documents for the portal
 generate:
-	cargo run -q -p basis-tools --bin generate
-
-# Regenerate crds/ (basis-crds), the operator kinds' Rust types, with kopium
-# from their CRDs (tests/crds and the CNPG charts); see crdgen/src/main.rs
-crds:
-	cargo run -q -p basis-crdgen
+	go run ./hack/generate
 
 # Fail if a generated file is stale
 check:
-	cargo run -q -p basis-tools --bin generate -- --check
-	cargo run -q -p basis-crdgen -- --check
+	go run ./hack/generate --check
 
-# Lints and unit tests of function-basis and the tools
+# Vet and unit tests: the function and the tools
 unit:
-	cargo clippy --workspace --all-targets -- -D warnings
-	cargo test --workspace
+	go vet ./...
+	go test ./...
 
 # Unit tests, then offline render + schema validation tests (needs the
 # crossplane CLI and Docker/podman)

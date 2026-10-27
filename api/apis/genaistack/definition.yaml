@@ -133,9 +133,16 @@ spec:
                   description: The RAG database, a PostgresCluster (profile vector, PostgreSQL 18) named <name>-db.
                   default: {}
                   properties:
-                    size:
+                    cpu:
                       type: string
-                      description: A size from the postgres-sizes catalog (e.g. s, m). Unset, 500m CPU and 1Gi memory.
+                      description: CPU of each database instance.
+                      pattern: '^[0-9]+(\.[0-9]+)?m?$'
+                      default: 500m
+                    memory:
+                      type: string
+                      description: Memory of each database instance (request and limit); its PostgreSQL settings are tuned to it.
+                      pattern: '^[0-9]+(Mi|Gi)$'
+                      default: 1Gi
                     instances:
                       type: integer
                       minimum: 1

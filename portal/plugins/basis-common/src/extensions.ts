@@ -6,6 +6,9 @@
  * that aren't in it; the composition adds the settings an extension needs.
  */
 
+export const EXTENSIONS_GROUP = 'apiextensions.crossplane.io';
+export const EXTENSIONS_VERSION = 'v1beta1';
+export const EXTENSIONS_PLURAL = 'environmentconfigs';
 export const EXTENSIONS_NAME = 'postgres-extensions';
 
 /** pgvector's extension name: what spec...extensions lists for vector search. */

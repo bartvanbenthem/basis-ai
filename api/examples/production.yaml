@@ -16,16 +16,18 @@ metadata:
 spec:
   postgresVersion: 17
   instances: 3
-  # 2 vCPU, 8Gi memory and tuned settings (apis/postgrescluster/sizes.yaml);
-  # or resources: {requests: ..., limits: ...} instead.
-  size: m
+  # Each instance's CPU and memory (request and limit); PostgreSQL's settings
+  # are tuned to them.
+  resources:
+    cpu: "2"
+    memory: 8Gi
   storage:
     size: 50Gi
   walStorage:
     size: 10Gi
   postgresql:
     parameters:
-      # On top of the size's settings.
+      # Over the tuned settings.
       max_connections: "300"
       pg_stat_statements.max: "10000"
       pg_stat_statements.track: all

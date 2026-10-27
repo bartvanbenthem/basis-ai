@@ -21,12 +21,10 @@ import {
   CACHE_MODES,
   type CacheMode,
   type ClusterExtension,
-  type ClusterSize,
   basisProjectCreatePermission,
   type ModelGatewaySummary,
   basisStackUpdatePermission,
   type ProjectSummary,
-  sizeLabel,
 } from '@internal/backstage-plugin-basis-common';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -54,7 +52,6 @@ import {
 
 const FIXED = 'Fixed after creation.';
 const OWN_GATEWAY = '__own__';
-const DEFAULT_SIZE = '__default__';
 
 /** Every section of the stack form, shared by the create and edit pages. */
 const StackFormFields = ({
@@ -65,7 +62,6 @@ const StackFormFields = ({
   editing,
   projects,
   gateways,
-  sizes,
   extensions,
 }: {
   form: StackForm;
@@ -76,7 +72,6 @@ const StackFormFields = ({
   projects?: ProjectSummary[];
   /** The project's ModelGateways that aren't another stack's own, to share. */
   gateways: ModelGatewaySummary[];
-  sizes: ClusterSize[];
   extensions: ClusterExtension[];
 }) => {
   const set = <K extends keyof StackForm>(key: K) => (value: StackForm[K]) => setForm(f => ({ ...f, [key]: value }));
@@ -174,11 +169,19 @@ const StackFormFields = ({
       </Section>
 
       <Section title="Retrieval" description="The RAG database: PostgreSQL 18 with the vector profile (pgvector, VectorChord, pg_search), PostgresCluster <name>-db.">
-        <Select
-          label="Size"
-          value={form.size || DEFAULT_SIZE}
-          onChange={k => set('size')(k === DEFAULT_SIZE ? '' : String(k))}
-          options={[{ id: DEFAULT_SIZE, label: 'Default (0.5 vCPU, 1Gi)' }, ...sizes.map(s => ({ id: s.name, label: sizeLabel(s) }))]}
+        <TextField
+          label="CPU"
+          value={form.dbCpu}
+          onChange={set('dbCpu')}
+          description={err('dbCpu') ?? 'Per instance, e.g. 500m or 2.'}
+          isInvalid={Boolean(err('dbCpu'))}
+        />
+        <TextField
+          label="Memory"
+          value={form.dbMemory}
+          onChange={set('dbMemory')}
+          description={err('dbMemory') ?? 'Per instance; PostgreSQL is tuned to it. 8Gi or more for millions of embeddings.'}
+          isInvalid={Boolean(err('dbMemory'))}
         />
         <NumberField label="Instances" minValue={1} maxValue={9} value={form.instances} onChange={set('instances')} />
         <TextField
@@ -376,10 +379,9 @@ const StackFormFields = ({
 
 function useCatalogs() {
   const api = useApi(basisApiRef);
-  const { value: sizes } = useAsync(() => api.listSizes().catch(() => []), [api]);
   const { value: extensions } = useAsync(() => api.listExtensions().catch(() => []), [api]);
   const { value: gateways } = useAsync(() => api.listGateways().catch(() => []), [api]);
-  return { sizes: sizes ?? [], extensions: extensions ?? [], gateways: gateways ?? [] };
+  return { extensions: extensions ?? [], gateways: gateways ?? [] };
 }
 
 export const CreateStackPage = () => {
@@ -389,7 +391,7 @@ export const CreateStackPage = () => {
   const createProjectLink = useRouteRef(createProjectRouteRef);
   const { allowed: canCreateProject } = usePermission({ permission: basisProjectCreatePermission });
   const { value: projects, loading: projectsLoading } = useAsync(() => api.listProjects(), [api]);
-  const { sizes, extensions, gateways } = useCatalogs();
+  const { extensions, gateways } = useCatalogs();
   const [form, setForm] = useState<StackForm>(defaultStackForm);
   const [touched, setTouched] = useState(false);
   const [submitting, setSubmitting] = useState<'validate' | 'create'>();
@@ -456,7 +458,6 @@ export const CreateStackPage = () => {
                 touched={touched}
                 projects={projects}
                 gateways={gateways}
-                sizes={sizes}
                 extensions={extensions}
               />
             </Flex>
@@ -478,7 +479,7 @@ export const CreateStackPage = () => {
   );
 };
 
-/** Changes a stack: sites, sizes, cache, gateway and its models. Name and project are fixed. */
+/** Changes a stack: sites, resources, cache, gateway and its models. Name and project are fixed. */
 export const EditStackPage = () => {
   const { namespace = '', name = '' } = useParams();
   const api = useApi(basisApiRef);
@@ -487,7 +488,7 @@ export const EditStackPage = () => {
   const { allowed: canUpdate, loading: permissionLoading } = usePermission({ permission: basisStackUpdatePermission });
   const { value: stack, error: loadError } = useAsync(() => api.getStack(namespace, name), [api, namespace, name]);
   const { value: projects } = useAsync(() => api.listProjects().catch(() => []), [api]);
-  const { sizes, extensions, gateways } = useCatalogs();
+  const { extensions, gateways } = useCatalogs();
   const original = useMemo(() => stack && fromStack(stack.resource), [stack]);
   const [form, setForm] = useState<StackForm>();
   const [touched, setTouched] = useState(false);
@@ -552,8 +553,7 @@ export const EditStackPage = () => {
                   editing
                   projects={projects}
                   gateways={gateways}
-                  sizes={sizes}
-                  extensions={extensions}
+                    extensions={extensions}
                 />
               </Flex>
             </Grid.Item>

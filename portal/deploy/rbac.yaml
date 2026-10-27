@@ -67,11 +67,10 @@ rules:
   - apiGroups: [platform.cndev.nl]
     resources: [locations]
     verbs: [get, list, watch, create, update, delete]
-  # The sizes (SKUs) a PostgresCluster can pick and the extensions it can
-  # add, for the cluster form.
+  # The extensions a PostgresCluster can add, for the cluster form.
   - apiGroups: [apiextensions.crossplane.io]
     resources: [environmentconfigs]
-    resourceNames: [postgres-sizes, postgres-extensions]
+    resourceNames: [postgres-extensions]
     verbs: [get]
   # COSI's Bucket objects: which buckets on the object store are still in use.
   - apiGroups: [objectstorage.k8s.io]

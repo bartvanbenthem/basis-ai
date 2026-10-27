@@ -29,7 +29,7 @@ kubectl explain genaistack.spec                      # the fields, from the same
 kubectl explain postgrescluster.spec
 kubectl explain postgrescluster.spec.geoReplication
 kubectl get genaistacks,modelgateways -A            # READY, active site, models
-kubectl get postgresclusters -A                      # VERSION, SIZE, PHASE, PRIMARY, LOCATION, READY
+kubectl get postgresclusters -A                      # VERSION, CPU, MEMORY, PHASE, PRIMARY, LOCATION, READY
 kubectl get valkeycaches -A                         # MODE, SHARDS, REPLICAS, STATE, SITE, LOCATION, READY
 kubectl apply --dry-run=server -f my-cluster.yaml    # validate, including admission policies
 ```
@@ -38,7 +38,6 @@ kubectl apply --dry-run=server -f my-cluster.yaml    # validate, including admis
 
 Admission policies check what a schema can't, against the platform's catalogs:
 
-- `spec.size` must be a size in the `postgres-sizes` catalog.
 - Extensions must be in the `postgres-extensions` catalog; one mounted from an image needs
   PostgreSQL 18.
 - A cluster needs a namespace whose Project has a protected location, and geo replication needs a

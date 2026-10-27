@@ -22,7 +22,7 @@
 - GenAIStack (`ai.cndev.nl/v1alpha1`, short `gstack`): RAG database + cache + model gateway +
   wiring. Apps mount Secret `<name>-connection` (in the location): DATABASE_URL, VALKEY_URL,
   OPENAI_BASE_URL, OPENAI_API_KEY, SITE, ACTIVE.
-  spec: retrieval {size, instances=3, storageSize=20Gi, backup, extensions=[vector],
+  spec: retrieval {cpu=500m, memory=1Gi, instances=3, storageSize=20Gi, backup, extensions=[vector],
   expose {enabled, loadBalancerSourceRanges (required when enabled)}};
   cache {enabled=true, mode=semantic|exact, memory=1Gi, cpu, evictionPolicy};
   gateway {enabled=true, models[], replicas=2, ref (shared ModelGateway), client,
@@ -55,7 +55,7 @@
   scope=client|shared, retentionDays}; clients[] {name, owner, tools[], expiresAt} = [agents];
   replicas=2; recovery {enabled, replicas=1}; alerts.
 - PostgresCluster (`postgres.cndev.nl/v1alpha1`, short `pgc`): highly available PostgreSQL on
-  CloudNativePG. spec: size (catalog), instances, storage {size}, profile (vector = pgvector,
+  CloudNativePG. spec: resources {cpu=500m, memory=1Gi} (PostgreSQL tuned to them), instances, storage {size}, profile (vector = pgvector,
   VectorChord, pg_search; needs postgresVersion 18), postgresVersion, database {extensions},
   backup {enabled}, geoReplication {enabled, primarySite, promotion}, pooler, roles,
   expose {enabled, loadBalancerSourceRanges}.

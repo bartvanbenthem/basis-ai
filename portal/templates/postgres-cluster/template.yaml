@@ -64,26 +64,22 @@ spec:
           maximum: 9
           default: 3
 
-    - title: Sizing
+    - title: Resources & storage
       properties:
-        # The names in the postgres-sizes catalog
-        # (api/apis/postgrescluster/sizes.yaml); keep them in step with it. The
-        # API refuses a size the catalog doesn't have.
-        size:
-          title: Size
+        cpu:
+          title: CPU
+          type: string
+          description: Per instance, e.g. 500m or 2.
+          default: "1"
+          pattern: '^([0-9]+m|[0-9]+(\.[0-9]+)?)$'
+        memory:
+          title: Memory
           type: string
           description: >-
-            CPU and memory per instance, with PostgreSQL settings tuned to them.
-            Changing it later restarts the instances one by one.
-          enum: [xs, s, m, l, xl, custom]
-          enumNames:
-            - XS — 0.5 vCPU, 1Gi memory (development)
-            - S — 1 vCPU, 4Gi memory
-            - M — 2 vCPU, 8Gi memory
-            - L — 4 vCPU, 16Gi memory
-            - XL — 8 vCPU, 32Gi memory
-            - Custom CPU and memory
-          default: s
+            Per instance (request and limit); PostgreSQL's settings are tuned to it.
+            Changing CPU or memory later restarts the instances one by one.
+          default: 4Gi
+          pattern: '^[0-9]+(Mi|Gi)$'
         storageSize:
           title: Data volume size
           type: string
@@ -95,26 +91,6 @@ spec:
           type: string
           default: app
           pattern: '^[a-z_][a-z0-9_]*$'
-      dependencies:
-        size:
-          oneOf:
-            - properties:
-                size:
-                  enum: [xs, s, m, l, xl]
-            - properties:
-                size:
-                  const: custom
-                cpu:
-                  title: CPU request
-                  type: string
-                  default: 500m
-                  pattern: '^([0-9]+m|[0-9]+(\.[0-9]+)?)$'
-                memory:
-                  title: Memory (request = limit)
-                  type: string
-                  default: 1Gi
-                  pattern: '^[0-9]+(Mi|Gi|Ti)$'
-              required: [cpu, memory]
 
     - title: Features
       properties:
@@ -178,15 +154,9 @@ spec:
           instances: ${{ parameters.instances }}
           storage:
             size: ${{ parameters.storageSize }}
-          # A size or custom resources, never both (the API allows one); the
-          # action prunes the empty side.
-          size: ${{ parameters.size if parameters.size != 'custom' }}
           resources:
-            requests:
-              cpu: ${{ parameters.cpu if parameters.size == 'custom' }}
-              memory: ${{ parameters.memory if parameters.size == 'custom' }}
-            limits:
-              memory: ${{ parameters.memory if parameters.size == 'custom' }}
+            cpu: ${{ parameters.cpu }}
+            memory: ${{ parameters.memory }}
           database:
             name: ${{ parameters.databaseName }}
             owner: ${{ parameters.databaseName }}

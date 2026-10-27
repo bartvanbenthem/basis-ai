@@ -11,8 +11,8 @@
 #     <api>/required/<case>.yaml (else <api>/required/default.yaml), if
 #     present, mocks the resources the composition requests (the
 #     project-defaults EnvironmentConfig, Locations, the Project), plus
-#     <api>'s apis/<api>/sizes.yaml (the postgres-sizes catalog) and
-#     extensions.yaml (the postgres-extensions catalog) if it has them.
+#     <api>'s apis/<api>/extensions.yaml (the postgres-extensions catalog)
+#     if it has one.
 #  3. `crossplane resource validate` of every rendered object against the
 #     real CRD schemas: CNPG + Barman Cloud from ../../../deps/cnpg/charts,
 #     Prometheus Operator, grafana-operator, provider-kubernetes, the Valkey
@@ -20,9 +20,9 @@
 #     and Envoy Gateway's and Crossplane's ClusterUsage from ../crds. The manifest inside each provider-kubernetes Object (what goes
 #     to a remote location) is validated too. Core kinds (Namespace,
 #     RoleBinding, ...) have no CRD and are skipped.
-#  4. Semantic assertions (../../tools/src/bin/rendertest/<api>.rs).
+#  4. Semantic assertions (rendertest/<api>.go).
 #
-# Requires the crossplane CLI (v2), helm, cargo, and a Docker API and CLI (to build the function)
+# Requires the crossplane CLI (v2), helm, Go, and a Docker API and CLI (to build the function)
 # (rootless podman works: export DOCKER_HOST=unix:///run/user/$UID/podman/podman.sock).
 #
 #   RENDER_FUNCTION=local            run function-basis as a local process instead of
@@ -57,19 +57,19 @@ if [[ -n "${RENDER_OUT:-}" ]]; then
 fi
 
 echo "=== build rendertest"
-(cd "${API_ROOT}" && cargo build -q -p basis-tools --bin rendertest --bin generate)
-RT="${API_ROOT}/target/debug/rendertest"
+RT="${OUT}/rendertest"
+(cd "${API_ROOT}" && go build -o "${RT}" ./tests/render/rendertest)
 
 echo "=== generate --check"
-"${API_ROOT}/target/debug/generate" --check
+(cd "${API_ROOT}" && go run ./hack/generate --check)
 
 FUNCTIONS="${OUT}/functions.yaml"
 if [[ "${RENDER_FUNCTION:-docker}" == "local" ]]; then
   # function-basis as a process on this machine (crossplane render's
   # Development runtime): no container runtime needed.
   echo "=== build and start function-basis (local, ${FUNCTION_ADDRESS:=127.0.0.1:9443})"
-  (cd "${API_ROOT}" && cargo build -q --release -p function-basis --bin function-basis)
-  "${API_ROOT}/target/release/function-basis" --insecure --address "${FUNCTION_ADDRESS}" >"${OUT}/function.log" 2>&1 &
+  (cd "${API_ROOT}" && go build -o "${OUT}/function-basis" ./function)
+  "${OUT}/function-basis" --insecure --address "${FUNCTION_ADDRESS}" >"${OUT}/function.log" 2>&1 &
   FUNCTION_PID=$!
   trap 'kill ${FUNCTION_PID} 2>/dev/null; rm -rf "${OUT}"' EXIT
   cat >"${FUNCTIONS}" <<EOF
@@ -125,9 +125,7 @@ for api in "${APIS[@]}"; do
     elif [[ -f "${dir}/required/default.yaml" ]]; then
       mocks=("${dir}/required/default.yaml")
     fi
-    # The shipped postgres-sizes catalog, as installed.
-    [[ -f "${API_ROOT}/apis/${api}/sizes.yaml" ]] && mocks+=("${API_ROOT}/apis/${api}/sizes.yaml")
-    # ... and the shipped postgres-extensions catalog.
+    # The shipped postgres-extensions catalog, as installed.
     [[ -f "${API_ROOT}/apis/${api}/extensions.yaml" ]] && mocks+=("${API_ROOT}/apis/${api}/extensions.yaml")
     required=()
     if [[ ${#mocks[@]} -gt 0 ]]; then

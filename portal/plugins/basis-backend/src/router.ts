@@ -77,7 +77,6 @@ import {
   PostgresCluster,
   promotionPatch,
   PostgresClusterSummary,
-  parseSizes,
   parseExtensions,
   projectLocations,
   RestoreSource,
@@ -359,12 +358,6 @@ export async function createRouter(options: {
       defaultNamespace: config.getOptionalString('basis.defaultNamespace'),
       storageClasses: config.getOptionalStringArray('basis.storageClasses') ?? [],
     });
-  });
-
-  // The sizes (SKUs) spec.size can name; empty without a catalog.
-  router.get('/sizes', async (req, res) => {
-    await authorize(req, basisClusterReadPermission);
-    res.json({ items: parseSizes(await k8s.sizesCatalog()) });
   });
 
   // The extensions a cluster may add to its databases; empty without a catalog.

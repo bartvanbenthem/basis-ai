@@ -24,8 +24,9 @@ export interface StackForm {
   recovery: boolean;
   recoveryCacheMemory: string;
   recoveryGatewayReplicas: number;
-  /** A size from the catalog; empty for the default resources. */
-  size: string;
+  /** Each database instance's; memory is request and limit. */
+  dbCpu: string;
+  dbMemory: string;
   instances: number;
   storageSize: string;
   backup: boolean;
@@ -62,7 +63,8 @@ export const defaultStackForm = (): StackForm => ({
   recovery: false,
   recoveryCacheMemory: '512Mi',
   recoveryGatewayReplicas: 1,
-  size: '',
+  dbCpu: '500m',
+  dbMemory: '1Gi',
   instances: 3,
   storageSize: '20Gi',
   backup: false,
@@ -94,7 +96,8 @@ export function fromStack(stack: GenAIStack): StackForm {
     recovery: Boolean(spec.recovery?.enabled),
     recoveryCacheMemory: spec.recovery?.cacheMemory ?? d.recoveryCacheMemory,
     recoveryGatewayReplicas: spec.recovery?.gatewayReplicas ?? d.recoveryGatewayReplicas,
-    size: spec.retrieval?.size ?? '',
+    dbCpu: spec.retrieval?.cpu ?? d.dbCpu,
+    dbMemory: spec.retrieval?.memory ?? d.dbMemory,
     instances: spec.retrieval?.instances ?? d.instances,
     storageSize: spec.retrieval?.storageSize ?? d.storageSize,
     backup: Boolean(spec.retrieval?.backup),
@@ -119,6 +122,7 @@ export function fromStack(stack: GenAIStack): StackForm {
 
 const NAME = /^[a-z]([-a-z0-9]{0,26}[a-z0-9])?$/;
 const QUANTITY = /^[0-9]+(Mi|Gi)$/;
+const CPU = /^([0-9]+m|[0-9]+(\.[0-9]+)?)$/;
 const CLIENT = /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/;
 
 export type StackErrors = Partial<Record<Exclude<keyof StackForm, 'dbExpose' | 'gatewayExpose'>, string>> & {
@@ -134,6 +138,8 @@ export function validateStack(f: StackForm): StackErrors {
   if (!NAME.test(f.name)) e.name = 'Lowercase letters, digits and "-", starting with a letter, max 28 characters.';
   if (!f.namespace) e.namespace = 'Pick the project the stack belongs to.';
   if (f.owner && !/^[A-Za-z0-9][-A-Za-z0-9_.]{0,62}$/.test(f.owner)) e.owner = 'A group name, e.g. team-payments.';
+  if (!CPU.test(f.dbCpu)) e.dbCpu = 'Cores or millicores, e.g. 2 or 500m.';
+  if (!QUANTITY.test(f.dbMemory)) e.dbMemory = 'Mi or Gi, e.g. 4Gi';
   if (!/^[0-9]+(Mi|Gi|Ti)$/.test(f.storageSize)) e.storageSize = 'e.g. 20Gi';
   if (f.auditEnabled && !AUDIT_LOG.test(f.auditLog)) {
     e.auditLog = 'Classes separated by commas, e.g. ddl, role; prefix "-" to leave one out.';
@@ -170,7 +176,8 @@ export function toStackSpec(f: StackForm): Record<string, unknown> {
       gatewayReplicas: f.recoveryGatewayReplicas,
     },
     retrieval: {
-      ...(f.size ? { size: f.size } : {}),
+      cpu: f.dbCpu,
+      memory: f.dbMemory,
       instances: f.instances,
       storageSize: f.storageSize,
       backup: f.backup,

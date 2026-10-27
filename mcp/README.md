@@ -68,6 +68,6 @@ The store's tests run against any PostgreSQL with pgvector:
 `BASIS_MCP_TEST_DATABASE_URL=postgres://app:test@127.0.0.1:55432/app cargo test`. Each test
 works in a schema of its own and drops it afterwards.
 
-A release: bump `VERSION` here and `DEFAULT_IMAGE` in
-[`api/function/src/mcpserver.rs`](../api/function/src/mcpserver.rs), `make push`, then
-publish function-basis as usual ([README](../README.md#install)).
+A release: bump `VERSION` here and `DefaultImage` in
+[`api/function/mcpserver/compose.go`](../api/function/mcpserver/compose.go), `make push`, then
+publish function-basis as usual ([Releasing function-basis](../api/README.md#releasing-function-basis)).

@@ -27,4 +27,4 @@ helm template xrel "${tmp}/cluster" -n zznamespacezz \
   --set cluster.monitoring.prometheusRule.enabled=true \
   --show-only templates/prometheus-rule.yaml > "${tmp}/rule.yaml"
 
-(cd "${SCRIPT_DIR}/.." && cargo run -q -p basis-tools --bin alertrules -- "${tmp}/rule.yaml" "${OUT}" "${version}")
+(cd "${SCRIPT_DIR}/.." && go run ./hack/alertrules "${tmp}/rule.yaml" "${OUT}" "${version}")

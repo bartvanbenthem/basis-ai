@@ -1,8 +1,7 @@
 # Single sign-on and personal database access with an IdP
 
 Status: design notes, not implemented
-Relates to: the *Single sign-on* and *Personal database access* items in the
-[README TODO](https://github.com/bartvanbenthem/basis/blob/main/README.md#todo)
+Relates to: single sign-on and personal database access
 
 There are two separate problems here, and they differ a lot in difficulty:
 

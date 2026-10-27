@@ -1,7 +1,7 @@
 .PHONY: test test-db image push
 
-# basis-mcp, the image every MCPServer runs (api/function/src/mcpserver.rs's
-# DEFAULT_IMAGE names this tag).
+# basis-mcp, the image every MCPServer runs (DefaultImage in
+# api/function/mcpserver/compose.go names this tag).
 IMAGE ?= ghcr.io/bartvanbenthem/basis-mcp
 VERSION ?= v0.1.0
 TEST_DATABASE_URL ?= postgres://app:test@127.0.0.1:55432/app

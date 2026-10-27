@@ -3,24 +3,31 @@
 Every setting below is a field of the `PostgresCluster` spec; the portal's form sets the same
 fields. The [API reference](../api.md) lists all of them, with their defaults and rules.
 
-## Size
+## Resources
 
-`spec.size` picks a size from the platform's catalog. A size gives each instance its CPU and memory,
-plus PostgreSQL settings tuned to that memory (`shared_buffers`, `effective_cache_size`,
-`work_mem`, `maintenance_work_mem`, `max_connections`).
+`spec.resources` sets each instance's CPU and memory (default `500m` and `1Gi`). Memory is both
+request and limit, so PostgreSQL always has what its settings assume; there is no CPU limit, so
+instances aren't throttled. PostgreSQL's settings are tuned to the memory:
 
-| Size | CPU | Memory | Suggested data / WAL volume |
-|---|---|---|---|
-| `xs` | 500m | 1Gi | 10Gi / – |
-| `s` | 1 | 4Gi | 20Gi / 5Gi |
-| `m` | 2 | 8Gi | 50Gi / 10Gi |
-| `l` | 4 | 16Gi | 100Gi / 20Gi |
-| `xl` | 8 | 32Gi | 250Gi / 50Gi |
+| Setting | Value |
+|---|---|
+| `shared_buffers` | 25% of the memory |
+| `effective_cache_size` | 75% of the memory |
+| `work_mem` | memory / 512, at least 4MB |
+| `maintenance_work_mem` | memory / 16, at least 64MB (vector profile: 3/16) |
+| `max_connections` | 100 under 4Gi, 200 under 16Gi, 300 under 32Gi, 400 from 32Gi |
+| `max_parallel_maintenance_workers` | vector profile only: ¾ of the CPUs, at least 1 |
 
-- Settings in `spec.postgresql.parameters` override the size's.
-- Instead of a size you can set `spec.resources` (CPU and memory of your own), not both.
-- `status.sizing` shows what the instances run with. Changing the size restarts the instances one by
-  one, the primary last (a switchover), so the database stays available.
+```yaml
+spec:
+  resources:
+    cpu: "2"
+    memory: 8Gi                # shared_buffers 2GB, effective_cache_size 6GB, ...
+```
+
+- Settings in `spec.postgresql.parameters` override the tuned ones.
+- `status.sizing` shows what the instances run with. Changing CPU or memory restarts the instances
+  one by one, the primary last (a switchover), so the database stays available.
 - Volumes are separate (`spec.storage`, `spec.walStorage`): they can grow, not shrink. A separate WAL
   volume is worth it for busy databases.
 

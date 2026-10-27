@@ -11,7 +11,8 @@ spec:
     enabled: true
     activeSite: recovery
   retrieval:
-    size: m
+    cpu: "2"
+    memory: 8Gi
     extensions: [vector, vchord, pg_search]
     expose:
       enabled: true

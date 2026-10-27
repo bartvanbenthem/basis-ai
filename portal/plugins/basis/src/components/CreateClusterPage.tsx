@@ -10,7 +10,7 @@ import { basisApiRef } from '../api';
 import { clusterRouteRef, createProjectRouteRef } from '../routes';
 import { ClusterFormFields } from './ClusterFormFields';
 import { ManifestPanel } from './common';
-import { ClusterForm, defaultForm, selectProfile, selectSize, toManifest, toSpec, validate } from './form';
+import { ClusterForm, defaultForm, selectProfile, toManifest, toSpec, validate } from './form';
 
 export const CreateClusterPage = () => {
   const api = useApi(basisApiRef);
@@ -21,15 +21,23 @@ export const CreateClusterPage = () => {
   const [params] = useSearchParams();
 
   const { value: config } = useAsync(() => api.getConfig(), [api]);
-  // No catalog (or no access to it): custom resources only.
-  const { value: sizes } = useAsync(() => api.listSizes().catch(() => []), [api]);
   const { value: extensions } = useAsync(() => api.listExtensions().catch(() => []), [api]);
   // Clusters go into a Project namespace, which comes with its own
   // Prometheus and Grafana; free-text namespaces are no longer offered.
   const { value: projects, loading: projectsLoading } = useAsync(() => api.listProjects(), [api]);
 
+  // ?profile=vector (the "New RAG cluster" nav item) presets the profile:
+  // its PostgreSQL version and the extensions the catalog offers, once the
+  // catalog is loaded. A vector cluster starts with 2 CPUs and 8Gi, to build
+  // its indexes in memory.
+  const profileParam = params.get('profile');
+  const presetProfile = isClusterProfile(profileParam) ? profileParam : 'general';
+
   // ?project=<name> (from a project page) wins over the configured default.
-  const [form, setForm] = useState<ClusterForm>(defaultForm(params.get('project') ?? ''));
+  const [form, setForm] = useState<ClusterForm>(() => ({
+    ...defaultForm(params.get('project') ?? ''),
+    ...(presetProfile === 'vector' ? { cpu: '2', memory: '8Gi' } : {}),
+  }));
   const [touched, setTouched] = useState(false);
   const [submitting, setSubmitting] = useState<'validate' | 'create'>();
   const [result, setResult] = useState<{ error?: Error; validated?: boolean }>({});
@@ -41,11 +49,6 @@ export const CreateClusterPage = () => {
     }
   }, [config, projects]);
 
-  // ?profile=vector (the "New RAG cluster" nav item) presets the profile:
-  // its PostgreSQL version and the extensions the catalog offers, once the
-  // catalog is loaded.
-  const profileParam = params.get('profile');
-  const presetProfile = isClusterProfile(profileParam) ? profileParam : 'general';
   const preset = useRef(false);
   useEffect(() => {
     if (presetProfile !== 'general' && extensions && !preset.current) {
@@ -53,15 +56,6 @@ export const CreateClusterPage = () => {
       setForm(f => selectProfile(f, presetProfile, extensions, { preset: true }));
     }
   }, [presetProfile, extensions]);
-
-  // A new cluster starts at the catalog's first (smallest) size; a vector
-  // cluster at M if there is one, to build its indexes in memory.
-  useEffect(() => {
-    if (sizes?.length) {
-      const first = (presetProfile === 'vector' && sizes.find(s => s.name === 'm')) || sizes[0];
-      setForm(f => (f.size ? f : selectSize(f, first.name, sizes, { suggestVolumes: true })));
-    }
-  }, [sizes, presetProfile]);
 
   /** Selecting a project also suggests its owner, unless one was typed already. */
   const selectProject = (name: string) => {
@@ -133,7 +127,6 @@ export const CreateClusterPage = () => {
                 setForm={update}
                 err={err}
                 storageClasses={config?.storageClasses ?? []}
-                sizes={sizes}
                 extensions={extensions}
                 projects={projects}
                 onSelectProject={selectProject}

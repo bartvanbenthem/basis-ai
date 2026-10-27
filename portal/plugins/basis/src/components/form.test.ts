@@ -1,11 +1,10 @@
-import { parseExtensions, parseSizes, PostgresCluster } from '@internal/backstage-plugin-basis-common';
+import { parseExtensions, PostgresCluster } from '@internal/backstage-plugin-basis-common';
 import {
   defaultForm,
   fromCluster,
   mergePatch,
   selectPostgresVersion,
   selectProfile,
-  selectSize,
   toEditPatch,
   toSpec,
   validate,
@@ -19,7 +18,7 @@ describe('create form', () => {
       postgresVersion: 17,
       instances: 3,
       storage: { size: '10Gi' },
-      resources: { requests: { cpu: '500m', memory: '1Gi' }, limits: { memory: '1Gi' } },
+      resources: { cpu: '500m', memory: '1Gi' },
       database: { name: 'app', owner: 'app' },
       highAvailability: { podAntiAffinityType: 'preferred', zoneSpread: true, synchronousReplicas: 0 },
       monitoring: { enabled: true, grafanaDashboard: { enabled: true } },
@@ -97,7 +96,7 @@ const live: PostgresCluster = {
     instances: 3,
     storage: { size: '20Gi', storageClass: 'premium' },
     walStorage: { size: '5Gi', storageClass: 'premium' },
-    resources: { requests: { cpu: '1', memory: '2Gi' }, limits: { memory: '2Gi' } },
+    resources: { cpu: '1', memory: '2Gi' },
     database: { name: 'orders', owner: 'orders' },
     highAvailability: { podAntiAffinityType: 'preferred', zoneSpread: true, synchronousReplicas: 1, synchronousDataDurability: 'required' },
     pooler: { enabled: true, instances: 2, poolMode: 'transaction', readOnly: false, maxClientConn: 500 },
@@ -170,56 +169,17 @@ describe('edit form', () => {
   });
 });
 
-const sizes = parseSizes({
-  sizes: [
-    { name: 'xs', resources: { requests: { cpu: '500m', memory: '1Gi' } }, storage: { size: '10Gi' } },
-    { name: 'm', resources: { requests: { cpu: '2', memory: '8Gi' } }, storage: { size: '50Gi', walSize: '10Gi' } },
-  ],
-});
-
-describe('sizes', () => {
-  it('sends the size instead of resources', () => {
-    const spec = toSpec({ ...defaultForm('demo'), name: 'orders-db', size: 'm' });
-    expect(spec.size).toBe('m');
-    expect(spec.resources).toBeUndefined();
-  });
-
-  it("suggests a new cluster's volumes, never an existing one's", () => {
-    const f = { ...defaultForm('demo'), name: 'orders-db' };
-    expect(selectSize(f, 'm', sizes, { suggestVolumes: true })).toMatchObject({
-      size: 'm',
-      storageSize: '50Gi',
-      walEnabled: true,
-      walSize: '10Gi',
-    });
-    expect(selectSize(f, 'm', sizes)).toMatchObject({ size: 'm', storageSize: '10Gi', walEnabled: false });
-  });
-
-  it("starts custom resources from the size's", () => {
-    const sized = selectSize({ ...defaultForm('demo'), name: 'x' }, 'm', sizes);
-    expect(selectSize(sized, '', sizes)).toMatchObject({ size: '', cpu: '2', memory: '8Gi' });
-  });
-
-  it('validates custom resources only', () => {
+describe('resources', () => {
+  it('validates CPU and memory', () => {
     const f = { ...defaultForm('demo'), name: 'orders-db', cpu: 'two', memory: '8GB' };
     expect(Object.keys(validate(f)).sort()).toEqual(['cpu', 'memory']);
-    expect(validate({ ...f, size: 'm' })).toEqual({});
+    expect(validate({ ...f, cpu: '2', memory: '8Gi' })).toEqual({});
   });
 
-  it('moves a cluster between custom resources and a size', () => {
+  it('patches only what changed', () => {
     const original = fromCluster(live);
-    expect(toEditPatch(original, { ...original, size: 'm' })).toEqual({ size: 'm', resources: null });
-    const sized = fromCluster({
-      ...live,
-      spec: { ...live.spec, resources: undefined, size: 'm' },
-      status: { sizing: { size: 'm', resources: { requests: { cpu: '2', memory: '8Gi' } } } },
-    });
-    expect(sized).toMatchObject({ size: 'm', cpu: '2', memory: '8Gi' });
-    expect(toEditPatch(sized, { ...sized, size: 'xs' })).toEqual({ size: 'xs' });
-    expect(toEditPatch(sized, { ...sized, size: '', memory: '16Gi' })).toEqual({
-      size: null,
-      resources: { requests: { cpu: '2', memory: '16Gi' }, limits: { memory: '16Gi' } },
-    });
+    expect(original).toMatchObject({ cpu: '1', memory: '2Gi' });
+    expect(toEditPatch(original, { ...original, memory: '16Gi' })).toEqual({ resources: { memory: '16Gi' } });
   });
 });
 

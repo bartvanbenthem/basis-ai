@@ -18,7 +18,7 @@ the version that composes it: roll the function out before (or with) its XRD.
 ```sh
 cd api
 make test                                     # unit + render tests: fail on any unexpected change
-make function-push FUNCTION_VERSION=v0.4.1    # image → package → ghcr.io
+make function-push FUNCTION_VERSION=<version>  # image → package → ghcr.io
 ```
 
 Set the tag in `api/install/function-basis.yaml` and the Makefile's `FUNCTION_VERSION`, commit,
@@ -56,23 +56,35 @@ is in the version you run.
 
 ## Catalog changes
 
-Editing a size or an extension's image in a [catalog](catalogs.md) rolls the affected clusters out
+Editing an extension's image in the [catalog](catalogs.md) rolls the affected clusters out
 the same way: instances one by one, the primary last.
 
-## From the cnpg names (function-basis v0.4.0)
+## From sizes to resources
 
-v0.4.0 renamed what was named after CloudNativePG but is the platform's: the PostgresCluster API
-group (`cnpg.cndev.nl` → `postgres.cndev.nl`), the RBAC (`cnpg-platform:*` → `basis:*`), the
-location kubeconfigs' namespace (`cnpg-locations` → `basis-locations`) and the portal plugin
-(`/basis`, permissions `basis.*`, config key `basis:`, environment variables `BASIS_KUBE_CONTEXT`, `BASIS_BUCKETS_ENDPOINT` and `BASIS_GRAFANA_URL` instead of `CNPG_*`). It also moved Project and Location to
-function-basis and added ModelGateway and the stack ownership policy. On a control plane installed
-before, after publishing v0.4.0:
+Clusters no longer pick a size from a `postgres-sizes` catalog: `spec.resources` is `{cpu, memory}`,
+like the other APIs, and the function tunes PostgreSQL to it. The new XRDs drop `spec.size`, the old
+`spec.resources.requests/limits` and a GenAIStack's `retrieval.size`, so what still has them would
+fall back to 500m and 1Gi. Pause it around the upgrade:
 
 ```sh
-api/install/migrate-to-basis.sh
+# 1. Note what each cluster runs with (a stack's database is <stack>-db)
+kubectl get postgresclusters -A -o custom-columns=NS:.metadata.namespace,NAME:.metadata.name,SIZE:.spec.size,CPU:.status.sizing.resources.requests.cpu,MEMORY:.status.sizing.resources.requests.memory
+# 2. Pause the sized clusters and stacks; a stack's database only Crossplane may change, so lift
+#    that policy meanwhile
+kubectl delete validatingadmissionpolicybinding ai.cndev.nl-genaistack-owned
+kubectl annotate postgrescluster <name> -n <ns> crossplane.io/paused=true
+kubectl annotate genaistack <stack> -n <ns> crossplane.io/paused=true
+# 3. The new function and APIs (also removes the size admission policy)
+api/install/install.sh
+kubectl delete validatingadmissionpolicybinding ai.cndev.nl-genaistack-owned
+# 4. Give them their resources (a stack's goes to its database) and resume
+kubectl patch postgrescluster <name> -n <ns> --type=merge -p '{"spec":{"resources":{"cpu":"2","memory":"8Gi"}}}'
+kubectl patch genaistack <stack> -n <ns> --type=merge -p '{"spec":{"retrieval":{"cpu":"2","memory":"8Gi"}}}'
+kubectl annotate genaistack <stack> -n <ns> crossplane.io/paused-
+kubectl annotate postgrescluster <name> -n <ns> crossplane.io/paused-   # also each <stack>-db
+# 5. The policy back
+kubectl apply -f api/apis/genaistack/policies.yaml
 ```
 
-It needs no PostgresCluster of the old group (a Composition's type can't change, so that API is
-removed, not converted); with clusters left it stops and says so. It moves your bindings to the old
-roles and the location kubeconfigs, runs `install.sh`, and removes the old RBAC in the locations
-once its replacement is there.
+The tuned settings match the old sizes', except `maintenance_work_mem` for `xs` with the vector
+profile (192MB, was 128MB). Delete the `postgres-sizes` EnvironmentConfig once no cluster needs it.

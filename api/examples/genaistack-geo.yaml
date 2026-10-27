@@ -29,7 +29,8 @@ spec:
     cacheMemory: 512Mi
     gatewayReplicas: 1
   retrieval:
-    size: m
+    cpu: "2"
+    memory: 8Gi
     extensions: [vector, vchord, pg_search]
   cache:
     mode: semantic
