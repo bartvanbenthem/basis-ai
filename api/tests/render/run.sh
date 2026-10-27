@@ -27,7 +27,8 @@
 #
 #   RENDER_FUNCTION=local            run function-basis as a local process instead of
 #                                    a container; FUNCTION_ADDRESS to listen on
-#                                    (127.0.0.1:9443)
+#                                    (127.0.0.1:9443); needs CROSSPLANE_BINARY, as the
+#                                    engine's container can't reach the host's localhost
 #   CROSSPLANE_BINARY=<path>         crossplane render's engine as a local Crossplane
 #                                    binary instead of its container; with
 #                                    RENDER_FUNCTION=local no Docker is needed (go install
