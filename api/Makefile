@@ -1,4 +1,4 @@
-.PHONY: generate check unit test function-image function-xpkg function-push install uninstall
+.PHONY: generate crds check unit test function-image function-xpkg function-push install uninstall
 
 # function-basis, the composition function behind every API (Project, Location,
 # PostgresCluster, ValkeyCache, ModelServer, ModelGateway, MCPServer, GenAIStack).
@@ -11,9 +11,15 @@ XPKG := _output/function-basis-$(FUNCTION_VERSION).xpkg
 generate:
 	cargo run -q -p basis-tools --bin generate
 
+# Regenerate crds/ (basis-crds), the operator kinds' Rust types, with kopium
+# from their CRDs (tests/crds and the CNPG charts); see crdgen/src/main.rs
+crds:
+	cargo run -q -p basis-crdgen
+
 # Fail if a generated file is stale
 check:
 	cargo run -q -p basis-tools --bin generate -- --check
+	cargo run -q -p basis-crdgen -- --check
 
 # Lints and unit tests of function-basis and the tools
 unit:

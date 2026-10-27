@@ -2,6 +2,7 @@
 //! output, Go-compatible formatting, lenient decoding and small helpers.
 
 pub mod gojson;
+pub mod kinds;
 pub mod lenient;
 pub mod util;
 

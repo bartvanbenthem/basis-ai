@@ -1,0 +1,8 @@
+{
+  // api/crds (basis-crds) is ~60k lines of generated types: a check of it
+  // takes GBs, so don't run one on every save, and keep cargo's builds small.
+  "rust-analyzer.checkOnSave": false,
+  "rust-analyzer.cargo.extraEnv": { "CARGO_BUILD_JOBS": "2" },
+  "rust-analyzer.numThreads": 2,
+  "rust-analyzer.cachePriming.numThreads": 2
+}

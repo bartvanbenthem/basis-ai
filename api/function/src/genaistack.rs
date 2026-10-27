@@ -31,11 +31,14 @@
 //! It gets the full-size cache and gateway, the standby site a small cache and
 //! a minimal gateway, so a switchover of the database moves the stack along.
 
+use k8s_openapi::ByteString;
+use k8s_openapi::api::core::v1::Secret;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
+use crate::common::kinds::{self, labels_of, location_object, secret_copy, to_value};
 use crate::common::lenient::decode;
-use crate::common::util::{as_str, b64, condition_true, dig_opt, labels_obj, new_secret, or, or_i, unb64};
+use crate::common::util::{as_str, condition_true, dig_opt, labels_obj, new_secret, or, or_i, unb64};
 use crate::common::{Composed, Condition, Input, Output, Requirement, Result};
 use crate::lenient;
 
@@ -214,7 +217,15 @@ pub fn compose(input: &Input) -> Result<Output> {
         ("app.kubernetes.io/part-of", "basis"),
         (OWNER_LABEL, name),
     ]);
+    // The child XRs' metadata; typed for the Kubernetes objects.
     let meta = |n: &str| json!({"name": n, "namespace": ns, "labels": labels});
+    let object_meta = |n: &str| kinds::meta(n, ns, &labels_of(&labels));
+    let secret = |n: &str, type_: &str, data: &[(&str, &str)]| to_value(&Secret {
+        metadata: object_meta(n),
+        type_: Some(type_.into()),
+        data: Some(data.iter().map(|(k, v)| (k.to_string(), ByteString(v.as_bytes().to_vec()))).collect()),
+        ..Default::default()
+    });
     let observed = &input.observed;
     let mut out = Output::default();
 
@@ -243,11 +254,8 @@ pub fn compose(input: &Input) -> Result<Output> {
     let mut problems: Vec<String> = vec![];
     let role = format!("{}_stack", name.replace('-', "_"));
     let db_password = keep(observed, "db-credentials", "password");
-    out.composed.insert("db-credentials".into(), Composed { ready: observed.contains_key("db-credentials"), object: json!({
-        "apiVersion": "v1", "kind": "Secret", "type": "kubernetes.io/basic-auth",
-        "metadata": meta(&format!("{name}-db-credentials")),
-        "data": {"username": b64(&role), "password": b64(&db_password)},
-    })});
+    out.composed.insert("db-credentials".into(), Composed { ready: observed.contains_key("db-credentials"),
+        object: secret(&format!("{name}-db-credentials"), "kubernetes.io/basic-auth", &[("username", &role), ("password", &db_password)]) });
 
     let backup = spec.retrieval.backup || spec.recovery.enabled;
     let mut geo = json!({"enabled": spec.recovery.enabled, "primarySite": SITE_PROTECTED});
@@ -412,29 +420,18 @@ pub fn compose(input: &Input) -> Result<Output> {
                 conn.insert("OPENAI_API_KEY", gateway_key.clone());
             }
         }
-        let data: Map<String, Value> = conn.iter().map(|(k, v)| (k.to_string(), json!(b64(v)))).collect();
+        let data: Vec<(&str, &str)> = conn.iter().map(|(k, v)| (*k, v.as_str())).collect();
         let conn_key = format!("connection-{}", s.name);
-        out.composed.insert(conn_key.clone(), Composed { ready: observed.contains_key(&conn_key), object: json!({
-            "apiVersion": "v1", "kind": "Secret", "type": "Opaque",
-            "metadata": meta(&format!("{name}-connection-{}", s.name)), "data": data,
-        })});
+        out.composed.insert(conn_key.clone(), Composed { ready: observed.contains_key(&conn_key),
+            object: secret(&format!("{name}-connection-{}", s.name), "Opaque", &data) });
 
         let k = format!("{}-connection", s.name);
         // The Secret's data comes from the control plane, never through this spec.
-        let refs: Vec<Value> = ["data", "type"].iter().map(|f| json!({"patchesFrom": {"apiVersion": "v1", "kind": "Secret",
-            "name": format!("{name}-connection-{}", s.name), "namespace": ns, "fieldPath": f}})).collect();
+        let copy = secret_copy(ns, &format!("{name}-connection-{}", s.name));
         let ready = condition_true(observed.get(&k), "Ready");
-        out.composed.insert(k.clone(), Composed { ready, object: json!({
-            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "Object",
-            "metadata": {"name": format!("{name}-{k}"), "namespace": ns, "labels": labels,
-                "annotations": {"platform.cndev.nl/location": s.location}},
-            "spec": {
-                "providerConfigRef": {"kind": "ClusterProviderConfig", "name": s.location},
-                "watch": true,
-                "forProvider": {"manifest": {"apiVersion": "v1", "kind": "Secret", "metadata": meta(&format!("{name}-connection"))}},
-                "references": refs,
-            },
-        })});
+        let manifest = to_value(&Secret { metadata: object_meta(&format!("{name}-connection")), ..Default::default() });
+        out.composed.insert(k.clone(), Composed { ready,
+            object: to_value(&location_object(object_meta(&format!("{name}-{k}")), &s.location, manifest, copy)) });
         all_ready = all_ready && ready;
         site_status.push(ss);
     }
@@ -504,6 +501,7 @@ fn query_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::util::b64;
     use crate::common::util::set_secret;
 
     const MODELS: &str = r#""gateway":{"models":[

@@ -25,10 +25,14 @@
 //! (status.connected); the observe-only Objects say which operators are
 //! installed.
 
+use k8s_openapi::api::rbac::v1::{ClusterRole, PolicyRule};
+use k8s_openapi::kube_aggregator::pkg::apis::apiregistration::v1::APIService;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
-use crate::common::util::{as_str, condition, condition_true, dig, dig_str, labels_obj, live, or};
+use crate::common::kinds::crds::provider_kubernetes::{cluster_provider_config as cpc, object};
+use crate::common::kinds::{Labels, manifest, meta, to_value};
+use crate::common::util::{as_str, condition, condition_true, dig, dig_str, live, or};
 use crate::common::{Composed, Condition, Input, Output, Requirement, Result};
 
 /// An APIService that tells an operator is installed.
@@ -58,10 +62,10 @@ pub fn compose(input: &Input) -> Result<Output> {
     let empty = Value::Object(Default::default());
     let r = dig(xr, &["spec", "credentials", "secretRef"]).filter(|v| v.is_object()).unwrap_or(&empty);
     let ns = as_str(r.get("namespace"));
-    let labels = labels_obj(&[
-        ("app.kubernetes.io/managed-by", "crossplane"),
-        ("app.kubernetes.io/part-of", "basis"),
-        ("platform.cndev.nl/location", name),
+    let labels = Labels::from([
+        ("app.kubernetes.io/managed-by".to_string(), "crossplane".to_string()),
+        ("app.kubernetes.io/part-of".to_string(), "basis".to_string()),
+        ("platform.cndev.nl/location".to_string(), name.to_string()),
     ]);
     let mut out = Output::default();
 
@@ -73,48 +77,56 @@ pub fn compose(input: &Input) -> Result<Output> {
     let installed: BTreeMap<&str, bool> =
         OPERATORS.iter().map(|o| (o.key, live(input.observed.get(o.key)).is_some())).collect();
 
-    out.composed.insert("providerconfig".into(), Composed { ready: pc.is_some(), object: json!({
-        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "ClusterProviderConfig",
-        "metadata": {"name": name, "labels": labels},
-        "spec": {"credentials": {"source": "Secret", "secretRef": {
-            "namespace": ns, "name": r.get("name").cloned().unwrap_or(Value::Null),
-            "key": or(as_str(r.get("key")), "kubeconfig")}}},
-    })});
-    let provider_config_ref = json!({"kind": "ClusterProviderConfig", "name": name});
-    out.composed.insert("prometheus-role".into(), Composed { ready: role_ready, object: json!({
-        "apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "Object",
-        "metadata": {"name": format!("{name}-prometheus-role"), "namespace": ns, "labels": labels},
-        "spec": {
-            "providerConfigRef": provider_config_ref,
-            // Projects' Prometheus ClusterRoleBindings there point at it:
-            // leave it when the Location goes (no Delete), which also lets
-            // the Location be removed while the cluster is unreachable.
-            "managementPolicies": ["Observe", "Create", "Update", "LateInitialize"],
-            "forProvider": {"manifest": {
-                "apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole",
-                "metadata": {"name": "basis:project-prometheus", "labels": {
-                    "app.kubernetes.io/managed-by": "crossplane", "app.kubernetes.io/part-of": "basis"}},
-                "rules": [
-                    {"apiGroups": [""], "resources": ["nodes", "nodes/metrics", "nodes/proxy", "services", "endpoints", "pods"],
-                     "verbs": ["get", "list", "watch"]},
-                    {"apiGroups": ["discovery.k8s.io"], "resources": ["endpointslices"], "verbs": ["get", "list", "watch"]},
-                    {"nonResourceURLs": ["/metrics", "/metrics/cadvisor"], "verbs": ["get"]},
-                ],
-            }},
-        },
-    })});
-    for o in OPERATORS {
-        out.composed.insert(o.key.into(), Composed { ready: installed[o.key] || o.optional, object: json!({
-            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "Object",
-            "metadata": {"name": format!("{name}-{}", o.key), "namespace": ns, "labels": labels},
-            "spec": {
-                "providerConfigRef": provider_config_ref,
-                "managementPolicies": ["Observe"],
-                "forProvider": {"manifest": {
-                    "apiVersion": "apiregistration.k8s.io/v1", "kind": "APIService",
-                    "metadata": {"name": o.api_service}}},
+    out.composed.insert("providerconfig".into(), Composed { ready: pc.is_some(), object: to_value(&cpc::ClusterProviderConfig {
+        metadata: meta(name, "", &labels),
+        spec: cpc::ClusterProviderConfigSpec {
+            credentials: cpc::ClusterProviderConfigCredentials {
+                source: cpc::ClusterProviderConfigCredentialsSource::Secret,
+                secret_ref: Some(cpc::ClusterProviderConfigCredentialsSecretRef {
+                    namespace: ns.into(), name: as_str(r.get("name")).into(), key: or(as_str(r.get("key")), "kubeconfig").into() }),
+                env: None,
+                fs: None,
             },
-        })});
+            identity: None,
+        },
+        status: None,
+    })});
+    let object = |key: &str, policies: &[&str], manifest: Value| object::Object {
+        metadata: meta(&format!("{name}-{key}"), ns, &labels),
+        spec: object::ObjectSpec {
+            provider_config_ref: Some(object::ObjectProviderConfigRef { kind: "ClusterProviderConfig".into(), name: name.into() }),
+            management_policies: Some(policies.iter().map(|p| p.to_string()).collect()),
+            for_provider: object::ObjectForProvider { manifest: self::manifest(manifest), ..Default::default() },
+            ..Default::default()
+        },
+        status: None,
+    };
+    let rule = |groups: &[&str], resources: &[&str], urls: &[&str], verbs: &[&str]| {
+        let strings = |v: &[&str]| (!v.is_empty()).then(|| v.iter().map(|s| s.to_string()).collect());
+        PolicyRule { api_groups: strings(groups), resources: strings(resources), non_resource_urls: strings(urls),
+            verbs: verbs.iter().map(|s| s.to_string()).collect(), ..Default::default() }
+    };
+    let cluster_role = ClusterRole {
+        metadata: meta("basis:project-prometheus", "", &Labels::from([
+            ("app.kubernetes.io/managed-by".to_string(), "crossplane".to_string()),
+            ("app.kubernetes.io/part-of".to_string(), "basis".to_string()),
+        ])),
+        rules: Some(vec![
+            rule(&[""], &["nodes", "nodes/metrics", "nodes/proxy", "services", "endpoints", "pods"], &[], &["get", "list", "watch"]),
+            rule(&["discovery.k8s.io"], &["endpointslices"], &[], &["get", "list", "watch"]),
+            rule(&[], &[], &["/metrics", "/metrics/cadvisor"], &["get"]),
+        ]),
+        ..Default::default()
+    };
+    // Projects' Prometheus ClusterRoleBindings there point at it: leave it
+    // when the Location goes (no Delete), which also lets the Location be
+    // removed while the cluster is unreachable.
+    out.composed.insert("prometheus-role".into(), Composed { ready: role_ready,
+        object: to_value(&object("prometheus-role", &["Observe", "Create", "Update", "LateInitialize"], to_value(&cluster_role))) });
+    for o in OPERATORS {
+        let api_service = APIService { metadata: meta(o.api_service, "", &Labels::new()), ..Default::default() };
+        out.composed.insert(o.key.into(), Composed { ready: installed[o.key] || o.optional,
+            object: to_value(&object(o.key, &["Observe"], to_value(&api_service))) });
     }
 
     let mut missing = vec![];

@@ -61,13 +61,27 @@
 //! has prefix-cache-aware routing off. In a site the server doesn't run in,
 //! the model isn't routed.
 
-use serde_json::{Map, Value, json};
+use k8s_openapi::ByteString;
+use k8s_openapi::api::core::v1::Secret;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, LabelSelectorRequirement, ObjectMeta};
+use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::common::gojson::{fmt_g, marshal, quote, quote_meta};
+use crate::common::kinds::crds::aigateway::{ai_gateway_route as route, ai_service_backend as asb, backend_security_policy as bsp};
+use crate::common::kinds::crds::cert_manager::certificate as cert;
+use crate::common::kinds::crds::envoy_gateway::{
+    backend as eb, backend_traffic_policy as btp, client_traffic_policy as ctp, envoy_proxy as ep, security_policy as sp,
+};
+use crate::common::kinds::crds::gateway_api::{backend_tls_policy as btls, gateway as gw};
+use crate::common::kinds::crds::prometheus::pod_monitor as pm;
+use crate::common::kinds::{
+    Labels, alert, enum_value, location_object, meta, prometheus_rule, retype, scoped_dashboard, secret_copy, secret_field_copy, to_value,
+};
 use crate::common::lenient::decode;
 use crate::common::util::{
-    as_str, b64, condition_true, dig_opt, labels_obj, live, new_secret, or, or_f, or_i, past_day, reported, sha1hex, unb64,
+    as_str, condition_true, dig_opt, live, new_secret, or, or_f, or_i, past_day, reported, sha1hex, unb64,
 };
 use crate::common::{Composed, Condition, Input, Output, Requirement, Result};
 use crate::{lenient, modelserver};
@@ -338,7 +352,7 @@ struct Composition<'a> {
     name: &'a str,
     ns: &'a str,
     observed: &'a BTreeMap<String, Value>,
-    labels: Map<String, Value>,
+    labels: Labels,
     servers: BTreeMap<String, Server>,
 }
 
@@ -397,15 +411,15 @@ fn parse_url(s: &str) -> Option<Url> {
 /// Renders the desired state of a ModelGateway.
 pub fn compose(input: &Input) -> Result<Output> {
     let xr: Xr = decode(&input.xr);
-    let mut labels = labels_obj(&[
-        ("app.kubernetes.io/managed-by", "crossplane"),
-        ("app.kubernetes.io/part-of", "basis"),
-        ("ai.cndev.nl/modelgateway", &xr.metadata.name),
+    let mut labels = Labels::from([
+        ("app.kubernetes.io/managed-by".to_string(), "crossplane".to_string()),
+        ("app.kubernetes.io/part-of".to_string(), "basis".to_string()),
+        ("ai.cndev.nl/modelgateway".to_string(), xr.metadata.name.clone()),
     ]);
     // Owned by a GenAIStack: the same label on everything it composes, so
     // the stack's objects are found together.
     if let Some(stack) = xr.metadata.labels.get("ai.cndev.nl/genaistack").filter(|s| !s.is_empty()) {
-        labels.insert("ai.cndev.nl/genaistack".into(), json!(stack));
+        labels.insert("ai.cndev.nl/genaistack".into(), stack.clone());
     }
     let mut c = Composition {
         spec: &xr.spec, name: &xr.metadata.name, ns: &xr.metadata.namespace,
@@ -428,18 +442,16 @@ pub fn compose(input: &Input) -> Result<Output> {
     }
 
     // ---- control plane: a key per client
-    let mut keys = Map::new();
+    let mut keys = BTreeMap::new();
     for cl in spec.clients() {
         let key = keep(c.observed, "keys", &cl);
-        keys.insert(cl, json!(b64(&key)));
+        keys.insert(cl, ByteString(key.into_bytes()));
     }
     let keys_ready = c.observed.contains_key("keys");
     let n_keys = keys.len();
-    out.composed.insert("keys".into(), Composed { ready: keys_ready, object: json!({
-        "apiVersion": "v1", "kind": "Secret", "type": "Opaque",
-        "metadata": c.meta(&keys_secret(c.name)),
-        // Envoy Gateway API key auth: a key per client id.
-        "data": keys,
+    // Envoy Gateway API key auth: a key per client id.
+    out.composed.insert("keys".into(), Composed { ready: keys_ready, object: to_value(&Secret {
+        metadata: c.meta(&keys_secret(c.name)), type_: Some("Opaque".into()), data: Some(keys), ..Default::default()
     })});
 
     // The gateway's dashboard in the Project's Grafana, on the control plane.
@@ -632,106 +644,156 @@ impl Composition<'_> {
         let mut add = |k: &str, ready: fn(Option<&Value>) -> bool, manifest: Value| {
             out.insert(k.into(), Obj { manifest, copy_from: None, ready });
         };
-        add("envoyproxy", reported, json!({
-            "apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "EnvoyProxy", "metadata": self.meta(name),
-            "spec": {"provider": {"type": "Kubernetes", "kubernetes": {
-                // Internal: clients in the location only, at a predictable name.
-                "envoyService": {"name": name, "type": "ClusterIP"},
-                "envoyDeployment": {"replicas": replicas},
-            }}, "telemetry": telemetry()},
-        }));
-        add("gateway", programmed, json!({
-            "apiVersion": "gateway.networking.k8s.io/v1", "kind": "Gateway", "metadata": self.meta(name),
-            "spec": {
-                "gatewayClassName": GATEWAY_CLASS,
-                "listeners": [{"name": "http", "protocol": "HTTP", "port": 80}],
-                "infrastructure": {"parametersRef": {"group": "gateway.envoyproxy.io", "kind": "EnvoyProxy", "name": name}},
+        let envoy_proxy = |name: &str, service: ep::EnvoyProxyProviderKubernetesEnvoyService| ep::EnvoyProxy {
+            metadata: self.meta(name),
+            spec: ep::EnvoyProxySpec {
+                provider: Some(ep::EnvoyProxyProvider {
+                    r#type: ep::EnvoyProxyProviderType::Kubernetes,
+                    kubernetes: Some(ep::EnvoyProxyProviderKubernetes {
+                        envoy_service: Some(service),
+                        envoy_deployment: Some(ep::EnvoyProxyProviderKubernetesEnvoyDeployment { replicas: Some(replicas as i32), ..Default::default() }),
+                        ..Default::default()
+                    }),
+                    host: None,
+                }),
+                telemetry: Some(telemetry()),
+                ..Default::default()
             },
-        }));
-        let mut gateway_refs = vec![json!({"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": name})];
+            status: None,
+        };
+        let gateway = |name: &str, listener: gw::GatewayListeners| gw::Gateway {
+            metadata: self.meta(name),
+            spec: gw::GatewaySpec {
+                gateway_class_name: GATEWAY_CLASS.into(),
+                listeners: vec![listener],
+                infrastructure: Some(gw::GatewayInfrastructure {
+                    parameters_ref: Some(gw::GatewayInfrastructureParametersRef {
+                        group: "gateway.envoyproxy.io".into(), kind: "EnvoyProxy".into(), name: name.into(),
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            status: None,
+        };
+        // Internal: clients in the location only, at a predictable name.
+        add("envoyproxy", reported, to_value(&envoy_proxy(name, ep::EnvoyProxyProviderKubernetesEnvoyService {
+            name: Some(name.into()), r#type: Some(ep::EnvoyProxyProviderKubernetesEnvoyServiceType::ClusterIp), ..Default::default()
+        })));
+        add("gateway", programmed, to_value(&gateway(name, gw::GatewayListeners {
+            name: "http".into(), protocol: "HTTP".into(), port: 80, ..Default::default()
+        })));
+        let mut gateways = vec![name.to_string()];
         if let Some(e) = spec.expose() {
             // A Gateway of its own: the LoadBalancer carries the HTTPS listener
             // only, never the internal plain HTTP one.
             let external = format!("{name}-external");
-            let mut svc = json!({"name": external, "type": "LoadBalancer", "loadBalancerSourceRanges": e.load_balancer_source_ranges});
-            if !e.annotations.is_empty() {
-                svc["annotations"] = json!(e.annotations);
-            }
-            add("external-envoyproxy", reported, json!({
-                "apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "EnvoyProxy", "metadata": self.meta(&external),
-                "spec": {"provider": {"type": "Kubernetes", "kubernetes": {
-                    "envoyService": svc,
-                    "envoyDeployment": {"replicas": replicas},
-                }}, "telemetry": telemetry()},
-            }));
-            add("certificate", live_ready, json!({
-                "apiVersion": "cert-manager.io/v1", "kind": "Certificate", "metadata": self.meta(&format!("{name}-tls")),
-                "spec": {
-                    "secretName": format!("{name}-tls"),
-                    "dnsNames": [e.hostname],
-                    "issuerRef": {"group": "cert-manager.io", "kind": "ClusterIssuer", "name": or(&e.issuer, "basis")},
+            add("external-envoyproxy", reported, to_value(&envoy_proxy(&external, ep::EnvoyProxyProviderKubernetesEnvoyService {
+                name: Some(external.clone()),
+                r#type: Some(ep::EnvoyProxyProviderKubernetesEnvoyServiceType::LoadBalancer),
+                load_balancer_source_ranges: Some(e.load_balancer_source_ranges.clone()),
+                annotations: (!e.annotations.is_empty()).then(|| e.annotations.clone()),
+                ..Default::default()
+            })));
+            add("certificate", live_ready, to_value(&cert::Certificate {
+                metadata: self.meta(&format!("{name}-tls")),
+                spec: cert::CertificateSpec {
+                    secret_name: format!("{name}-tls"),
+                    dns_names: Some(vec![e.hostname.clone()]),
+                    issuer_ref: cert::CertificateIssuerRef {
+                        group: Some("cert-manager.io".into()), kind: Some("ClusterIssuer".into()), name: or(&e.issuer, "basis").into(),
+                    },
+                    ..Default::default()
                 },
+                status: None,
             }));
-            add("external-gateway", programmed, json!({
-                "apiVersion": "gateway.networking.k8s.io/v1", "kind": "Gateway", "metadata": self.meta(&external),
-                "spec": {
-                    "gatewayClassName": GATEWAY_CLASS,
-                    "listeners": [{"name": "https", "protocol": "HTTPS", "port": 443, "hostname": e.hostname,
-                        "tls": {"mode": "Terminate", "certificateRefs": [{"kind": "Secret", "name": format!("{name}-tls")}]}}],
-                    "infrastructure": {"parametersRef": {"group": "gateway.envoyproxy.io", "kind": "EnvoyProxy", "name": external}},
-                },
-            }));
-            gateway_refs.push(json!({"group": "gateway.networking.k8s.io", "kind": "Gateway", "name": external}));
+            add("external-gateway", programmed, to_value(&gateway(&external, gw::GatewayListeners {
+                name: "https".into(),
+                protocol: "HTTPS".into(),
+                port: 443,
+                hostname: Some(e.hostname.clone()),
+                tls: Some(gw::GatewayListenersTls {
+                    mode: Some(gw::GatewayListenersTlsMode::Terminate),
+                    certificate_refs: Some(vec![gw::GatewayListenersTlsCertificateRefs {
+                        kind: Some("Secret".into()), name: format!("{name}-tls"), ..Default::default()
+                    }]),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })));
+            gateways.push(external);
         }
-        add("clienttraffic", reported, json!({
-            "apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "ClientTrafficPolicy", "metadata": self.meta(name),
+        // The policies' targets: (group, kind, name) of each Gateway.
+        let targets = || gateways.iter().map(|g| ("gateway.networking.k8s.io".to_string(), "Gateway".to_string(), g.clone()));
+        add("clienttraffic", reported, to_value(&ctp::ClientTrafficPolicy {
+            metadata: self.meta(name),
             // Prompts with context, and images, can be large. Over HTTP/2 (the
             // exposed Gateway's HTTPS) a request is also limited to the stream's
             // flow-control window, 64Ki by default: one photo is more, a 413.
-            "spec": {"targetRefs": gateway_refs, "connection": {"bufferLimit": "50Mi"},
-                "http2": {"initialStreamWindowSize": "50Mi", "initialConnectionWindowSize": "50Mi"}},
+            spec: ctp::ClientTrafficPolicySpec {
+                target_refs: Some(targets().map(|(group, kind, name)| ctp::ClientTrafficPolicyTargetRefs { group, kind, name, section_name: None }).collect()),
+                connection: Some(ctp::ClientTrafficPolicyConnection { buffer_limit: Some(BUFFER_LIMIT.clone()), ..Default::default() }),
+                http2: Some(ctp::ClientTrafficPolicyHttp2 {
+                    initial_stream_window_size: Some(BUFFER_LIMIT.clone()),
+                    initial_connection_window_size: Some(BUFFER_LIMIT.clone()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            status: None,
         }));
-        let mut backend_traffic = json!({"targetRefs": gateway_refs, "connection": {"bufferLimit": "50Mi"}});
-        if let Some(retry) = self.retry_policy() {
-            // Retries, and with them the fallbacks.
-            backend_traffic["retry"] = retry;
-        }
-        add("backendtraffic", reported, json!({
-            "apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "BackendTrafficPolicy", "metadata": self.meta(name),
+        add("backendtraffic", reported, to_value(&btp::BackendTrafficPolicy {
+            metadata: self.meta(name),
             // Agent Router's per-backend filter buffers whole responses on the
             // upstream connection, 32Ki by default: an embedding (4096 floats as
             // JSON) or a long completion is more, and fails with a 500.
-            "spec": backend_traffic,
+            spec: btp::BackendTrafficPolicySpec {
+                target_refs: Some(targets().map(|(group, kind, name)| btp::BackendTrafficPolicyTargetRefs { group, kind, name, section_name: None }).collect()),
+                connection: Some(btp::BackendTrafficPolicyConnection { buffer_limit: Some(BUFFER_LIMIT.clone()), ..Default::default() }),
+                // Retries, and with them the fallbacks.
+                retry: self.retry_policy(),
+                ..Default::default()
+            },
+            status: None,
         }));
         out.insert("keys".into(), Obj { ready: object_ready, copy_from: Some((keys_secret(name), None)),
-            manifest: json!({"apiVersion": "v1", "kind": "Secret", "metadata": self.meta(&keys_secret(name))})});
-        out.insert("securitypolicy".into(), Obj { ready: reported, copy_from: None, manifest: json!({
-            "apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "SecurityPolicy", "metadata": self.meta(name),
-            "spec": {
-                "targetRefs": gateway_refs,
+            manifest: to_value(&Secret { metadata: self.meta(&keys_secret(name)), ..Default::default() }) });
+        out.insert("securitypolicy".into(), Obj { ready: reported, copy_from: None, manifest: to_value(&sp::SecurityPolicy {
+            metadata: self.meta(name),
+            spec: sp::SecurityPolicySpec {
+                target_refs: Some(targets().map(|(group, kind, name)| sp::SecurityPolicyTargetRefs { group, kind, name, section_name: None }).collect()),
                 // OpenAI clients send Authorization: Bearer <key>; it isn't forwarded.
-                "apiKeyAuth": {
-                    "credentialRefs": [{"name": keys_secret(name)}],
-                    "extractFrom": [{"headers": ["Authorization"]}],
-                    "sanitize": true,
+                api_key_auth: Some(sp::SecurityPolicyApiKeyAuth {
+                    credential_refs: vec![sp::SecurityPolicyApiKeyAuthCredentialRefs { name: keys_secret(name), ..Default::default() }],
+                    extract_from: vec![sp::SecurityPolicyApiKeyAuthExtractFrom { headers: Some(vec!["Authorization".into()]), ..Default::default() }],
+                    sanitize: Some(true),
                     // Who called: for the token limits and the access log.
-                    "forwardClientIDHeader": CLIENT_HEADER,
-                },
+                    forward_client_id_header: Some(CLIENT_HEADER.into()),
+                }),
+                ..Default::default()
             },
-        })});
+            status: None,
+        }) });
 
         let mut rules = vec![];
         let routes = self.routes(site);
         let by_name: BTreeMap<String, Model> = routes.iter().map(|r| (r.model.name.clone(), r.model.clone())).collect();
         let models: Vec<Model> = routes.iter().map(|r| r.model.clone()).collect();
+        let model_match = |m: &Model| Some(vec![route::AiGatewayRouteRulesMatches { headers: Some(vec![route::AiGatewayRouteRulesMatchesHeaders {
+            r#type: Some(route::AiGatewayRouteRulesMatchesHeadersType::Exact), name: "x-ai-eg-model".into(), value: m.name.clone(),
+        }]) }]);
         for r in &routes {
             let m = &r.model;
             if !r.pool.is_empty() {
                 // A self-hosted model's InferencePool: its endpoint picker chooses the replica.
-                rules.push(json!({
-                    "matches": [{"headers": [{"type": "Exact", "name": "x-ai-eg-model", "value": m.name}]}],
-                    "backendRefs": [{"group": "inference.networking.k8s.io", "kind": "InferencePool", "name": r.pool}],
-                }));
+                rules.push(route::AiGatewayRouteRules {
+                    matches: model_match(m),
+                    backend_refs: Some(vec![route::AiGatewayRouteRulesBackendRefs {
+                        group: Some("inference.networking.k8s.io".into()), kind: Some("InferencePool".into()), name: r.pool.clone(),
+                        ..Default::default()
+                    }]),
+                    ..Default::default()
+                });
                 continue;
             }
             let id = format!("model-{}", &sha1hex(&m.name)[..8]);
@@ -742,75 +804,111 @@ impl Composition<'_> {
             let tls = u.scheme == "https";
             let mut port = if tls { 443 } else { 80 };
             if !u.port.is_empty() {
-                port = u.port.parse::<i64>().unwrap_or(0);
+                port = u.port.parse::<i32>().unwrap_or(0);
             }
-            out.insert(format!("{id}-backend"), Obj { ready: reported, copy_from: None, manifest: json!({
-                "apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "Backend", "metadata": self.meta(&obj),
-                "spec": {"endpoints": [{"fqdn": {"hostname": u.hostname, "port": port}}]},
-            })});
-            let mut schema = json!({"name": m.schema()});
+            out.insert(format!("{id}-backend"), Obj { ready: reported, copy_from: None, manifest: to_value(&eb::Backend {
+                metadata: self.meta(&obj),
+                spec: eb::BackendSpec {
+                    endpoints: Some(vec![eb::BackendEndpoints {
+                        fqdn: Some(eb::BackendEndpointsFqdn { hostname: u.hostname.clone(), port }), ..Default::default()
+                    }]),
+                    ..Default::default()
+                },
+                status: None,
+            }) });
             let prefix = u.path.strip_suffix('/').unwrap_or(&u.path);
-            if !prefix.is_empty() {
-                schema["prefix"] = json!(prefix);
-            }
-            out.insert(format!("{id}-aiservicebackend"), Obj { ready: reported, copy_from: None, manifest: json!({
-                "apiVersion": "aigateway.envoyproxy.io/v1beta1", "kind": "AIServiceBackend", "metadata": self.meta(&obj),
-                "spec": {"schema": schema, "backendRef": {"group": "gateway.envoyproxy.io", "kind": "Backend", "name": obj}},
-            })});
-            if tls {
-                out.insert(format!("{id}-tls"), Obj { ready: reported, copy_from: None, manifest: json!({
-                    "apiVersion": "gateway.networking.k8s.io/v1", "kind": "BackendTLSPolicy", "metadata": self.meta(&obj),
-                    "spec": {
-                        "targetRefs": [{"group": "gateway.envoyproxy.io", "kind": "Backend", "name": obj}],
-                        "validation": {"wellKnownCACertificates": "System", "hostname": u.hostname},
+            out.insert(format!("{id}-aiservicebackend"), Obj { ready: reported, copy_from: None, manifest: to_value(&asb::AiServiceBackend {
+                metadata: self.meta(&obj),
+                spec: asb::AiServiceBackendSpec {
+                    schema: asb::AiServiceBackendSchema {
+                        name: enum_value("spec.models[].schema", m.schema())?, prefix: (!prefix.is_empty()).then(|| prefix.into()), version: None,
                     },
-                })});
+                    backend_ref: asb::AiServiceBackendBackendRef {
+                        group: Some("gateway.envoyproxy.io".into()), kind: Some("Backend".into()), name: obj.clone(), ..Default::default()
+                    },
+                    body_mutation: None,
+                    header_mutation: None,
+                    header_value_filters: None,
+                },
+                status: None,
+            }) });
+            if tls {
+                out.insert(format!("{id}-tls"), Obj { ready: reported, copy_from: None, manifest: to_value(&btls::BackendTlsPolicy {
+                    metadata: self.meta(&obj),
+                    spec: btls::BackendTlsPolicySpec {
+                        target_refs: vec![btls::BackendTlsPolicyTargetRefs {
+                            group: "gateway.envoyproxy.io".into(), kind: "Backend".into(), name: obj.clone(), section_name: None,
+                        }],
+                        validation: btls::BackendTlsPolicyValidation {
+                            well_known_ca_certificates: Some("System".into()), hostname: u.hostname.clone(), ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                    status: None,
+                }) });
             }
             if let Some(r) = &m.api_key_secret_ref {
                 // The provider's key under "apiKey", as Agent Router reads it.
+                let secret = format!("{obj}-apikey");
                 out.insert(format!("{id}-apikey"), Obj { ready: object_ready,
                     copy_from: Some((r.name.clone(), Some((format!("data.{}", or(&r.key, "apiKey")), "data.apiKey".into())))),
-                    manifest: json!({"apiVersion": "v1", "kind": "Secret", "type": "Opaque", "metadata": self.meta(&format!("{obj}-apikey"))})});
-                let mut policy = json!({"targetRefs": [{"group": "aigateway.envoyproxy.io", "kind": "AIServiceBackend", "name": obj}]});
-                if m.schema() == "Anthropic" {
-                    policy["type"] = json!("AnthropicAPIKey");
-                    policy["anthropicAPIKey"] = json!({"secretRef": {"name": format!("{obj}-apikey")}});
-                } else {
-                    policy["type"] = json!("APIKey");
-                    policy["apiKey"] = json!({"secretRef": {"name": format!("{obj}-apikey")}});
-                }
-                out.insert(format!("{id}-backendsecurity"), Obj { ready: reported, copy_from: None, manifest: json!({
-                    "apiVersion": "aigateway.envoyproxy.io/v1beta1", "kind": "BackendSecurityPolicy", "metadata": self.meta(&obj),
-                    "spec": policy,
-                })});
+                    manifest: to_value(&Secret { metadata: self.meta(&secret), type_: Some("Opaque".into()), ..Default::default() }) });
+                let anthropic = m.schema() == "Anthropic";
+                let policy = bsp::BackendSecurityPolicySpec {
+                    target_refs: Some(vec![bsp::BackendSecurityPolicyTargetRefs {
+                        group: "aigateway.envoyproxy.io".into(), kind: "AIServiceBackend".into(), name: obj.clone(),
+                    }]),
+                    r#type: if anthropic { bsp::BackendSecurityPolicyType::AnthropicApiKey } else { bsp::BackendSecurityPolicyType::ApiKey },
+                    anthropic_api_key: anthropic.then(|| bsp::BackendSecurityPolicyAnthropicApiKey {
+                        secret_ref: bsp::BackendSecurityPolicyAnthropicApiKeySecretRef { name: secret.clone(), ..Default::default() },
+                    }),
+                    api_key: (!anthropic).then(|| bsp::BackendSecurityPolicyApiKey {
+                        secret_ref: bsp::BackendSecurityPolicyApiKeySecretRef { name: secret.clone(), ..Default::default() },
+                    }),
+                    aws_credentials: None,
+                    azure_api_key: None,
+                    azure_credentials: None,
+                    credential_override: None,
+                    gcp_credentials: None,
+                };
+                out.insert(format!("{id}-backendsecurity"), Obj { ready: reported, copy_from: None, manifest: to_value(&bsp::BackendSecurityPolicy {
+                    metadata: self.meta(&obj), spec: policy, status: None,
+                }) });
             }
-            rules.push(json!({
-                "matches": [{"headers": [{"type": "Exact", "name": "x-ai-eg-model", "value": m.name}]}],
+            rules.push(route::AiGatewayRouteRules {
+                matches: model_match(m),
                 // The model, then its fallbacks.
-                "backendRefs": self.backend_refs(m, &by_name),
-            }));
+                backend_refs: Some(self.backend_refs(m, &by_name)),
+                ..Default::default()
+            });
         }
         if !rules.is_empty() {
-            out.insert("route".into(), Obj { ready: reported, copy_from: None, manifest: json!({
-                "apiVersion": "aigateway.envoyproxy.io/v1beta1", "kind": "AIGatewayRoute", "metadata": self.meta(name),
-                "spec": {"parentRefs": gateway_refs, "rules": rules,
+            let cost = |key: &str, r#type: route::AiGatewayRouteLlmRequestCostsType| route::AiGatewayRouteLlmRequestCosts {
+                metadata_key: key.into(), r#type, cel: None,
+            };
+            out.insert("route".into(), Obj { ready: reported, copy_from: None, manifest: to_value(&route::AiGatewayRoute {
+                metadata: self.meta(name),
+                spec: route::AiGatewayRouteSpec {
+                    parent_refs: Some(targets().map(|(group, kind, name)| route::AiGatewayRouteParentRefs {
+                        group: Some(group), kind: Some(kind), name, ..Default::default()
+                    }).collect()),
+                    rules,
                     // Each request's tokens, for the token limits and the access log.
-                    "llmRequestCosts": [
-                        {"metadataKey": "llm_input_token", "type": "InputToken"},
-                        {"metadataKey": "llm_output_token", "type": "OutputToken"},
-                        {"metadataKey": "llm_total_token", "type": "TotalToken"},
-                    ]},
-            })});
+                    llm_request_costs: Some(vec![
+                        cost("llm_input_token", route::AiGatewayRouteLlmRequestCostsType::InputToken),
+                        cost("llm_output_token", route::AiGatewayRouteLlmRequestCostsType::OutputToken),
+                        cost("llm_total_token", route::AiGatewayRouteLlmRequestCostsType::TotalToken),
+                    ]),
+                    ..Default::default()
+                },
+                status: None,
+            }) });
             if spec.limited() {
                 out.insert("ratelimit".into(), Obj { ready: always, copy_from: None, manifest: self.token_limits() });
             }
         }
         // The token usage per model (Agent Router's gen_ai_* metrics) for the
         // Project's Prometheus: what its cost rules price.
-        let mut gateways = vec![json!(name)];
-        if spec.expose().is_some() {
-            gateways.push(json!(format!("{name}-external")));
-        }
         out.insert("podmonitor".into(), Obj { ready: always, copy_from: None, manifest: self.pod_monitor(gateways, &models) });
         if !spec.alerts.disabled {
             out.insert("prometheusrule".into(), Obj { ready: always, copy_from: None, manifest: self.alert_rules() });
@@ -819,19 +917,17 @@ impl Composition<'_> {
     }
 
     /// A model's backend and, a priority lower each, its fallbacks'.
-    fn backend_refs(&self, m: &Model, by_name: &BTreeMap<String, Model>) -> Vec<Value> {
-        let r = |m: &Model, priority: usize| {
-            let mut r = json!({"name": self.model_object(&m.name)});
-            if !m.upstream_model.is_empty() {
-                r["modelNameOverride"] = json!(m.upstream_model);
-            } else if priority > 0 {
+    fn backend_refs(&self, m: &Model, by_name: &BTreeMap<String, Model>) -> Vec<route::AiGatewayRouteRulesBackendRefs> {
+        let r = |m: &Model, priority: usize| route::AiGatewayRouteRulesBackendRefs {
+            name: self.model_object(&m.name),
+            model_name_override: if !m.upstream_model.is_empty() {
+                Some(m.upstream_model.clone())
+            } else {
                 // A fallback gets the request for another model: name its own.
-                r["modelNameOverride"] = json!(m.name);
-            }
-            if priority > 0 {
-                r["priority"] = json!(priority);
-            }
-            r
+                (priority > 0).then(|| m.name.clone())
+            },
+            priority: (priority > 0).then_some(priority as i32),
+            ..Default::default()
         };
         let mut refs = vec![r(m, 0)];
         for f in self.spec.fallbacks(m) {
@@ -847,54 +943,45 @@ impl Composition<'_> {
     /// The Gateways' retry: attempts per model on the retried statuses and
     /// connection failures, with backoff; with fallbacks, moving to the next
     /// one after that many. None when nothing is retried.
-    fn retry_policy(&self) -> Option<Value> {
+    fn retry_policy(&self) -> Option<btp::BackendTrafficPolicyRetry> {
         let attempts = self.spec.attempts();
         let priorities = 1 + self.spec.max_fallbacks();
         let retries = attempts * priorities - 1;
         if retries <= 0 {
             return None;
         }
-        let mut per_retry = json!({"backOff": {"baseInterval": "250ms", "maxInterval": "5s"}});
-        if let Some(r) = self.spec.retry.as_ref().filter(|r| !r.per_try_timeout.is_empty()) {
-            per_retry["timeout"] = json!(r.per_try_timeout);
-        }
-        let mut retry = json!({
-            "numRetries": retries,
-            "retryOn": {
-                "triggers": ["connect-failure", "reset", "retriable-status-codes"],
-                "httpStatusCodes": self.spec.retry_on(),
-            },
-            "perRetry": per_retry,
-        });
-        if priorities > 1 {
-            retry["numAttemptsPerPriority"] = json!(attempts);
-        }
-        Some(retry)
+        Some(btp::BackendTrafficPolicyRetry {
+            num_retries: Some(retries as i32),
+            retry_on: Some(btp::BackendTrafficPolicyRetryRetryOn {
+                triggers: Some(["connect-failure", "reset", "retriable-status-codes"].map(String::from).to_vec()),
+                http_status_codes: Some(self.spec.retry_on()),
+            }),
+            per_retry: Some(btp::BackendTrafficPolicyRetryPerRetry {
+                back_off: Some(btp::BackendTrafficPolicyRetryPerRetryBackOff {
+                    base_interval: Some("250ms".into()), max_interval: Some("5s".into()),
+                }),
+                timeout: self.spec.retry.as_ref().filter(|r| !r.per_try_timeout.is_empty()).map(|r| r.per_try_timeout.clone()),
+            }),
+            num_attempts_per_priority: (priorities > 1).then_some(attempts as i32),
+        })
     }
 
     /// The per-minute caps, per client and for the gateway: a request counts 1
     /// when it arrives, a token cap is charged with each response's total tokens.
-    fn minute_rules(&self, token_cost: &Value) -> Vec<Value> {
+    fn minute_rules(&self, token_cost: &btp::BackendTrafficPolicyRateLimitGlobalRulesCost) -> Vec<btp::BackendTrafficPolicyRateLimitGlobalRules> {
         let mut rules = vec![];
-        let mut add = |selectors: Option<Value>, p: PerMinute| {
+        let mut add = |client: Option<&str>, p: PerMinute| {
             if p.requests_per_minute > 0 {
-                let mut r = json!({"limit": {"requests": p.requests_per_minute, "unit": "Minute"}, "shared": true});
-                if let Some(s) = &selectors {
-                    r["clientSelectors"] = s.clone();
-                }
-                rules.push(r);
+                rules.push(rate_rule(client, p.requests_per_minute, btp::BackendTrafficPolicyRateLimitGlobalRulesLimitUnit::Minute, None));
             }
             if p.tokens_per_minute > 0 {
-                let mut r = json!({"limit": {"requests": p.tokens_per_minute, "unit": "Minute"}, "cost": token_cost, "shared": true});
-                if let Some(s) = &selectors {
-                    r["clientSelectors"] = s.clone();
-                }
-                rules.push(r);
+                rules.push(rate_rule(client, p.tokens_per_minute, btp::BackendTrafficPolicyRateLimitGlobalRulesLimitUnit::Minute,
+                    Some(token_cost.clone())));
             }
         };
         for cl in self.spec.client_list() {
             if !cl.expired() {
-                add(Some(json!([{"headers": [{"name": CLIENT_HEADER, "type": "Exact", "value": cl.name}]}])), cl.per_minute());
+                add(Some(&cl.name), cl.per_minute());
             }
         }
         add(None, self.spec.rate_limit.clone());
@@ -907,94 +994,110 @@ impl Composition<'_> {
     /// tokens; a request is refused (429) once its counter is used up. Shared
     /// by both Gateways; each site counts on its own.
     fn token_limits(&self) -> Value {
-        let cost = json!({
-            "request": {"from": "Number", "number": 0},
-            "response": {"from": "Metadata", "metadata": {"namespace": "io.envoy.ai_gateway", "key": "llm_total_token"}},
-        });
+        let cost = btp::BackendTrafficPolicyRateLimitGlobalRulesCost {
+            request: Some(btp::BackendTrafficPolicyRateLimitGlobalRulesCostRequest {
+                from: btp::BackendTrafficPolicyRateLimitGlobalRulesCostRequestFrom::Number, number: Some(0), metadata: None,
+            }),
+            response: Some(btp::BackendTrafficPolicyRateLimitGlobalRulesCostResponse {
+                from: btp::BackendTrafficPolicyRateLimitGlobalRulesCostResponseFrom::Metadata,
+                metadata: Some(btp::BackendTrafficPolicyRateLimitGlobalRulesCostResponseMetadata {
+                    namespace: "io.envoy.ai_gateway".into(), key: "llm_total_token".into(),
+                }),
+                number: None,
+            }),
+        };
+        let month = btp::BackendTrafficPolicyRateLimitGlobalRulesLimitUnit::Month;
         let mut rules = vec![];
         for cl in self.spec.client_list() {
             if cl.monthly_tokens > 0 && !cl.expired() {
-                rules.push(json!({
-                    "clientSelectors": [{"headers": [{"name": CLIENT_HEADER, "type": "Exact", "value": cl.name}]}],
-                    "limit": {"requests": cl.monthly_tokens, "unit": "Month"},
-                    "cost": cost, "shared": true,
-                }));
+                rules.push(rate_rule(Some(&cl.name), cl.monthly_tokens, month.clone(), Some(cost.clone())));
             }
         }
         if self.spec.monthly_tokens > 0 {
-            rules.push(json!({"limit": {"requests": self.spec.monthly_tokens, "unit": "Month"}, "cost": cost, "shared": true}));
+            rules.push(rate_rule(None, self.spec.monthly_tokens, month, Some(cost.clone())));
         }
         rules.extend(self.minute_rules(&cost));
-        json!({
-            "apiVersion": "gateway.envoyproxy.io/v1alpha1", "kind": "BackendTrafficPolicy", "metadata": self.meta(&format!("{}-limits", self.name)),
-            "spec": {
+        to_value(&btp::BackendTrafficPolicy {
+            metadata: self.meta(&format!("{}-limits", self.name)),
+            spec: btp::BackendTrafficPolicySpec {
                 // The HTTPRoute Agent Router makes of the AIGatewayRoute, merged
                 // into the Gateways' policy (its buffers) rather than replacing it.
-                "targetRefs": [{"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "name": self.name}],
-                "mergeType": "StrategicMerge",
-                "rateLimit": {"type": "Global", "global": {"rules": rules}},
+                target_refs: Some(vec![btp::BackendTrafficPolicyTargetRefs {
+                    group: "gateway.networking.k8s.io".into(), kind: "HTTPRoute".into(), name: self.name.into(), section_name: None,
+                }]),
+                merge_type: Some("StrategicMerge".into()),
+                rate_limit: Some(btp::BackendTrafficPolicyRateLimit {
+                    r#type: Some(btp::BackendTrafficPolicyRateLimitType::Global),
+                    global: Some(btp::BackendTrafficPolicyRateLimitGlobal { rules }),
+                    ..Default::default()
+                }),
+                ..Default::default()
             },
+            status: None,
         })
     }
 
     /// Puts a location object into a provider-kubernetes Object.
     fn wrap(&self, key: &str, location: &str, manifest: Value, copy_from: Option<&(String, Option<(String, String)>)>) -> Composed {
-        let mut spec = json!({
-            "providerConfigRef": {"kind": "ClusterProviderConfig", "name": location},
-            "watch": true,
-            "forProvider": {"manifest": manifest},
-        });
-        if let Some((from, field)) = copy_from {
-            // The Secret's data comes from the control plane, never through this spec.
-            spec["references"] = match field {
-                None => json!(["data", "type"].iter().map(|f| json!({"patchesFrom": {"apiVersion": "v1", "kind": "Secret",
-                    "name": from, "namespace": self.ns, "fieldPath": f}})).collect::<Vec<_>>()),
-                Some((field, to)) => json!([{"patchesFrom": {"apiVersion": "v1", "kind": "Secret",
-                    "name": from, "namespace": self.ns, "fieldPath": field}, "toFieldPath": to}]),
-            };
-        }
-        Composed { ready: false, object: json!({
-            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "Object",
-            "metadata": {"name": format!("{}-{key}", self.name), "namespace": self.ns, "labels": self.labels,
-                "annotations": {"platform.cndev.nl/location": location}},
-            "spec": spec,
-        })}
+        // The Secret's data comes from the control plane, never through this spec.
+        let references = match copy_from {
+            None => vec![],
+            Some((from, None)) => secret_copy(self.ns, from),
+            Some((from, Some((field, to)))) => secret_field_copy(self.ns, from, field, to),
+        };
+        let metadata = meta(&format!("{}-{key}", self.name), self.ns, &self.labels);
+        Composed { ready: false, object: to_value(&location_object(metadata, location, manifest, references)) }
     }
 
-    fn meta(&self, name: &str) -> Value {
-        json!({"name": name, "namespace": self.ns, "labels": self.labels})
+    fn meta(&self, name: &str) -> ObjectMeta {
+        meta(name, self.ns, &self.labels)
     }
 
     /// Scrapes the gateway's Envoy proxies: Agent Router's gen_ai_* metrics
     /// from the extproc sidecar and a few Envoy statistics, every series
     /// labelled with the gateway (the exposed Gateway's proxies too) and
     /// Envoy's with the model of its route rule.
-    fn pod_monitor(&self, gateways: Vec<Value>, models: &[Model]) -> Value {
-        let gateway = json!({
-            "sourceLabels": ["__meta_kubernetes_pod_label_gateway_envoyproxy_io_owning_gateway_name"],
-            "regex": "(.+?)(-external)?", "targetLabel": "gateway", "replacement": "$1",
-        });
+    fn pod_monitor(&self, gateways: Vec<String>, models: &[Model]) -> Value {
+        let gateway = pm::PodMonitorPodMetricsEndpointsRelabelings {
+            source_labels: Some(vec!["__meta_kubernetes_pod_label_gateway_envoyproxy_io_owning_gateway_name".into()]),
+            regex: Some("(.+?)(-external)?".into()), target_label: Some("gateway".into()), replacement: Some("$1".into()),
+            ..Default::default()
+        };
         // Agent Router turns the AIGatewayRoute into HTTPRoute <name>, a rule
         // per model in the order the composition writes them (sorted by name).
-        let mut keep = vec![json!({"sourceLabels": ["__name__"], "regex": ENVOY_METRICS, "action": "keep"})];
+        let mut keep = vec![pm::PodMonitorPodMetricsEndpointsMetricRelabelings {
+            source_labels: Some(vec!["__name__".into()]), regex: Some(ENVOY_METRICS.into()),
+            action: Some(pm::PodMonitorPodMetricsEndpointsMetricRelabelingsAction::Keep), ..Default::default()
+        }];
         for (i, m) in models.iter().enumerate() {
-            keep.push(json!({
-                "sourceLabels": ["envoy_cluster_name"],
-                "regex": quote_meta(&format!("httproute/{}/{}/rule/{i}", self.ns, self.name)),
-                "targetLabel": "model", "replacement": m.name,
-            }));
+            keep.push(pm::PodMonitorPodMetricsEndpointsMetricRelabelings {
+                source_labels: Some(vec!["envoy_cluster_name".into()]),
+                regex: Some(quote_meta(&format!("httproute/{}/{}/rule/{i}", self.ns, self.name))),
+                target_label: Some("model".into()), replacement: Some(m.name.clone()),
+                ..Default::default()
+            });
         }
-        json!({
-            "apiVersion": "monitoring.coreos.com/v1", "kind": "PodMonitor", "metadata": self.meta(&format!("{}-tokens", self.name)),
-            "spec": {
-                "selector": {"matchExpressions": [{"key": "gateway.envoyproxy.io/owning-gateway-name", "operator": "In", "values": gateways}]},
-                "podMetricsEndpoints": [
+        let selector = LabelSelector {
+            match_expressions: Some(vec![LabelSelectorRequirement {
+                key: "gateway.envoyproxy.io/owning-gateway-name".into(), operator: "In".into(), values: Some(gateways),
+            }]),
+            ..Default::default()
+        };
+        let endpoint = |path: &str| pm::PodMonitorPodMetricsEndpoints {
+            path: Some(path.into()), interval: Some("30s".into()), relabelings: Some(vec![gateway.clone()]), ..Default::default()
+        };
+        to_value(&pm::PodMonitor {
+            metadata: self.meta(&format!("{}-tokens", self.name)),
+            spec: pm::PodMonitorSpec {
+                selector: retype(&selector),
+                pod_metrics_endpoints: Some(vec![
                     // The ai-gateway-extproc sidecar's admin port (no named port).
-                    {"targetPort": EXT_PROC_METRICS_PORT, "path": "/metrics", "interval": "30s", "relabelings": [gateway]},
-                    {"port": "metrics", "path": "/stats/prometheus", "interval": "30s", "relabelings": [gateway],
-                     "metricRelabelings": keep},
-                ],
+                    pm::PodMonitorPodMetricsEndpoints { target_port: Some(IntOrString::Int(EXT_PROC_METRICS_PORT as i32)), ..endpoint("/metrics") },
+                    pm::PodMonitorPodMetricsEndpoints { port: Some("metrics".into()), metric_relabelings: Some(keep), ..endpoint("/stats/prometheus") },
+                ]),
+                ..Default::default()
             },
+            status: None,
         })
     }
 
@@ -1007,30 +1110,25 @@ impl Composition<'_> {
         let name = self.name;
         let sel = format!("namespace={},gateway={}", quote(self.ns), quote(name));
         let p95 = |metric: &str| format!("histogram_quantile(0.95, sum by (le, gen_ai_original_model) (rate({metric}_bucket{{{sel}}}[10m])))");
-        let labels = json!({"severity": "warning", "gateway": name});
+        let labels = Labels::from([("severity".to_string(), "warning".to_string()), ("gateway".to_string(), name.to_string())]);
+        let alert = |rule: &str, r#for: &str, expr: String, summary: String| alert(rule, r#for, expr, &labels, summary);
         let model = "{{ $labels.gen_ai_original_model }}";
-        let rules = json!([
-            {"alert": "BasisGatewaySlow", "for": "15m", "labels": labels,
-             "expr": format!("{} > {}", p95("gen_ai_server_request_duration_seconds"), fmt_g(a.latency())),
-             "annotations": {"summary": format!(
-                 "Gateway {name}: 95% of {model} requests take up to {{{{ $value | humanizeDuration }}}} (threshold {}s)", fmt_g(a.latency()))}},
-            {"alert": "BasisGatewaySlowFirstToken", "for": "15m", "labels": labels,
-             "expr": format!("{} > {}", p95("gen_ai_server_time_to_first_token_seconds"), fmt_g(a.first_token())),
-             "annotations": {"summary": format!(
-                 "Gateway {name}: 95% of streamed {model} requests wait up to {{{{ $value | humanizeDuration }}}} for the first token (threshold {}s)",
-                 fmt_g(a.first_token()))}},
-            {"alert": "BasisGatewayErrors", "for": "10m", "labels": labels,
-             "expr": format!(
-                 "100 * sum by (gen_ai_original_model) (rate(gen_ai_server_request_duration_seconds_count{{{sel},error_type!=\"\"}}[10m]))\n  / sum by (gen_ai_original_model) (rate(gen_ai_server_request_duration_seconds_count{{{sel}}}[10m])) > {}",
-                 fmt_g(a.error_percent())),
-             "annotations": {"summary": format!(
-                 "Gateway {name}: {{{{ $value | printf \"%.1f\" }}}}% of {model} requests fail (threshold {}%)", fmt_g(a.error_percent()))}},
-            {"alert": "BasisGatewayMetricsMissing", "for": "10m", "labels": labels,
-             "expr": format!("absent(up{{{sel}}})"),
-             "annotations": {"summary": format!("Gateway {name}: no metrics from its proxies in this site")}},
-        ]);
-        json!({"apiVersion": "monitoring.coreos.com/v1", "kind": "PrometheusRule", "metadata": self.meta(&format!("{name}-gateway-alerts")),
-            "spec": {"groups": [{"name": format!("gateway/{}/{name}", self.ns), "rules": rules}]}})
+        let rules = vec![
+            alert("BasisGatewaySlow", "15m", format!("{} > {}", p95("gen_ai_server_request_duration_seconds"), fmt_g(a.latency())),
+                format!("Gateway {name}: 95% of {model} requests take up to {{{{ $value | humanizeDuration }}}} (threshold {}s)", fmt_g(a.latency()))),
+            alert("BasisGatewaySlowFirstToken", "15m", format!("{} > {}", p95("gen_ai_server_time_to_first_token_seconds"), fmt_g(a.first_token())),
+                format!(
+                    "Gateway {name}: 95% of streamed {model} requests wait up to {{{{ $value | humanizeDuration }}}} for the first token (threshold {}s)",
+                    fmt_g(a.first_token()))),
+            alert("BasisGatewayErrors", "10m",
+                format!(
+                    "100 * sum by (gen_ai_original_model) (rate(gen_ai_server_request_duration_seconds_count{{{sel},error_type!=\"\"}}[10m]))\n  / sum by (gen_ai_original_model) (rate(gen_ai_server_request_duration_seconds_count{{{sel}}}[10m])) > {}",
+                    fmt_g(a.error_percent())),
+                format!("Gateway {name}: {{{{ $value | printf \"%.1f\" }}}}% of {model} requests fail (threshold {}%)", fmt_g(a.error_percent()))),
+            alert("BasisGatewayMetricsMissing", "10m", format!("absent(up{{{sel}}})"),
+                format!("Gateway {name}: no metrics from its proxies in this site")),
+        ];
+        to_value(&prometheus_rule(self.meta(&format!("{name}-gateway-alerts")), format!("gateway/{}/{name}", self.ns), rules))
     }
 
     /// The gateway's dashboard in the Project's Grafana (control plane):
@@ -1038,16 +1136,7 @@ impl Composition<'_> {
     /// tokens, retries and rate-limited requests, per model and site.
     fn dashboard(&self) -> Value {
         let uid = format!("basis-gw-{}", &sha1hex(&format!("{}/{}", self.ns, self.name))[..12]);
-        json!({
-            "apiVersion": "grafana.integreatly.org/v1beta1", "kind": "GrafanaDashboard", "metadata": self.meta(&format!("{}-gateway", self.name)),
-            "spec": {
-                "instanceSelector": {"matchLabels": {"dashboards.paas.cndev.nl/scope": self.ns}},
-                "folder": "Model gateways",
-                "uid": uid,
-                "resyncPeriod": "10m",
-                "json": self.dashboard_json(&uid),
-            },
-        })
+        to_value(&scoped_dashboard(self.meta(&format!("{}-gateway", self.name)), self.ns, "Model gateways", uid.clone(), self.dashboard_json(&uid)))
     }
 
     fn dashboard_json(&self, uid: &str) -> String {
@@ -1121,34 +1210,77 @@ impl Composition<'_> {
 const ENVOY_METRICS: &str =
     "envoy_cluster_upstream_rq_(retry|retry_success|retry_overflow|xx|timeout)|envoy_http_downstream_rq_xx|envoy_cluster_ratelimit_over_limit";
 
+/// What the Gateways buffer per request and response: prompts with context,
+/// images and embeddings are large.
+static BUFFER_LIMIT: std::sync::LazyLock<IntOrString> = std::sync::LazyLock::new(|| IntOrString::String("50Mi".into()));
+
+/// A global rate limit rule: limit per unit, for a client (its header) or
+/// the whole gateway, charged with cost (else 1 per request).
+fn rate_rule(client: Option<&str>, limit: i64, unit: btp::BackendTrafficPolicyRateLimitGlobalRulesLimitUnit,
+    cost: Option<btp::BackendTrafficPolicyRateLimitGlobalRulesCost>) -> btp::BackendTrafficPolicyRateLimitGlobalRules {
+    btp::BackendTrafficPolicyRateLimitGlobalRules {
+        client_selectors: client.map(|c| vec![btp::BackendTrafficPolicyRateLimitGlobalRulesClientSelectors {
+            headers: Some(vec![btp::BackendTrafficPolicyRateLimitGlobalRulesClientSelectorsHeaders {
+                name: CLIENT_HEADER.into(),
+                r#type: Some(btp::BackendTrafficPolicyRateLimitGlobalRulesClientSelectorsHeadersType::Exact),
+                value: Some(c.into()),
+                invert: None,
+            }]),
+            ..Default::default()
+        }]),
+        limit: btp::BackendTrafficPolicyRateLimitGlobalRulesLimit { requests: limit, unit, from_metadata: None },
+        cost,
+        shared: Some(true),
+        shadow_mode: None,
+        x_rate_limit_headers: None,
+    }
+}
+
 /// The gateway's access log: one JSON line per request with the client, the
 /// model, its tokens and the outcome, never the prompt. The portal's Audit
 /// logs page reads it (source "gateway").
-fn telemetry() -> Value {
-    json!({"accessLog": {"settings": [{
-        "format": {"type": "JSON", "json": {
-            "basis": "gateway",
-            "time": "%START_TIME%",
-            "client": format!("%REQ({})%", CLIENT_HEADER.to_uppercase()),
-            "model": "%REQ(X-AI-EG-MODEL)%",
-            "method": "%REQ(:METHOD)%",
-            "path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
-            "status": "%RESPONSE_CODE%",
-            "details": "%RESPONSE_CODE_DETAILS%",
-            "duration_ms": "%DURATION%",
-            "input_tokens": "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%",
-            "output_tokens": "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%",
-            "total_tokens": "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_total_token)%",
-            "request_id": "%REQ(X-REQUEST-ID)%",
-            "source": "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%",
-        }},
-        "sinks": [{"type": "File", "file": {"path": "/dev/stdout"}}],
-    }]}})
+fn telemetry() -> ep::EnvoyProxyTelemetry {
+    let format = [
+        ("basis", "gateway".to_string()),
+        ("time", "%START_TIME%".into()),
+        ("client", format!("%REQ({})%", CLIENT_HEADER.to_uppercase())),
+        ("model", "%REQ(X-AI-EG-MODEL)%".into()),
+        ("method", "%REQ(:METHOD)%".into()),
+        ("path", "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%".into()),
+        ("status", "%RESPONSE_CODE%".into()),
+        ("details", "%RESPONSE_CODE_DETAILS%".into()),
+        ("duration_ms", "%DURATION%".into()),
+        ("input_tokens", "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%".into()),
+        ("output_tokens", "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%".into()),
+        ("total_tokens", "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_total_token)%".into()),
+        ("request_id", "%REQ(X-REQUEST-ID)%".into()),
+        ("source", "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%".into()),
+    ];
+    ep::EnvoyProxyTelemetry {
+        access_log: Some(ep::EnvoyProxyTelemetryAccessLog {
+            settings: Some(vec![ep::EnvoyProxyTelemetryAccessLogSettings {
+                format: Some(ep::EnvoyProxyTelemetryAccessLogSettingsFormat {
+                    r#type: Some(ep::EnvoyProxyTelemetryAccessLogSettingsFormatType::Json),
+                    json: Some(format.into_iter().map(|(k, v)| (k.to_string(), v)).collect()),
+                    text: None,
+                }),
+                sinks: vec![ep::EnvoyProxyTelemetryAccessLogSettingsSinks {
+                    r#type: Some(ep::EnvoyProxyTelemetryAccessLogSettingsSinksType::File),
+                    file: Some(ep::EnvoyProxyTelemetryAccessLogSettingsSinksFile { path: Some("/dev/stdout".into()) }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::util::b64;
     use crate::common::util::{set_now, set_secret};
 
     const MODELS: &str = r#""models":[

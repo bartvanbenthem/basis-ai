@@ -54,7 +54,7 @@ pub fn assert(r: &Render) {
             check(gpu.is_none_or(|g| g.is_null()) && s!(main, "image") == "docker.io/vllm/vllm-openai-cpu:v0.23.0"
                 && eq(at!(main, "securityContext", "runAsNonRoot"), json!(false)), format!("{s}: CPU only: {}", repr(Some(main))));
         } else if geo {
-            check(eq(gpu, json!(2)) && eq(at!(srv, "spec", "parallelism", "tensor"), json!(2)), format!("{s}: two GPUs, tensor parallel: {}", repr(Some(main))));
+            check(eq(gpu, json!("2")) && eq(at!(srv, "spec", "parallelism", "tensor"), json!(2)), format!("{s}: two GPUs, tensor parallel: {}", repr(Some(main))));
             check(eq(at!(main, "args"), json!(["--max-model-len=32768", "--gpu-memory-utilization=0.92"])), format!("{s}: vLLM flags {}", repr(at!(main, "args"))));
             check(s!(srv, "spec", "template", "serviceAccountName") == format!("{name}-model"), format!("{s}: the token's ServiceAccount"));
             let sa = r.live(&format!("{s}-serviceaccount"));

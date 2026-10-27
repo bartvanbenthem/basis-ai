@@ -42,13 +42,28 @@
 //! from the replica, and refuses writes until the primary moves there.
 //! Locations are pinned in status.sites, so a server never moves.
 
+use k8s_openapi::ByteString;
+use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec};
+use k8s_openapi::api::core::v1::{
+    Capabilities, ConfigMap, ConfigMapVolumeSource, Container, ContainerPort, EnvFromSource, EnvVar, EnvVarSource, HTTPGetAction,
+    PodSecurityContext, PodSpec, PodTemplateSpec, Probe, ResourceRequirements, SeccompProfile, Secret, SecretEnvSource, SecretKeySelector,
+    SecretVolumeSource, SecurityContext, Service, ServicePort, ServiceSpec, TopologySpreadConstraint, Volume, VolumeMount,
+};
+use k8s_openapi::api::policy::v1::{PodDisruptionBudget, PodDisruptionBudgetSpec};
+use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, ObjectMeta};
+use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
 use crate::common::gojson::{fmt_g, marshal, marshal_indent, quote};
+use crate::common::kinds::crds::prometheus::pod_monitor as pm;
+use crate::common::kinds::{
+    Labels, alert, location_object, meta, prometheus_rule, scoped_dashboard, secret_copy, secret_field_copy, to_value, vec_opt,
+};
 use crate::common::lenient::decode;
 use crate::common::util::{
-    as_str, b64, condition_true, dig_opt, labels_obj, live, new_secret, or, or_f, or_i, past_day, reported, sha1hex, unb64,
+    as_str, condition_true, dig_opt, live, new_secret, or, or_f, or_i, past_day, reported, sha1hex, unb64,
 };
 use crate::common::{Composed, Condition, Input, Output, Requirement, Result};
 use crate::lenient;
@@ -243,7 +258,7 @@ struct Composition<'a> {
     spec: &'a Spec,
     name: &'a str,
     ns: &'a str,
-    labels: Map<String, Value>,
+    labels: Labels,
 }
 
 /// A manifest for a location, with how to tell it's ready.
@@ -265,10 +280,10 @@ fn object_ready(o: Option<&Value>) -> bool {
 /// Renders the desired state of an MCPServer.
 pub fn compose(input: &Input) -> Result<Output> {
     let xr: Xr = decode(&input.xr);
-    let labels = labels_obj(&[
-        ("app.kubernetes.io/managed-by", "crossplane"),
-        ("app.kubernetes.io/part-of", "basis"),
-        ("ai.cndev.nl/mcpserver", &xr.metadata.name),
+    let labels = Labels::from([
+        ("app.kubernetes.io/managed-by".to_string(), "crossplane".to_string()),
+        ("app.kubernetes.io/part-of".to_string(), "basis".to_string()),
+        ("ai.cndev.nl/mcpserver".to_string(), xr.metadata.name.clone()),
     ]);
     let c = Composition { spec: &xr.spec, name: &xr.metadata.name, ns: &xr.metadata.namespace, labels };
     let (spec, name, ns) = (c.spec, c.name, c.ns);
@@ -329,7 +344,7 @@ pub fn compose(input: &Input) -> Result<Output> {
 
     // ---- control plane: a key per client, the dashboard
     let tools = c.tools();
-    let mut keys = Map::new();
+    let mut keys = BTreeMap::new();
     let mut expired = vec![];
     for cl in spec.client_list() {
         if cl.expired() {
@@ -341,13 +356,12 @@ pub fn compose(input: &Input) -> Result<Output> {
             .and_then(unb64)
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| new_secret(40));
-        keys.insert(cl.name, json!(b64(&key)));
+        keys.insert(cl.name, ByteString(key.into_bytes()));
     }
     let n_clients = keys.len();
     let keys_ready = observed.contains_key("keys");
-    out.composed.insert("keys".into(), Composed { ready: keys_ready, object: json!({
-        "apiVersion": "v1", "kind": "Secret", "type": "Opaque",
-        "metadata": c.meta(&keys_secret(name)), "data": keys,
+    out.composed.insert("keys".into(), Composed { ready: keys_ready, object: to_value(&Secret {
+        metadata: c.meta(&keys_secret(name)), type_: Some("Opaque".into()), data: Some(keys), ..Default::default()
     })});
     let dashboard = c.dashboard();
     let dashboard_uid = dashboard["spec"]["uid"].clone();
@@ -482,68 +496,102 @@ impl Composition<'_> {
     fn site_objects(&self, site: &str, replicas: i64) -> BTreeMap<&'static str, Obj> {
         let (spec, name, ns) = (self.spec, self.name, self.ns);
         let mut out: BTreeMap<&'static str, Obj> = BTreeMap::new();
+        let secret = |name: &str, opaque: bool| {
+            to_value(&Secret { metadata: self.meta(name), type_: opaque.then(|| "Opaque".into()), ..Default::default() })
+        };
         out.insert("keys", Obj { ready: Box::new(object_ready), copy_from: Some((keys_secret(name), None)),
-            manifest: json!({"apiVersion": "v1", "kind": "Secret", "metadata": self.meta(&keys_secret(name))})});
+            manifest: secret(&keys_secret(name), false) });
         let cfg = marshal_indent(&self.config(site), "  ");
-        out.insert("config", Obj { ready: Box::new(reported), copy_from: None, manifest: json!({
-            "apiVersion": "v1", "kind": "ConfigMap", "metadata": self.meta(&format!("{name}-config")),
-            "data": {"config.json": cfg},
+        out.insert("config", Obj { ready: Box::new(reported), copy_from: None, manifest: to_value(&ConfigMap {
+            metadata: self.meta(&format!("{name}-config")),
+            data: Some(Labels::from([("config.json".to_string(), cfg.clone())])),
+            ..Default::default()
         })});
 
         // The database and the embeddings endpoint, from the environment.
         let mut env = vec![];
         let mut env_from = vec![];
-        let secret_env = |n: &str, secret: &str, key: &str| json!({"name": n, "valueFrom": {"secretKeyRef": {"name": secret, "key": key}}});
+        let value = |n: &str, value: String| EnvVar { name: n.into(), value: Some(value), ..Default::default() };
+        let secret_env = |n: &str, secret: &str, key: &str| EnvVar {
+            name: n.into(),
+            value_from: Some(EnvVarSource {
+                secret_key_ref: Some(SecretKeySelector { name: secret.into(), key: key.into(), ..Default::default() }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
         if !spec.database.stack.is_empty() {
             // DATABASE_URL, OPENAI_BASE_URL and OPENAI_API_KEY (and the cache's, unused).
-            env_from.push(json!({"secretRef": {"name": format!("{}-connection", spec.database.stack)}}));
+            env_from.push(EnvFromSource {
+                secret_ref: Some(SecretEnvSource { name: format!("{}-connection", spec.database.stack), ..Default::default() }),
+                ..Default::default()
+            });
         } else {
             let cluster = &spec.database.cluster;
             let mut credentials = format!("{cluster}-app");
             if let Some(r) = &spec.database.credentials_secret_ref {
                 credentials = self.database_secret();
                 out.insert("database", Obj { ready: Box::new(object_ready), copy_from: Some((r.name.clone(), None)),
-                    manifest: json!({"apiVersion": "v1", "kind": "Secret", "metadata": self.meta(&self.database_secret())})});
+                    manifest: secret(&self.database_secret(), false) });
             }
             // libpq's variables: they fill in what the URL leaves out.
-            env.push(json!({"name": "DATABASE_URL", "value": format!("postgresql://{cluster}-rw.{ns}.svc:5432/{}", spec.database_name())}));
+            env.push(value("DATABASE_URL", format!("postgresql://{cluster}-rw.{ns}.svc:5432/{}", spec.database_name())));
             env.push(secret_env("PGUSER", &credentials, "username"));
             env.push(secret_env("PGPASSWORD", &credentials, "password"));
             if spec.embeds() {
                 let gw = &spec.embeddings.gateway;
                 out.insert("embeddings", Obj { ready: Box::new(object_ready),
                     copy_from: Some((format!("{gw}-keys"), Some((format!("data.{}", spec.embeddings_client(name)), "data.apiKey".into())))),
-                    manifest: json!({"apiVersion": "v1", "kind": "Secret", "type": "Opaque", "metadata": self.meta(&self.embeddings_secret())})});
-                env.push(json!({"name": "OPENAI_BASE_URL", "value": format!("http://{gw}.{ns}.svc/v1")}));
+                    manifest: secret(&self.embeddings_secret(), true) });
+                env.push(value("OPENAI_BASE_URL", format!("http://{gw}.{ns}.svc/v1")));
                 env.push(secret_env("OPENAI_API_KEY", &self.embeddings_secret(), "apiKey"));
             }
         }
 
-        let selector = json!({"app.kubernetes.io/name": "basis-mcp", "ai.cndev.nl/mcpserver": name});
-        let pod_labels = json!({"app.kubernetes.io/part-of": "basis", "app.kubernetes.io/name": "basis-mcp", "ai.cndev.nl/mcpserver": name});
+        let selector = Labels::from([
+            ("app.kubernetes.io/name".to_string(), "basis-mcp".to_string()),
+            ("ai.cndev.nl/mcpserver".to_string(), name.to_string()),
+        ]);
+        let mut pod_labels = selector.clone();
+        pod_labels.insert("app.kubernetes.io/part-of".into(), "basis".into());
+        let match_labels = || LabelSelector { match_labels: Some(selector.clone()), ..Default::default() };
         let image = or(&spec.image, DEFAULT_IMAGE);
-        let probe = |path: &str, period: i64| json!({"httpGet": {"path": path, "port": "http"}, "periodSeconds": period, "timeoutSeconds": 3});
-        let mut container = json!({
-            "name": "server", "image": image,
-            "args": ["--config=/etc/basis-mcp/config/config.json", "--keys=/etc/basis-mcp/keys"],
-            "ports": [{"name": "http", "containerPort": HTTP_PORT}, {"name": "metrics", "containerPort": METRICS_PORT}],
+        let probe = |path: &str, period: i32| Probe {
+            http_get: Some(HTTPGetAction { path: Some(path.into()), port: IntOrString::String("http".into()), ..Default::default() }),
+            period_seconds: Some(period),
+            timeout_seconds: Some(3),
+            ..Default::default()
+        };
+        let port = |name: &str, port: i64| ContainerPort { name: Some(name.into()), container_port: port as i32, ..Default::default() };
+        let mount = |name: &str, path: &str| VolumeMount { name: name.into(), mount_path: path.into(), read_only: Some(true), ..Default::default() };
+        let container = Container {
+            name: "server".into(),
+            image: Some(image.into()),
+            args: Some(vec!["--config=/etc/basis-mcp/config/config.json".into(), "--keys=/etc/basis-mcp/keys".into()]),
+            ports: Some(vec![port("http", HTTP_PORT), port("metrics", METRICS_PORT)]),
             // Ready once it has its database and tables (and its model): a
             // gateway or agent only gets pods that can answer.
-            "readinessProbe": probe("/readyz", 10),
-            "livenessProbe": probe("/healthz", 20),
-            "resources": {"requests": {"cpu": spec.cpu(), "memory": spec.memory_limit()}, "limits": {"memory": spec.memory_limit()}},
-            "securityContext": {"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": {"drop": ["ALL"]}},
-            "volumeMounts": [
-                {"name": "config", "mountPath": "/etc/basis-mcp/config", "readOnly": true},
-                {"name": "keys", "mountPath": "/etc/basis-mcp/keys", "readOnly": true},
-            ],
-        });
-        if !env.is_empty() {
-            container["env"] = json!(env);
-        }
-        if !env_from.is_empty() {
-            container["envFrom"] = json!(env_from);
-        }
+            readiness_probe: Some(probe("/readyz", 10)),
+            liveness_probe: Some(probe("/healthz", 20)),
+            resources: Some(ResourceRequirements {
+                requests: Some(BTreeMap::from([
+                    ("cpu".to_string(), Quantity(spec.cpu().into())),
+                    ("memory".to_string(), Quantity(spec.memory_limit().into())),
+                ])),
+                limits: Some(BTreeMap::from([("memory".to_string(), Quantity(spec.memory_limit().into()))])),
+                ..Default::default()
+            }),
+            security_context: Some(SecurityContext {
+                allow_privilege_escalation: Some(false),
+                read_only_root_filesystem: Some(true),
+                capabilities: Some(Capabilities { drop: Some(vec!["ALL".into()]), ..Default::default() }),
+                ..Default::default()
+            }),
+            volume_mounts: Some(vec![mount("config", "/etc/basis-mcp/config"), mount("keys", "/etc/basis-mcp/keys")]),
+            env: vec_opt(env),
+            env_from: vec_opt(env_from),
+            ..Default::default()
+        };
         let hash = sha1hex(&format!("{cfg}{image}"))[..16].to_string();
         out.insert("deployment", Obj {
             ready: Box::new(move |o| {
@@ -553,39 +601,75 @@ impl Composition<'_> {
                 dig_opt(live(o), &["status", "readyReplicas"]).and_then(Value::as_f64).unwrap_or(0.0) >= 1.0
             }),
             copy_from: None,
-            manifest: json!({
-                "apiVersion": "apps/v1", "kind": "Deployment", "metadata": self.meta(name),
-                "spec": {
-                    "replicas": replicas,
-                    "selector": {"matchLabels": selector},
-                    "template": {
+            manifest: to_value(&Deployment {
+                metadata: self.meta(name),
+                spec: Some(DeploymentSpec {
+                    replicas: Some(replicas as i32),
+                    selector: match_labels(),
+                    template: PodTemplateSpec {
                         // A new config is a rollout; new keys are read in place.
-                        "metadata": {"labels": pod_labels, "annotations": {"ai.cndev.nl/config-hash": hash}},
-                        "spec": {
-                            "automountServiceAccountToken": false,
-                            "securityContext": {"runAsNonRoot": true, "runAsUser": 65532, "runAsGroup": 65532, "fsGroup": 65532,
-                                "seccompProfile": {"type": "RuntimeDefault"}},
-                            "topologySpreadConstraints": [{"maxSkew": 1, "topologyKey": "kubernetes.io/hostname",
-                                "whenUnsatisfiable": "ScheduleAnyway", "labelSelector": {"matchLabels": selector}}],
-                            "containers": [container],
-                            "volumes": [
-                                {"name": "config", "configMap": {"name": format!("{name}-config")}},
-                                {"name": "keys", "secret": {"secretName": keys_secret(name), "defaultMode": 0o440}},
-                            ],
-                        },
+                        metadata: Some(ObjectMeta {
+                            labels: Some(pod_labels),
+                            annotations: Some(Labels::from([("ai.cndev.nl/config-hash".to_string(), hash)])),
+                            ..Default::default()
+                        }),
+                        spec: Some(PodSpec {
+                            automount_service_account_token: Some(false),
+                            security_context: Some(PodSecurityContext {
+                                run_as_non_root: Some(true), run_as_user: Some(65532), run_as_group: Some(65532), fs_group: Some(65532),
+                                seccomp_profile: Some(SeccompProfile { type_: "RuntimeDefault".into(), ..Default::default() }),
+                                ..Default::default()
+                            }),
+                            topology_spread_constraints: Some(vec![TopologySpreadConstraint {
+                                max_skew: 1,
+                                topology_key: "kubernetes.io/hostname".into(),
+                                when_unsatisfiable: "ScheduleAnyway".into(),
+                                label_selector: Some(match_labels()),
+                                ..Default::default()
+                            }]),
+                            containers: vec![container],
+                            volumes: Some(vec![
+                                Volume {
+                                    name: "config".into(),
+                                    config_map: Some(ConfigMapVolumeSource { name: format!("{name}-config"), ..Default::default() }),
+                                    ..Default::default()
+                                },
+                                Volume {
+                                    name: "keys".into(),
+                                    secret: Some(SecretVolumeSource {
+                                        secret_name: Some(keys_secret(name)), default_mode: Some(0o440), ..Default::default()
+                                    }),
+                                    ..Default::default()
+                                },
+                            ]),
+                            ..Default::default()
+                        }),
                     },
-                },
+                    ..Default::default()
+                }),
+                status: None,
             }),
         });
-        out.insert("service", Obj { ready: Box::new(reported), copy_from: None, manifest: json!({
-            "apiVersion": "v1", "kind": "Service", "metadata": self.meta(name),
-            "spec": {"type": "ClusterIP", "selector": selector,
-                "ports": [{"name": "http", "port": 80, "targetPort": "http", "appProtocol": "http"}]},
+        out.insert("service", Obj { ready: Box::new(reported), copy_from: None, manifest: to_value(&Service {
+            metadata: self.meta(name),
+            spec: Some(ServiceSpec {
+                type_: Some("ClusterIP".into()),
+                selector: Some(selector.clone()),
+                ports: Some(vec![ServicePort {
+                    name: Some("http".into()), port: 80, target_port: Some(IntOrString::String("http".into())),
+                    app_protocol: Some("http".into()), ..Default::default()
+                }]),
+                ..Default::default()
+            }),
+            status: None,
         })});
         if replicas > 1 {
-            out.insert("pdb", Obj { ready: Box::new(always), copy_from: None, manifest: json!({
-                "apiVersion": "policy/v1", "kind": "PodDisruptionBudget", "metadata": self.meta(name),
-                "spec": {"minAvailable": 1, "selector": {"matchLabels": selector}},
+            out.insert("pdb", Obj { ready: Box::new(always), copy_from: None, manifest: to_value(&PodDisruptionBudget {
+                metadata: self.meta(name),
+                spec: Some(PodDisruptionBudgetSpec {
+                    min_available: Some(IntOrString::Int(1)), selector: Some(match_labels()), ..Default::default()
+                }),
+                status: None,
             })});
         }
         out.insert("podmonitor", Obj { ready: Box::new(always), copy_from: None, manifest: self.pod_monitor(&selector) });
@@ -597,47 +681,45 @@ impl Composition<'_> {
 
     /// Puts a location object into a provider-kubernetes Object.
     fn wrap(&self, key: &str, location: &str, manifest: Value, copy_from: Option<&(String, Option<(String, String)>)>) -> Composed {
-        let mut spec = json!({
-            "providerConfigRef": {"kind": "ClusterProviderConfig", "name": location},
-            "watch": true,
-            "forProvider": {"manifest": manifest},
-        });
-        if let Some((from, field)) = copy_from {
-            // The Secret's data comes from the control plane, never through this spec.
-            spec["references"] = match field {
-                None => json!(["data", "type"].iter().map(|f| json!({"patchesFrom": {"apiVersion": "v1", "kind": "Secret",
-                    "name": from, "namespace": self.ns, "fieldPath": f}})).collect::<Vec<_>>()),
-                Some((field, to)) => json!([{"patchesFrom": {"apiVersion": "v1", "kind": "Secret",
-                    "name": from, "namespace": self.ns, "fieldPath": field}, "toFieldPath": to}]),
-            };
-        }
-        Composed { ready: false, object: json!({
-            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "Object",
-            "metadata": {"name": format!("{}-{key}", self.name), "namespace": self.ns, "labels": self.labels,
-                "annotations": {"platform.cndev.nl/location": location}},
-            "spec": spec,
-        })}
+        // The Secret's data comes from the control plane, never through this spec.
+        let references = match copy_from {
+            None => vec![],
+            Some((from, None)) => secret_copy(self.ns, from),
+            Some((from, Some((field, to)))) => secret_field_copy(self.ns, from, field, to),
+        };
+        let metadata = meta(&format!("{}-{key}", self.name), self.ns, &self.labels);
+        Composed { ready: false, object: to_value(&location_object(metadata, location, manifest, references)) }
     }
 
-    fn meta(&self, name: &str) -> Value {
-        json!({"name": name, "namespace": self.ns, "labels": self.labels})
+    fn meta(&self, name: &str) -> ObjectMeta {
+        meta(name, self.ns, &self.labels)
     }
 
     // ---- monitoring, from basis-mcp's own metrics (basis_mcp_*)
 
     /// Scrapes the server's pods, every series labelled with the server.
     /// Only basis_mcp_* is kept.
-    fn pod_monitor(&self, selector: &Value) -> Value {
-        json!({
-            "apiVersion": "monitoring.coreos.com/v1", "kind": "PodMonitor", "metadata": self.meta(&format!("{}-mcp", self.name)),
-            "spec": {
-                "selector": {"matchLabels": selector},
-                "podMetricsEndpoints": [{
-                    "port": "metrics", "path": "/metrics", "interval": "30s",
-                    "relabelings": [{"targetLabel": "server", "replacement": self.name}],
-                    "metricRelabelings": [{"sourceLabels": ["__name__"], "regex": "basis_mcp_.*", "action": "keep"}],
-                }],
+    fn pod_monitor(&self, selector: &Labels) -> Value {
+        to_value(&pm::PodMonitor {
+            metadata: self.meta(&format!("{}-mcp", self.name)),
+            spec: pm::PodMonitorSpec {
+                selector: pm::PodMonitorSelector { match_labels: Some(selector.clone()), ..Default::default() },
+                pod_metrics_endpoints: Some(vec![pm::PodMonitorPodMetricsEndpoints {
+                    port: Some("metrics".into()),
+                    path: Some("/metrics".into()),
+                    interval: Some("30s".into()),
+                    relabelings: Some(vec![pm::PodMonitorPodMetricsEndpointsRelabelings {
+                        target_label: Some("server".into()), replacement: Some(self.name.into()), ..Default::default()
+                    }]),
+                    metric_relabelings: Some(vec![pm::PodMonitorPodMetricsEndpointsMetricRelabelings {
+                        source_labels: Some(vec!["__name__".into()]), regex: Some("basis_mcp_.*".into()),
+                        action: Some(pm::PodMonitorPodMetricsEndpointsMetricRelabelingsAction::Keep), ..Default::default()
+                    }]),
+                    ..Default::default()
+                }]),
+                ..Default::default()
             },
+            status: None,
         })
     }
 
@@ -648,33 +730,29 @@ impl Composition<'_> {
         let a = &self.spec.alerts;
         let name = self.name;
         let sel = format!("namespace={},server={}", quote(self.ns), quote(name));
-        let labels = json!({"severity": "warning", "mcpserver": name});
+        let labels = Labels::from([("severity".to_string(), "warning".to_string()), ("mcpserver".to_string(), name.to_string())]);
+        let alert = |rule: &str, r#for: &str, expr: String, summary: String| alert(rule, r#for, expr, &labels, summary);
         let mut rules = vec![
-            json!({"alert": "BasisMCPServerDown", "for": "10m", "labels": labels,
-                "expr": format!("(sum(up{{{sel}}}) or vector(0)) < 1"),
-                "annotations": {"summary": format!("MCP server {name}: no replica serves in this site")}}),
-            json!({"alert": "BasisMCPServerDatabaseNotReady", "for": "10m", "labels": labels,
-                "expr": format!("max(basis_mcp_database_ready{{{sel}}}) < 1"),
-                "annotations": {"summary": format!("MCP server {name} can't use its database (the server's log says why: \
-                    unreachable, no vector extension, missing table or column, the embeddings model)")}}),
-            json!({"alert": "BasisMCPServerErrors", "for": "10m", "labels": labels,
-                "expr": format!("100 * sum(rate(basis_mcp_tool_calls_total{{{sel},outcome=\"error\"}}[10m])) / sum(rate(basis_mcp_tool_calls_total{{{sel}}}[10m])) > {}",
+            alert("BasisMCPServerDown", "10m", format!("(sum(up{{{sel}}}) or vector(0)) < 1"),
+                format!("MCP server {name}: no replica serves in this site")),
+            alert("BasisMCPServerDatabaseNotReady", "10m", format!("max(basis_mcp_database_ready{{{sel}}}) < 1"),
+                format!("MCP server {name} can't use its database (the server's log says why: \
+                    unreachable, no vector extension, missing table or column, the embeddings model)")),
+            alert("BasisMCPServerErrors", "10m",
+                format!("100 * sum(rate(basis_mcp_tool_calls_total{{{sel},outcome=\"error\"}}[10m])) / sum(rate(basis_mcp_tool_calls_total{{{sel}}}[10m])) > {}",
                     fmt_g(a.error_rate())),
-                "annotations": {"summary": format!("MCP server {name}: {{{{ $value | printf \"%.1f\" }}}}% of tool calls fail (threshold {}%)",
-                    fmt_g(a.error_rate()))}}),
-            json!({"alert": "BasisMCPServerSlow", "for": "15m", "labels": labels,
-                "expr": format!("histogram_quantile(0.95, sum by (le) (rate(basis_mcp_tool_duration_seconds_bucket{{{sel}}}[10m]))) > {}", fmt_g(a.latency())),
-                "annotations": {"summary": format!("MCP server {name}: 95% of tool calls take up to {{{{ $value | humanizeDuration }}}} (threshold {}s)",
-                    fmt_g(a.latency()))}}),
+                format!("MCP server {name}: {{{{ $value | printf \"%.1f\" }}}}% of tool calls fail (threshold {}%)", fmt_g(a.error_rate()))),
+            alert("BasisMCPServerSlow", "15m",
+                format!("histogram_quantile(0.95, sum by (le) (rate(basis_mcp_tool_duration_seconds_bucket{{{sel}}}[10m]))) > {}", fmt_g(a.latency())),
+                format!("MCP server {name}: 95% of tool calls take up to {{{{ $value | humanizeDuration }}}} (threshold {}s)", fmt_g(a.latency()))),
         ];
         if self.spec.embeds() {
-            rules.push(json!({"alert": "BasisMCPServerEmbeddingsFailing", "for": "10m", "labels": labels,
-                "expr": format!("sum(rate(basis_mcp_embedding_requests_total{{{sel},outcome=\"error\"}}[10m])) / sum(rate(basis_mcp_embedding_requests_total{{{sel}}}[10m])) > 0.5"),
-                "annotations": {"summary": format!("MCP server {name}: most calls to embeddings model {} fail; search falls back to full text, new rows wait for their embedding",
-                    self.spec.embeddings.model)}}));
+            rules.push(alert("BasisMCPServerEmbeddingsFailing", "10m",
+                format!("sum(rate(basis_mcp_embedding_requests_total{{{sel},outcome=\"error\"}}[10m])) / sum(rate(basis_mcp_embedding_requests_total{{{sel}}}[10m])) > 0.5"),
+                format!("MCP server {name}: most calls to embeddings model {} fail; search falls back to full text, new rows wait for their embedding",
+                    self.spec.embeddings.model)));
         }
-        json!({"apiVersion": "monitoring.coreos.com/v1", "kind": "PrometheusRule", "metadata": self.meta(&format!("{name}-mcp-alerts")),
-            "spec": {"groups": [{"name": format!("mcpserver/{}/{name}", self.ns), "rules": rules}]}})
+        to_value(&prometheus_rule(self.meta(&format!("{name}-mcp-alerts")), format!("mcpserver/{}/{name}", self.ns), rules))
     }
 
     /// The server's dashboard in the Project's Grafana (control plane): calls,
@@ -682,16 +760,7 @@ impl Composition<'_> {
     /// model, the database.
     fn dashboard(&self) -> Value {
         let uid = format!("basis-mcp-{}", &sha1hex(&format!("{}/{}", self.ns, self.name))[..12]);
-        json!({
-            "apiVersion": "grafana.integreatly.org/v1beta1", "kind": "GrafanaDashboard", "metadata": self.meta(&format!("{}-mcp", self.name)),
-            "spec": {
-                "instanceSelector": {"matchLabels": {"dashboards.paas.cndev.nl/scope": self.ns}},
-                "folder": "MCP servers",
-                "uid": uid,
-                "resyncPeriod": "10m",
-                "json": self.dashboard_json(&uid),
-            },
-        })
+        to_value(&scoped_dashboard(self.meta(&format!("{}-mcp", self.name)), self.ns, "MCP servers", uid.clone(), self.dashboard_json(&uid)))
     }
 
     fn dashboard_json(&self, uid: &str) -> String {
@@ -755,6 +824,7 @@ impl Composition<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::util::b64;
     use crate::common::util::{set_now, set_secret};
     use chrono::TimeZone;
 
