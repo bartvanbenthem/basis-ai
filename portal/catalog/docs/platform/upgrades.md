@@ -18,7 +18,7 @@ the version that composes it: roll the function out before (or with) its XRD.
 ```sh
 cd api
 make test                                     # unit + render tests: fail on any unexpected change
-make function-push FUNCTION_VERSION=v0.4.1    # image → package → ghcr.io
+make function-push FUNCTION_VERSION=<version>  # image → package → ghcr.io
 ```
 
 Set the tag in `api/install/function-basis.yaml` and the Makefile's `FUNCTION_VERSION`, commit,
@@ -58,21 +58,3 @@ is in the version you run.
 
 Editing a size or an extension's image in a [catalog](catalogs.md) rolls the affected clusters out
 the same way: instances one by one, the primary last.
-
-## From the cnpg names (function-basis v0.4.0)
-
-v0.4.0 renamed what was named after CloudNativePG but is the platform's: the PostgresCluster API
-group (`cnpg.cndev.nl` → `postgres.cndev.nl`), the RBAC (`cnpg-platform:*` → `basis:*`), the
-location kubeconfigs' namespace (`cnpg-locations` → `basis-locations`) and the portal plugin
-(`/basis`, permissions `basis.*`, config key `basis:`, environment variables `BASIS_KUBE_CONTEXT`, `BASIS_BUCKETS_ENDPOINT` and `BASIS_GRAFANA_URL` instead of `CNPG_*`). It also moved Project and Location to
-function-basis and added ModelGateway and the stack ownership policy. On a control plane installed
-before, after publishing v0.4.0:
-
-```sh
-api/install/migrate-to-basis.sh
-```
-
-It needs no PostgresCluster of the old group (a Composition's type can't change, so that API is
-removed, not converted); with clusters left it stops and says so. It moves your bindings to the old
-roles and the location kubeconfigs, runs `install.sh`, and removes the old RBAC in the locations
-once its replacement is there.

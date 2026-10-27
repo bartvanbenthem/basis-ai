@@ -103,8 +103,6 @@ if kubectl get crd locations.platform.cndev.nl >/dev/null 2>&1; then
 fi
 kubectl delete -f "${API_DIR}/location/composition.yaml" --ignore-not-found
 kubectl delete -f "${API_DIR}/location/definition.yaml" --ignore-not-found
-# function-go-templating composed Project and Location before function-basis did.
-kubectl delete function.pkg.crossplane.io/function-go-templating --ignore-not-found
 kubectl delete function.pkg.crossplane.io/function-basis --ignore-not-found
 # The postgres-sizes and postgres-extensions catalogs stay, like project-defaults.
 # Location kubeconfig Secrets stay (the portal's, or add-location.sh's).

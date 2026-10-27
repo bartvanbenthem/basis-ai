@@ -166,9 +166,7 @@ impl Settings {
         if prom_enabled && !local {
             // Cluster-wide: kubelet/cAdvisor targets live on the nodes and
             // kube-state-metrics/node-exporter in the kube-prometheus-stack
-            // namespace. One shared ClusterRole, one binding per project. (Named
-            // basis:..., not platform:..., since its roleRef moved from
-            // cnpg-platform:project-prometheus: a roleRef can't change in place.)
+            // namespace. One shared ClusterRole, one binding per project.
             objects.push(Obj::new("prometheus-clusterrolebinding", seen("prometheus-clusterrolebinding"), to_value(&ClusterRoleBinding {
                 metadata: meta(&format!("basis:project:{}:prometheus", self.name), "", &self.labels()),
                 role_ref: RoleRef { api_group: Some(RBAC.into()), kind: "ClusterRole".into(), name: "basis:project-prometheus".into() },

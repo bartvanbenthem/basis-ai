@@ -70,4 +70,4 @@ works in a schema of its own and drops it afterwards.
 
 A release: bump `VERSION` here and `DEFAULT_IMAGE` in
 [`api/function/src/mcpserver.rs`](../api/function/src/mcpserver.rs), `make push`, then
-publish function-basis as usual ([README](../README.md#install)).
+publish function-basis as usual ([Releasing function-basis](../api/README.md#releasing-function-basis)).

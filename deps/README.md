@@ -119,7 +119,7 @@ kubectl get svc -n haproxy-ingress   # EXTERNAL-IP is where ingress hosts must r
 
 The official [valkey-io operator](https://github.com/valkey-io/valkey-operator)
 runs the `ValkeyCluster`s that `ValkeyCache` places in one of a Project's
-locations (its protected or recovery site) ([`api`](../api/README.md#the-valkeycache-api)). Install it with its
+locations (its protected or recovery site) ([Caches](../portal/catalog/docs/caches/valkey.md)). Install it with its
 default chart values in every location caches run in; the control plane
 doesn't need it.
 
@@ -201,7 +201,7 @@ With an expired `ghcr.io` or
 `docker.io` login in `~/.docker/config.json`, log out first (see step 4). The
 charts and images keep their `envoyproxy` names after the project's rename.
 Agent Router has no response cache: a stack's cache is used by the app, through
-the connection Secret ([`api`](../api/README.md#the-genaistack-api)).
+the connection Secret ([GenAI stacks](../portal/catalog/docs/ai/genai-stacks.md)).
 
 ## 8. KServe + llm-d (locations with self-hosted models)
 
@@ -252,8 +252,6 @@ run on vLLM's CPU image (`gpus: 0`).
 The platform leaves KServe's TLS between gateway and server off (the
 default: `enableLLMInferenceServiceTLS` in KServe's `inferenceservice-config`):
 servers are reached in the Project's namespace only, through its gateway.
-Multi-node servers (LeaderWorkerSet) and KEDA autoscaling are KServe options the
-`ModelServer` API doesn't use yet.
 
 ## 9. Platform settings: `project-defaults` (after `api/`)
 
@@ -283,24 +281,12 @@ kubectl apply -f control-plane/project-defaults.yaml
 
 ## 10. The `demo` Project (after `api/`)
 
-A namespace with its own Prometheus and Grafana is a **Project**
-(`platform.cndev.nl/v1alpha1`, see
-[`api`](../api/README.md#the-project-api)), so
-this step runs on the control plane *after* `api/install/install.sh`
-and after registering the location the demo databases run in
-(`api/install/add-location.sh`, with `deps/cnpg/install.sh`
-run against that location first). `demo/project.yaml` names it
-`si-ske-demo`: change that to your location's name.
-
-It needs the platform settings of step 9.
-[`demo/project.yaml`](demo/project.yaml) is the `demo` Project. Crossplane
-creates the namespace on the control plane and in the location, a Prometheus
-in the location that scrapes every `PodMonitor` and `PrometheusRule` in it
-(plus the kubelet / kube-state-metrics / node-exporter targets from step 2)
-and writes to the project's Prometheus on the control plane, and there a
-Grafana with a `prometheus` datasource, anonymous Viewer access and
-embedding allowed. The Grafana carries `dashboards.paas.cndev.nl/scope=demo`,
-which every PostgresCluster's `GrafanaDashboard` in `demo` selects.
+On the control plane, after `api/install/install.sh`, step 9, and registering the location the
+demo workloads run in (`api/install/add-location.sh`). [`demo/project.yaml`](demo/project.yaml)
+names that location `si-ske-demo`: change it to yours. Crossplane then creates the `demo`
+namespace on the control plane and in the location, a Prometheus in the location that writes to
+the Project's Prometheus on the control plane, and a Grafana there. See
+[Projects](../portal/catalog/docs/platform/projects.md).
 
 ```sh
 kubectl apply -f demo/project.yaml
@@ -316,30 +302,8 @@ KUBECONFIG=<location> kubectl -n demo port-forward svc/prometheus-operated 9090 
 kubectl -n demo get secret grafana-admin-credentials -o jsonpath='{.data.GF_SECURITY_ADMIN_PASSWORD}' | base64 -d; echo
 ```
 
-More projects are one object each (`kubectl apply` a Project, or use
-**New project** in the portal). The portal takes each cluster's Grafana from
-its Project's `status.grafana.url`, so `BASIS_GRAFANA_URL` is only a fallback
-for clusters outside a Project.
+More projects are one object each: `kubectl apply` a Project, or use
+**New project** in the portal.
 
-### Migrating a `demo` namespace set up with the old manifests
-
-Before this change, `demo/prometheus.yaml` and `demo/grafana.yaml` created
-the same objects by hand. The Project composes objects with the same names
-(`Prometheus prometheus`, `Grafana grafana`, `GrafanaDatasource prometheus`,
-`ServiceAccount prometheus`), so try it on a non-production cluster first and
-check that Crossplane took them over
-(`kubectl -n demo get prometheus prometheus -o jsonpath='{.metadata.ownerReferences}'`
-should name `Project demo`). Then remove the old cluster-wide RBAC, which the
-Project replaces with `ClusterRoleBinding basis:project:demo:prometheus`:
-
-```sh
-kubectl delete clusterrolebinding demo-prometheus
-kubectl delete clusterrole demo-prometheus
-```
-
-The old Grafana also answered on `grafana.paas.cndev.nl`. A Project has one
-host from `hostTemplate`, so add that DNS name elsewhere if you still need it.
-
-> The `demo` namespace now belongs to the Project. Deletion protection is on
-> by default: `kubectl delete namespace demo` and `kubectl delete project demo`
+> Deletion protection is on by default: `kubectl delete namespace demo` and `kubectl delete project demo`
 > are refused until you set `spec.deletionProtection: false`.

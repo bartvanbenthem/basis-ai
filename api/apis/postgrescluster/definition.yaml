@@ -13,7 +13,7 @@
 #
 # Locations: the platform's control plane runs no databases. Every
 # PostgresCluster runs in its Project's protected location (another
-# Kubernetes cluster, see ../../README.md#locations); with
+# Kubernetes cluster, see ../../../portal/catalog/docs/platform/locations.md); with
 # spec.geoReplication a CloudNativePG replica cluster runs in the Project's
 # recovery location, fed through the backup object store (distributed
 # topology), ready to take over.
