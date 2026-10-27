@@ -9,5 +9,5 @@ env/
 api/_output/
 
 
-# cargo build output
+# cargo build output (mcp/)
 target/

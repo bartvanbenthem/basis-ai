@@ -1,7 +1,7 @@
 /**
  * Governance and cost of a Project (the API's spec.classification,
  * .environment, .costCenter, .budget, .expiresAt; apis/project/governance.yaml
- * and the cost rules of function/src/project/governance.rs).
+ * and the cost rules of function/project/governance.go).
  */
 
 export const CLASSIFICATIONS = ['public', 'internal', 'confidential'] as const;

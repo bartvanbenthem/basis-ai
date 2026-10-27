@@ -1,5 +1,4 @@
 # The function's image needs only go.mod, go.sum and function/.
-target/
 _output/
 tests/
 apis/

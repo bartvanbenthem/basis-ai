@@ -25,7 +25,7 @@ const round = (v: number, digits = 2) => Math.round(v * 10 ** digits) / 10 ** di
 /**
  * A project's cost and token use, from the recording rules the Project
  * composition puts in its control-plane Prometheus (basis:cost_per_hour,
- * basis:tokens_per_hour and their monthly forecasts; function/src/project/governance.rs).
+ * basis:tokens_per_hour and their monthly forecasts; function/project/governance.go).
  */
 export class CostService {
   readonly #getProject: (name: string) => Promise<Project>;
