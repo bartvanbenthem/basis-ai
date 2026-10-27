@@ -42,11 +42,17 @@
 mod governance;
 mod member;
 
+use k8s_openapi::ByteString;
+use k8s_openapi::api::core::v1::{Secret, ServiceAccount};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
 use crate::common::gojson::sprint;
-use crate::common::util::{as_obj, as_str, bool_or, b64, dig, dig_opt, or, sha256hex, trunc, unb64};
+use crate::common::kinds::crds::cosi::{bucket_access, bucket_claim};
+use crate::common::kinds::crds::crossplane::cluster_usage as usage;
+use crate::common::kinds::{self, Labels, labels_of, to_value};
+use crate::common::util::{as_obj, as_str, bool_or, dig, dig_opt, or, sha256hex, trunc, unb64};
 use crate::common::{Composed, Condition, Input, Output, Requirement, Result};
 use governance::{Governance, REQUIRED_PRICES};
 
@@ -147,8 +153,14 @@ impl Settings {
         Value::Object(self.spec.clone())
     }
 
-    fn meta(&self, name: &str) -> Value {
-        json!({"name": name, "namespace": self.ns, "labels": self.labels})
+    /// The metadata of one of the project's namespaced objects.
+    fn meta(&self, name: &str) -> ObjectMeta {
+        kinds::meta(name, &self.ns, &self.labels())
+    }
+
+    /// The labels of everything the project composes.
+    fn labels(&self) -> Labels {
+        labels_of(&self.labels)
     }
 }
 
@@ -301,7 +313,8 @@ pub fn compose(input: &Input) -> Result<Output> {
     let mut bucket: Option<Map<String, Value>> = None;
     let mut ungranted: Vec<String> = vec![];
     if s.bucket_on && s.own_class {
-        // Retain: deleting the Project (or the claim) leaves the bucket and its backups.
+        // Retain: deleting the Project (or the claim) leaves the bucket and its
+        // backups. JSON: kopium types a kind's spec, and a BucketClass has none.
         let mut bc = json!({
             "apiVersion": "objectstorage.k8s.io/v1alpha1", "kind": "BucketClass",
             "metadata": {"name": s.bucket_class, "labels": s.labels},
@@ -322,10 +335,10 @@ pub fn compose(input: &Input) -> Result<Output> {
         let bucket_ready = bool_or(dig_opt(claim, &["status", "bucketReady"]), false) && !bucket_name.is_empty();
         let mut credentials = Map::new();
         let (mut endpoint, mut region) = (String::new(), String::new());
-        out.composed.insert("backup-bucket".into(), Composed { ready: bucket_ready, object: json!({
-            "apiVersion": "objectstorage.k8s.io/v1alpha1", "kind": "BucketClaim",
-            "metadata": s.meta("backups"),
-            "spec": {"bucketClassName": s.bucket_class, "protocols": ["S3"]},
+        out.composed.insert("backup-bucket".into(), Composed { ready: bucket_ready, object: to_value(&bucket_claim::BucketClaim {
+            metadata: s.meta("backups"),
+            spec: bucket_claim::BucketClaimSpec { bucket_class_name: Some(s.bucket_class.clone()), protocols: vec!["S3".into()], ..Default::default() },
+            status: None,
         })});
         // One grant at a time: concurrent grants race on the Bucket's
         // finalizer, and a grant retried after a conflict fails for good.
@@ -335,10 +348,12 @@ pub fn compose(input: &Input) -> Result<Output> {
             let granted = bool_or(dig_opt(access, &["status", "accessGranted"]), false);
             // The COSI sidecar refuses an IAM-type access class without a
             // ServiceAccount; nothing runs as it.
-            let mut sa = s.meta(&format!("backups-{loc}"));
-            sa["annotations"] = json!({"platform.cndev.nl/location": loc});
-            out.composed.insert(format!("backup-sa-{loc}"), Composed { ready: true, object: json!({
-                "apiVersion": "v1", "kind": "ServiceAccount", "metadata": sa, "automountServiceAccountToken": false,
+            let at_location = |name: &str| ObjectMeta {
+                annotations: Some(Labels::from([("platform.cndev.nl/location".to_string(), loc.clone())])),
+                ..s.meta(name)
+            };
+            out.composed.insert(format!("backup-sa-{loc}"), Composed { ready: true, object: to_value(&ServiceAccount {
+                metadata: at_location(&format!("backups-{loc}")), automount_service_account_token: Some(false), ..Default::default()
             })});
             if !granted {
                 ungranted.push(loc.clone());
@@ -347,12 +362,14 @@ pub fn compose(input: &Input) -> Result<Output> {
                 if !granted {
                     granting = true;
                 }
-                let mut meta = s.meta(&format!("backups-{loc}"));
-                meta["annotations"] = json!({"platform.cndev.nl/location": loc});
-                out.composed.insert(format!("backup-access-{loc}"), Composed { ready: granted, object: json!({
-                    "apiVersion": "objectstorage.k8s.io/v1alpha1", "kind": "BucketAccess", "metadata": meta,
-                    "spec": {"bucketClaimName": "backups", "bucketAccessClassName": s.access_class,
-                        "credentialsSecretName": format!("cosi-backups-{loc}"), "serviceAccountName": format!("backups-{loc}"), "protocol": "S3"},
+                out.composed.insert(format!("backup-access-{loc}"), Composed { ready: granted, object: to_value(&bucket_access::BucketAccess {
+                    metadata: at_location(&format!("backups-{loc}")),
+                    spec: bucket_access::BucketAccessSpec {
+                        bucket_claim_name: "backups".into(), bucket_access_class_name: s.access_class.clone(),
+                        credentials_secret_name: format!("cosi-backups-{loc}"), service_account_name: Some(format!("backups-{loc}")),
+                        protocol: Some("S3".into()),
+                    },
+                    status: None,
                 })});
             }
             // COSI's Secret holds one BucketInfo JSON document; CNPG needs
@@ -362,15 +379,17 @@ pub fn compose(input: &Input) -> Result<Output> {
                     endpoint = as_str(s3.get("endpoint")).into();
                     region = as_str(s3.get("region")).into();
                     credentials.insert(loc.clone(), json!(format!("backup-s3-{loc}")));
-                    let mut data = json!({"ACCESS_KEY_ID": b64(as_str(s3.get("accessKeyID"))), "ACCESS_SECRET_KEY": b64(as_str(s3.get("accessSecretKey")))});
+                    let bytes = |v: &str| ByteString(v.as_bytes().to_vec());
+                    let mut data = BTreeMap::from([
+                        ("ACCESS_KEY_ID".to_string(), bytes(as_str(s3.get("accessKeyID")))),
+                        ("ACCESS_SECRET_KEY".to_string(), bytes(as_str(s3.get("accessSecretKey")))),
+                    ]);
                     let r = as_str(s3.get("region"));
                     if !r.is_empty() {
-                        data["REGION"] = json!(b64(r));
+                        data.insert("REGION".into(), bytes(r));
                     }
-                    let mut meta = s.meta(&format!("backup-s3-{loc}"));
-                    meta["annotations"] = json!({"platform.cndev.nl/location": loc});
-                    out.composed.insert(format!("backup-s3-{loc}"), Composed { ready: true, object: json!({
-                        "apiVersion": "v1", "kind": "Secret", "metadata": meta, "type": "Opaque", "data": data,
+                    out.composed.insert(format!("backup-s3-{loc}"), Composed { ready: true, object: to_value(&Secret {
+                        metadata: at_location(&format!("backup-s3-{loc}")), type_: Some("Opaque".into()), data: Some(data), ..Default::default()
                     })});
                 }
         }
@@ -383,13 +402,17 @@ pub fn compose(input: &Input) -> Result<Output> {
 
     // A ClusterUsage per registered location: no deleting a Location a Project uses.
     for loc in registered.keys() {
-        out.composed.insert(format!("usage-location-{loc}"), Composed { ready: true, object: json!({
-            "apiVersion": "protection.crossplane.io/v1beta1", "kind": "ClusterUsage",
-            "metadata": {"name": format!("project-{}-location-{loc}", s.name), "labels": s.labels},
-            "spec": {
-                "of": {"apiVersion": "platform.cndev.nl/v1alpha1", "kind": "Location", "resourceRef": {"name": loc}},
-                "reason": format!("Project {} runs databases in this location; delete the Project first", s.name),
+        out.composed.insert(format!("usage-location-{loc}"), Composed { ready: true, object: to_value(&usage::ClusterUsage {
+            metadata: kinds::meta(&format!("project-{}-location-{loc}", s.name), "", &s.labels()),
+            spec: usage::ClusterUsageSpec {
+                of: usage::ClusterUsageOf {
+                    api_version: Some("platform.cndev.nl/v1alpha1".into()), kind: Some("Location".into()),
+                    resource_ref: Some(usage::ClusterUsageOfResourceRef { name: loc.clone() }), ..Default::default()
+                },
+                reason: Some(format!("Project {} runs databases in this location; delete the Project first", s.name)),
+                ..Default::default()
             },
+            status: None,
         })});
     }
 

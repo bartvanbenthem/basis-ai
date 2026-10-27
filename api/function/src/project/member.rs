@@ -1,9 +1,27 @@
 //! What a Project runs on the control plane and in each of its locations.
 
+use k8s_openapi::api::batch::v1::{CronJob, CronJobSpec, JobSpec, JobTemplateSpec};
+use k8s_openapi::api::core::v1::{
+    Capabilities, Container, EmptyDirVolumeSource, EnvVar, EnvVarSource, LimitRange, LimitRangeItem, LimitRangeSpec, Namespace,
+    PersistentVolumeClaim, PersistentVolumeClaimSpec, PodSecurityContext, PodSpec, PodTemplateSpec, ResourceQuota, ResourceQuotaSpec,
+    ResourceRequirements, SeccompProfile, Secret, SecretKeySelector, SecurityContext, ServiceAccount, Volume, VolumeMount,
+    VolumeResourceRequirements,
+};
+use k8s_openapi::api::networking::v1::{
+    HTTPIngressPath, HTTPIngressRuleValue, Ingress, IngressBackend, IngressRule, IngressServiceBackend, IngressSpec, IngressTLS,
+    ServiceBackendPort,
+};
+use k8s_openapi::api::rbac::v1::{ClusterRoleBinding, RoleBinding, RoleRef, Subject};
+use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, LabelSelectorRequirement, ObjectMeta};
 use serde_json::{Map, Value, json};
+use std::collections::BTreeMap;
 
 use super::{BackupCheck, Member, MemberStatus, Settings, empty};
 use crate::common::gojson::sprint;
+use crate::common::kinds::crds::grafana::{grafana as g, grafana_datasource as gds};
+use crate::common::kinds::crds::prometheus::prometheus as p;
+use crate::common::kinds::{Labels, location_object, map_opt, meta, quantities, retype, secret_copy, str_opt, to_value};
 use crate::common::util::{as_obj, as_str, bool_or, condition_true, dig, or, sha1hex, trunc};
 use crate::common::Composed;
 
@@ -48,6 +66,8 @@ s3 DELETE || echo "warning: could not delete the test object"
 echo "ok: wrote, read back and deleted s3://${S3_BUCKET}/${key} via ${S3_ENDPOINT}"
 "#;
 
+const RBAC: &str = "rbac.authorization.k8s.io";
+
 impl Settings {
     /// The namespace and what's in it for the control plane or one location,
     /// and what it waits for.
@@ -86,7 +106,7 @@ impl Settings {
             host = tpl.replace("{project}", &self.name);
         }
         let quota = as_obj(self.spec.get("quota"));
-        let scope = json!({"dashboards.paas.cndev.nl/scope": self.ns});
+        let scope = Labels::from([("dashboards.paas.cndev.nl/scope".to_string(), self.ns.clone())]);
 
         let ns_obs = observed.get("namespace");
         let ns_ready = ns_obs.is_some_and(|n| as_str(dig(n, &["status", "phase"])) == "Active");
@@ -99,49 +119,47 @@ impl Settings {
         let mut objects: Vec<Obj> = vec![];
 
         // ---- the namespace
-        let mut ns_ann = Map::new();
+        let mut ns_ann = Labels::new();
         let d = as_str(self.spec.get("description"));
         if !d.is_empty() {
-            ns_ann.insert("platform.cndev.nl/description".into(), json!(d));
+            ns_ann.insert("platform.cndev.nl/description".into(), d.into());
         }
         if local {
             // Read by the admission policies and the workload compositions.
             let l = as_str(dig(&spec, &["locations", "protected"]));
             if !l.is_empty() {
-                ns_ann.insert("platform.cndev.nl/protected-location".into(), json!(l));
+                ns_ann.insert("platform.cndev.nl/protected-location".into(), l.into());
             }
             let l = as_str(dig(&spec, &["locations", "recovery"]));
             if !l.is_empty() {
-                ns_ann.insert("platform.cndev.nl/recovery-location".into(), json!(l));
+                ns_ann.insert("platform.cndev.nl/recovery-location".into(), l.into());
             }
             if self.bucket_on {
                 // PostgresClusters may then leave backup.destinationPath out.
-                ns_ann.insert("platform.cndev.nl/backup-bucket".into(), json!("true"));
+                ns_ann.insert("platform.cndev.nl/backup-bucket".into(), "true".into());
             }
             if !unschedulable.is_empty() {
                 // Locations whose Location says schedulable: false; the same
                 // policies refuse workloads that newly add them.
-                ns_ann.insert("platform.cndev.nl/unschedulable-locations".into(), json!(unschedulable.join(",")));
+                ns_ann.insert("platform.cndev.nl/unschedulable-locations".into(), unschedulable.join(","));
             }
         }
-        let mut ns_labels = self.labels.clone();
-        ns_labels.insert("dashboards.paas.cndev.nl/scope".into(), json!(self.ns));
+        let mut ns_labels = self.labels();
+        ns_labels.extend(scope.clone());
         let o = as_str(self.spec.get("owner"));
         if !o.is_empty() {
-            ns_labels.insert("backstage.io/owner".into(), json!(o));
+            ns_labels.insert("backstage.io/owner".into(), o.into());
         }
-        for (k, v) in self.gov.labels() {
-            ns_labels.insert(k, json!(v));
-        }
+        ns_labels.extend(self.gov.labels());
         // CNPG, Prometheus and Grafana all run under "baseline"; "restricted"
         // warnings flag workloads to harden.
-        ns_labels.insert("pod-security.kubernetes.io/enforce".into(), json!("baseline"));
-        ns_labels.insert("pod-security.kubernetes.io/warn".into(), json!("restricted"));
-        let mut ns_meta = json!({"name": self.ns, "labels": ns_labels});
-        if !ns_ann.is_empty() {
-            ns_meta["annotations"] = Value::Object(ns_ann);
-        }
-        let mut ns = Obj::new("namespace", ns_ready, json!({"apiVersion": "v1", "kind": "Namespace", "metadata": ns_meta}));
+        ns_labels.insert("pod-security.kubernetes.io/enforce".into(), "baseline".into());
+        ns_labels.insert("pod-security.kubernetes.io/warn".into(), "restricted".into());
+        let namespace = Namespace {
+            metadata: ObjectMeta { annotations: map_opt(ns_ann), ..meta(&self.ns, "", &ns_labels) },
+            ..Default::default()
+        };
+        let mut ns = Obj::new("namespace", ns_ready, to_value(&namespace));
         ns.orphan = !local;
         objects.push(ns);
 
@@ -151,21 +169,23 @@ impl Settings {
             // namespace. One shared ClusterRole, one binding per project. (Named
             // basis:..., not platform:..., since its roleRef moved from
             // cnpg-platform:project-prometheus: a roleRef can't change in place.)
-            objects.push(Obj::new("prometheus-clusterrolebinding", seen("prometheus-clusterrolebinding"), json!({
-                "apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRoleBinding",
-                "metadata": {"name": format!("basis:project:{}:prometheus", self.name), "labels": self.labels},
-                "roleRef": {"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "basis:project-prometheus"},
-                "subjects": [{"kind": "ServiceAccount", "name": "prometheus", "namespace": self.ns}],
+            objects.push(Obj::new("prometheus-clusterrolebinding", seen("prometheus-clusterrolebinding"), to_value(&ClusterRoleBinding {
+                metadata: meta(&format!("basis:project:{}:prometheus", self.name), "", &self.labels()),
+                role_ref: RoleRef { api_group: Some(RBAC.into()), kind: "ClusterRole".into(), name: "basis:project-prometheus".into() },
+                subjects: Some(vec![Subject {
+                    kind: "ServiceAccount".into(), name: "prometheus".into(), namespace: Some(self.ns.clone()), ..Default::default()
+                }]),
             })));
         }
 
         if ns_obs.is_some() {
             if prom_enabled {
                 objects.push(Obj::new("prometheus-serviceaccount", seen("prometheus-serviceaccount"),
-                    json!({"apiVersion": "v1", "kind": "ServiceAccount", "metadata": self.meta("prometheus")})));
-                objects.push(Obj::new("prometheus", prom_ready, json!({
-                    "apiVersion": "monitoring.coreos.com/v1", "kind": "Prometheus", "metadata": self.meta("prometheus"),
-                    "spec": self.prometheus_spec(m, &prom, cm_enabled, &cm_namespace, &cm_labels, &cm_exclude, om_enabled, &om_namespace),
+                    to_value(&ServiceAccount { metadata: self.meta("prometheus"), ..Default::default() })));
+                objects.push(Obj::new("prometheus", prom_ready, to_value(&p::Prometheus {
+                    metadata: self.meta("prometheus"),
+                    spec: self.prometheus_spec(m, &prom, cm_enabled, &cm_namespace, &cm_labels, &cm_exclude, om_enabled, &om_namespace),
+                    status: None,
                 })));
                 // The Prometheus StatefulSet's volume, composed so that growing
                 // spec.observability.prometheus.storage.size grows the PVC: a
@@ -173,10 +193,10 @@ impl Settings {
                 // as the StatefulSet would name it. Bound only once the pod is
                 // scheduled (WaitForFirstConsumer); the Prometheus' readiness
                 // already covers that.
-                objects.push(Obj::new("prometheus-pvc", true, json!({
-                    "apiVersion": "v1", "kind": "PersistentVolumeClaim",
-                    "metadata": self.meta("prometheus-prometheus-db-prometheus-prometheus-0"),
-                    "spec": pvc_spec(&prom),
+                objects.push(Obj::new("prometheus-pvc", true, to_value(&PersistentVolumeClaim {
+                    metadata: self.meta("prometheus-prometheus-db-prometheus-prometheus-0"),
+                    spec: Some(pvc_spec(&prom)),
+                    status: None,
                 })));
                 // The project's cost, from what its locations write here.
                 if local && self.gov.prices.is_some() {
@@ -192,13 +212,18 @@ impl Settings {
                 if prom_enabled {
                     // Named "prometheus": the datasource name the workloads'
                     // dashboards are wired to.
-                    objects.push(Obj::new("grafana-datasource", seen("grafana-datasource"), json!({
-                        "apiVersion": "grafana.integreatly.org/v1beta1", "kind": "GrafanaDatasource", "metadata": self.meta("prometheus"),
-                        "spec": {
-                            "instanceSelector": {"matchLabels": scope},
-                            "datasource": {"name": "prometheus", "type": "prometheus", "access": "proxy",
-                                "url": format!("http://prometheus-operated.{}.svc:9090", self.ns), "isDefault": true},
+                    objects.push(Obj::new("grafana-datasource", seen("grafana-datasource"), to_value(&gds::GrafanaDatasource {
+                        metadata: self.meta("prometheus"),
+                        spec: gds::GrafanaDatasourceSpec {
+                            instance_selector: gds::GrafanaDatasourceInstanceSelector { match_labels: Some(scope.clone()), ..Default::default() },
+                            datasource: gds::GrafanaDatasourceDatasource {
+                                name: Some("prometheus".into()), r#type: Some("prometheus".into()), access: Some("proxy".into()),
+                                url: Some(format!("http://prometheus-operated.{}.svc:9090", self.ns)), is_default: Some(true),
+                                ..Default::default()
+                            },
+                            ..Default::default()
                         },
+                        status: None,
                     })));
                 }
             }
@@ -212,42 +237,49 @@ impl Settings {
                     let a = as_obj(Some(a));
                     let key = format!("access-{i}");
                     let group = as_str(a.get("group"));
-                    let mut meta = self.meta(&format!("project-{}-{}", as_str(a.get("role")), trunc(&sha1hex(group), 8)));
-                    meta["annotations"] = json!({"platform.cndev.nl/group": group});
-                    objects.push(Obj::new(&key, seen(&key), json!({
-                        "apiVersion": "rbac.authorization.k8s.io/v1", "kind": "RoleBinding", "metadata": meta,
-                        "roleRef": {"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": a.get("role").cloned().unwrap_or(Value::Null)},
-                        "subjects": [{"apiGroup": "rbac.authorization.k8s.io", "kind": "Group", "name": group}],
+                    let role = as_str(a.get("role"));
+                    objects.push(Obj::new(&key, seen(&key), to_value(&RoleBinding {
+                        metadata: ObjectMeta {
+                            annotations: Some(Labels::from([("platform.cndev.nl/group".to_string(), group.to_string())])),
+                            ..self.meta(&format!("project-{role}-{}", trunc(&sha1hex(group), 8)))
+                        },
+                        role_ref: RoleRef { api_group: Some(RBAC.into()), kind: "ClusterRole".into(), name: role.into() },
+                        subjects: Some(vec![Subject { api_group: Some(RBAC.into()), kind: "Group".into(), name: group.into(), namespace: None }]),
                     })));
                 }
             }
 
             // The quota is for the workloads: none on the control plane.
             if !quota.is_empty() && !local {
-                let mut hard = Map::new();
+                let mut hard = BTreeMap::new();
                 let v = as_str(quota.get("cpu"));
                 if !v.is_empty() {
-                    hard.insert("requests.cpu".into(), json!(v));
+                    hard.insert("requests.cpu".to_string(), Quantity(v.into()));
                 }
                 let v = as_str(quota.get("memory"));
                 if !v.is_empty() {
-                    hard.insert("requests.memory".into(), json!(v));
-                    hard.insert("limits.memory".into(), json!(v));
+                    hard.insert("requests.memory".to_string(), Quantity(v.into()));
+                    hard.insert("limits.memory".to_string(), Quantity(v.into()));
                 }
                 let v = as_str(quota.get("storage"));
                 if !v.is_empty() {
-                    hard.insert("requests.storage".into(), json!(v));
+                    hard.insert("requests.storage".to_string(), Quantity(v.into()));
                 }
-                objects.push(Obj::new("quota", seen("quota"), json!({
-                    "apiVersion": "v1", "kind": "ResourceQuota", "metadata": self.meta("project"), "spec": {"hard": hard},
+                objects.push(Obj::new("quota", seen("quota"), to_value(&ResourceQuota {
+                    metadata: self.meta("project"),
+                    spec: Some(ResourceQuotaSpec { hard: Some(hard), ..Default::default() }),
+                    status: None,
                 })));
                 // A quota on cpu/memory rejects pods without requests/limits;
                 // these defaults keep operator-generated pods schedulable.
-                objects.push(Obj::new("limitrange", seen("limitrange"), json!({
-                    "apiVersion": "v1", "kind": "LimitRange", "metadata": self.meta("project-defaults"),
-                    "spec": {"limits": [{"type": "Container",
-                        "defaultRequest": {"cpu": "50m", "memory": "64Mi"},
-                        "default": {"memory": "256Mi"}}]},
+                objects.push(Obj::new("limitrange", seen("limitrange"), to_value(&LimitRange {
+                    metadata: self.meta("project-defaults"),
+                    spec: Some(LimitRangeSpec { limits: vec![LimitRangeItem {
+                        type_: "Container".into(),
+                        default_request: Some(quantity_map(&[("cpu", "50m"), ("memory", "64Mi")])),
+                        default: Some(quantity_map(&[("memory", "256Mi")])),
+                        ..Default::default()
+                    }] }),
                 })));
             }
         }
@@ -257,7 +289,7 @@ impl Settings {
         let mut check_state = Map::new();
         if let (Some(check), false) = (check, local) {
             let mut secret = Obj::new("backup-check-s3", seen("backup-check-s3"),
-                json!({"apiVersion": "v1", "kind": "Secret", "metadata": self.meta("backup-check-s3")}));
+                to_value(&Secret { metadata: self.meta("backup-check-s3"), ..Default::default() }));
             secret.copy_from = format!("{}/backup-s3-{}", self.ns, m.location);
             objects.push(secret);
             objects.push(Obj::new("backup-check", seen("backup-check"), self.backup_check_cron_job(m, check)));
@@ -299,211 +331,256 @@ impl Settings {
 
     #[allow(clippy::too_many_arguments)]
     fn prometheus_spec(&self, m: &Member, prom: &Map<String, Value>, cm_enabled: bool, cm_namespace: &str, cm_labels: &Map<String, Value>,
-        cm_exclude: &[Value], om_enabled: bool, om_namespace: &str) -> Value {
-        let p = Value::Object(prom.clone());
-        let mut spec = json!({
-            "serviceAccountName": "prometheus",
-            "replicas": 1,
-            "retention": or(as_str(prom.get("retention")), "7d"),
-            "resources": {
-                "requests": {"cpu": or(as_str(dig(&p, &["resources", "requests", "cpu"])), "100m"),
-                    "memory": or(as_str(dig(&p, &["resources", "requests", "memory"])), "512Mi")},
-                "limits": {"memory": or(as_str(dig(&p, &["resources", "limits", "memory"])), "2Gi")},
-            },
+        cm_exclude: &[Value], om_enabled: bool, om_namespace: &str) -> p::PrometheusSpec {
+        let pv = Value::Object(prom.clone());
+        let resource = |path: &[&str], def: &str| or(as_str(dig(&pv, path)), def).to_string();
+        let mut spec = p::PrometheusSpec {
+            service_account_name: Some("prometheus".into()),
+            replicas: Some(1),
+            retention: Some(or(as_str(prom.get("retention")), "7d").into()),
+            resources: Some(p::PrometheusResources {
+                requests: Some(quantities(Labels::from([
+                    ("cpu".to_string(), resource(&["resources", "requests", "cpu"], "100m")),
+                    ("memory".to_string(), resource(&["resources", "requests", "memory"], "512Mi")),
+                ]))),
+                limits: Some(quantities(Labels::from([("memory".to_string(), resource(&["resources", "limits", "memory"], "2Gi"))]))),
+                ..Default::default()
+            }),
             // Without fsGroup the PVC stays root-owned and Prometheus (non-root)
             // crashes on "open /prometheus/queries.active".
-            "securityContext": {"runAsNonRoot": true, "runAsUser": 1000, "runAsGroup": 2000, "fsGroup": 2000,
-                "seccompProfile": {"type": "RuntimeDefault"}},
-            "storage": {"volumeClaimTemplate": {"spec": pvc_spec(prom)}},
-        });
+            security_context: Some(retype(&PodSecurityContext {
+                run_as_non_root: Some(true), run_as_user: Some(1000), run_as_group: Some(2000), fs_group: Some(2000),
+                seccomp_profile: Some(SeccompProfile { type_: "RuntimeDefault".into(), ..Default::default() }),
+                ..Default::default()
+            })),
+            storage: Some(p::PrometheusStorage {
+                volume_claim_template: Some(p::PrometheusStorageVolumeClaimTemplate { spec: Some(retype(&pvc_spec(prom))), ..Default::default() }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let names = |key: &str, op: &str, values: Vec<String>| LabelSelector {
+            match_expressions: Some(vec![LabelSelectorRequirement { key: key.into(), operator: op.into(), values: Some(values) }]),
+            ..Default::default()
+        };
+        let labels = |l: Labels| LabelSelector { match_labels: Some(l), ..Default::default() };
+        let one = |k: &str, v: &str| Labels::from([(k.to_string(), v.to_string())]);
         if m.local() {
             // The Prometheus in the project's locations writes here.
-            spec["enableRemoteWriteReceiver"] = json!(true);
+            spec.enable_remote_write_receiver = Some(true);
             if self.gov.prices.is_some() {
                 // The cost rules (governance.rs), over every location's series.
-                spec["ruleSelector"] = json!({"matchLabels": {"platform.cndev.nl/project": self.name}});
-                spec["ruleNamespaceSelector"] = json!({"matchLabels": {"kubernetes.io/metadata.name": self.ns}});
+                spec.rule_selector = Some(retype(&labels(one("platform.cndev.nl/project", &self.name))));
+                spec.rule_namespace_selector = Some(retype(&labels(one("kubernetes.io/metadata.name", &self.ns))));
             }
             return spec;
         }
         // Tells this location's series apart in the shared Grafana.
-        spec["externalLabels"] = json!({"location": m.location, "site": m.site});
+        spec.external_labels = Some(Labels::from([("location".to_string(), m.location.clone()), ("site".to_string(), m.site.clone())]));
         if !self.rw_url.is_empty() {
-            spec["remoteWrite"] = json!([{"url": self.rw_url}]);
+            spec.remote_write = Some(vec![p::PrometheusRemoteWrite { url: self.rw_url.clone(), ..Default::default() }]);
         }
         // Every PodMonitor in this namespace (what the workloads create) and,
         // with operator metrics on, the CNPG operator's.
-        spec["podMonitorSelector"] = json!({});
+        spec.pod_monitor_selector = Some(Default::default());
         if om_enabled {
-            spec["podMonitorNamespaceSelector"] = json!({"matchExpressions": [{
-                "key": "kubernetes.io/metadata.name", "operator": "In", "values": [self.ns, om_namespace]}]});
+            spec.pod_monitor_namespace_selector =
+                Some(retype(&names("kubernetes.io/metadata.name", "In", vec![self.ns.clone(), om_namespace.into()])));
         }
         // Rules from this namespace and, with cluster metrics on,
         // kube-prometheus-stack's recording rules the dashboards' CPU panels query.
-        let mut rule_namespaces = vec![json!(self.ns)];
+        let mut rule_namespaces = vec![self.ns.clone()];
         if cm_enabled {
-            rule_namespaces.push(json!(cm_namespace));
+            rule_namespaces.push(cm_namespace.into());
         }
-        spec["ruleSelector"] = json!({});
-        spec["ruleNamespaceSelector"] = json!({"matchExpressions": [{
-            "key": "kubernetes.io/metadata.name", "operator": "In", "values": rule_namespaces}]});
+        spec.rule_selector = Some(Default::default());
+        spec.rule_namespace_selector = Some(retype(&names("kubernetes.io/metadata.name", "In", rule_namespaces)));
         if cm_enabled {
             // Only the node/container ServiceMonitors from kube-prometheus-stack,
             // not the control-plane ones.
-            spec["serviceMonitorNamespaceSelector"] = json!({"matchLabels": {"kubernetes.io/metadata.name": cm_namespace}});
-            let labels: Map<String, Value> = cm_labels.iter().map(|(k, v)| (k.clone(), json!(sprint(v)))).collect();
-            let mut sel = json!({"matchLabels": labels});
+            spec.service_monitor_namespace_selector = Some(retype(&labels(one("kubernetes.io/metadata.name", cm_namespace))));
+            let mut sel = labels(cm_labels.iter().map(|(k, v)| (k.clone(), sprint(v))).collect());
             if !cm_exclude.is_empty() {
-                sel["matchExpressions"] = json!([{"key": "app", "operator": "NotIn", "values": cm_exclude}]);
+                sel.match_expressions = names("app", "NotIn", cm_exclude.iter().map(sprint).collect()).match_expressions;
             }
-            spec["serviceMonitorSelector"] = sel;
+            spec.service_monitor_selector = Some(retype(&sel));
         }
         spec
     }
 
-    fn grafana(&self, host: &str, scope: &Value) -> Value {
-        let mut labels = self.labels.clone();
-        labels.insert("dashboards.paas.cndev.nl/scope".into(), scope["dashboards.paas.cndev.nl/scope"].clone());
-        let mut config = json!({
+    fn grafana(&self, host: &str, scope: &Labels) -> Value {
+        let mut labels = self.labels();
+        labels.extend(scope.clone());
+        let section = |pairs: &[(&str, &str)]| pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<BTreeMap<_, _>>();
+        let mut config = BTreeMap::from([
             // The portal embeds the dashboards in an iframe.
-            "security": {"allow_embedding": "true"},
+            ("security".to_string(), section(&[("allow_embedding", "true")])),
             // Read-only anonymous access so the iframe works without a login.
             // Admin login: Secret grafana-admin-credentials.
-            "auth.anonymous": {"enabled": "true", "org_role": "Viewer"},
-        });
-        let mut spec = json!({});
+            ("auth.anonymous".to_string(), section(&[("enabled", "true"), ("org_role", "Viewer")])),
+        ]);
+        let mut spec = g::GrafanaSpec::default();
         if !host.is_empty() {
-            config["server"] = json!({"root_url": format!("{}://{host}", self.scheme)});
-            let mut ing = json!({"rules": [{"host": host, "http": {"paths": [{
-                "path": "/", "pathType": "Prefix",
-                "backend": {"service": {"name": "grafana-service", "port": {"number": 3000}}},
-            }]}}]});
-            let c = as_str(self.ingress.get("className"));
-            if !c.is_empty() {
-                ing["ingressClassName"] = json!(c);
-            }
-            let t = as_str(self.ingress.get("tlsSecretName"));
-            if !t.is_empty() {
-                ing["tls"] = json!([{"hosts": [host], "secretName": t}]);
-            }
-            spec["ingress"] = json!({"spec": ing});
+            config.insert("server".into(), section(&[("root_url", &format!("{}://{host}", self.scheme))]));
+            let ing = ingress_spec(host, "/", "Prefix", "grafana-service", 3000,
+                as_str(self.ingress.get("className")), as_str(self.ingress.get("tlsSecretName")));
+            spec.ingress = Some(g::GrafanaIngress { spec: Some(retype(&ing)), metadata: None });
         }
-        spec["config"] = config;
-        json!({
-            "apiVersion": "grafana.integreatly.org/v1beta1", "kind": "Grafana",
-            "metadata": {"name": "grafana", "namespace": self.ns, "labels": labels},
-            "spec": spec,
-        })
+        spec.config = Some(config);
+        to_value(&g::Grafana { metadata: meta("grafana", &self.ns, &labels), spec, status: None })
     }
 
     /// Exposes only the remote-write path: the Prometheus in the locations
     /// push through it. Restrict it with ingress annotations from
     /// project-defaults (prometheus.remoteWrite.annotations).
     fn remote_write_ingress(&self) -> Value {
-        let mut meta = self.meta("prometheus-remote-write");
         let ann = as_obj(self.remote_write.get("annotations"));
-        if !ann.is_empty() {
-            meta["annotations"] = Value::Object(ann.iter().map(|(k, v)| (k.clone(), json!(sprint(v)))).collect());
-        }
-        let mut spec = json!({"rules": [{"host": self.rw_host, "http": {"paths": [{
-            "path": "/api/v1/write", "pathType": "Exact",
-            "backend": {"service": {"name": "prometheus-operated", "port": {"number": 9090}}},
-        }]}}]});
-        let c = as_str(self.remote_write.get("className"));
-        if !c.is_empty() {
-            spec["ingressClassName"] = json!(c);
-        }
-        let t = as_str(self.remote_write.get("tlsSecretName"));
-        if !t.is_empty() {
-            spec["tls"] = json!([{"hosts": [self.rw_host], "secretName": t}]);
-        }
-        json!({"apiVersion": "networking.k8s.io/v1", "kind": "Ingress", "metadata": meta, "spec": spec})
+        to_value(&Ingress {
+            metadata: ObjectMeta {
+                annotations: map_opt(ann.iter().map(|(k, v)| (k.clone(), sprint(v))).collect()),
+                ..self.meta("prometheus-remote-write")
+            },
+            spec: Some(ingress_spec(&self.rw_host, "/api/v1/write", "Exact", "prometheus-operated", 9090,
+                as_str(self.remote_write.get("className")), as_str(self.remote_write.get("tlsSecretName")))),
+            status: None,
+        })
     }
 
     fn backup_check_cron_job(&self, m: &Member, check: &BackupCheck) -> Value {
-        let mut env = vec![
-            json!({"name": "LOCATION", "value": m.location}),
-            json!({"name": "S3_ENDPOINT", "value": check.endpoint}),
-            json!({"name": "S3_BUCKET", "value": check.bucket}),
-        ];
+        let value = |name: &str, value: &str| EnvVar { name: name.into(), value: Some(value.into()), ..Default::default() };
+        let mut env = vec![value("LOCATION", &m.location), value("S3_ENDPOINT", &check.endpoint), value("S3_BUCKET", &check.bucket)];
         for k in ["ACCESS_KEY_ID", "ACCESS_SECRET_KEY", "REGION"] {
-            let mut r = json!({"name": "backup-check-s3", "key": k});
-            if k == "REGION" {
-                r["optional"] = json!(true);
-            }
-            env.push(json!({"name": k, "valueFrom": {"secretKeyRef": r}}));
+            env.push(EnvVar {
+                name: k.into(),
+                value_from: Some(EnvVarSource {
+                    secret_key_ref: Some(SecretKeySelector {
+                        name: "backup-check-s3".into(), key: k.into(), optional: (k == "REGION").then_some(true),
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            });
         }
-        let mut pod_labels = self.labels.clone();
-        pod_labels.insert("platform.cndev.nl/check".into(), json!("backup"));
-        json!({
-            "apiVersion": "batch/v1", "kind": "CronJob", "metadata": self.meta("backup-check"),
-            "spec": {
-                "schedule": check.schedule, "concurrencyPolicy": "Forbid",
-                "successfulJobsHistoryLimit": 1, "failedJobsHistoryLimit": 1,
-                "jobTemplate": {"spec": {
-                    "backoffLimit": 0, "activeDeadlineSeconds": 120,
-                    "template": {
-                        "metadata": {"labels": pod_labels},
-                        "spec": {
-                            "restartPolicy": "Never", "automountServiceAccountToken": false,
-                            // Numeric, so the kubelet can verify non-root for images
-                            // whose USER is a name (curlimages/curl runs as "curl_user").
-                            "securityContext": {"runAsNonRoot": true, "runAsUser": 65534, "runAsGroup": 65534,
-                                "seccompProfile": {"type": "RuntimeDefault"}},
-                            "containers": [{
-                                "name": "check", "image": check.image,
-                                "command": ["sh", "-c"], "args": [BACKUP_CHECK_SCRIPT],
-                                "env": env,
-                                "resources": {"requests": {"cpu": "10m", "memory": "16Mi"}, "limits": {"memory": "64Mi"}},
-                                "securityContext": {"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true,
-                                    "capabilities": {"drop": ["ALL"]}},
-                                "volumeMounts": [{"name": "tmp", "mountPath": "/tmp"}],
-                            }],
-                            "volumes": [{"name": "tmp", "emptyDir": {"sizeLimit": "1Mi"}}],
+        let mut pod_labels = self.labels();
+        pod_labels.insert("platform.cndev.nl/check".into(), "backup".into());
+        let strings = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let pod = PodSpec {
+            restart_policy: Some("Never".into()),
+            automount_service_account_token: Some(false),
+            // Numeric, so the kubelet can verify non-root for images
+            // whose USER is a name (curlimages/curl runs as "curl_user").
+            security_context: Some(PodSecurityContext {
+                run_as_non_root: Some(true), run_as_user: Some(65534), run_as_group: Some(65534),
+                seccomp_profile: Some(SeccompProfile { type_: "RuntimeDefault".into(), ..Default::default() }),
+                ..Default::default()
+            }),
+            containers: vec![Container {
+                name: "check".into(),
+                image: Some(check.image.clone()),
+                command: Some(strings(&["sh", "-c"])),
+                args: Some(vec![BACKUP_CHECK_SCRIPT.into()]),
+                env: Some(env),
+                resources: Some(ResourceRequirements {
+                    requests: Some(quantity_map(&[("cpu", "10m"), ("memory", "16Mi")])),
+                    limits: Some(quantity_map(&[("memory", "64Mi")])),
+                    ..Default::default()
+                }),
+                security_context: Some(SecurityContext {
+                    allow_privilege_escalation: Some(false), read_only_root_filesystem: Some(true),
+                    capabilities: Some(Capabilities { drop: Some(strings(&["ALL"])), ..Default::default() }),
+                    ..Default::default()
+                }),
+                volume_mounts: Some(vec![VolumeMount { name: "tmp".into(), mount_path: "/tmp".into(), ..Default::default() }]),
+                ..Default::default()
+            }],
+            volumes: Some(vec![Volume {
+                name: "tmp".into(),
+                empty_dir: Some(EmptyDirVolumeSource { size_limit: Some(Quantity("1Mi".into())), ..Default::default() }),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        to_value(&CronJob {
+            metadata: self.meta("backup-check"),
+            spec: CronJobSpec {
+                schedule: check.schedule.clone(),
+                concurrency_policy: Some("Forbid".into()),
+                successful_jobs_history_limit: Some(1),
+                failed_jobs_history_limit: Some(1),
+                job_template: JobTemplateSpec {
+                    spec: Some(JobSpec {
+                        backoff_limit: Some(0),
+                        active_deadline_seconds: Some(120),
+                        template: PodTemplateSpec {
+                            metadata: Some(ObjectMeta { labels: Some(pod_labels), ..Default::default() }),
+                            spec: Some(pod),
                         },
-                    },
-                }},
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
             },
+            status: None,
         })
     }
 
     /// Puts a location's object into a provider-kubernetes Object for the
     /// ClusterProviderConfig named after the location.
     pub(super) fn wrap(&self, key: &str, location: &str, o: Obj) -> Composed {
-        let mut spec = json!({
-            "providerConfigRef": {"kind": "ClusterProviderConfig", "name": location},
-            "watch": true,
-            "forProvider": {"manifest": o.manifest},
-        });
+        // The Secret's data comes from the control plane, never through this spec.
+        let references = if o.copy_from.is_empty() {
+            vec![]
+        } else {
+            let (from_ns, from_name) = o.copy_from.split_once('/').unwrap_or(("", &o.copy_from));
+            secret_copy(from_ns, from_name)
+        };
+        let mut object = location_object(meta(key, &self.ns, &self.labels()), location, o.manifest, references);
         if o.orphan {
             // Never delete the namespace in another location: workloads may
             // still run there (no Delete in the management policies).
-            spec["managementPolicies"] = json!(["Observe", "Create", "Update", "LateInitialize"]);
+            object.spec.management_policies = Some(["Observe", "Create", "Update", "LateInitialize"].map(String::from).to_vec());
         }
-        if !o.copy_from.is_empty() {
-            let (from_ns, from_name) = o.copy_from.split_once('/').unwrap_or(("", &o.copy_from));
-            // The Secret's data comes from the control plane, never through this spec.
-            spec["references"] = json!(["data", "type"].iter().map(|f| json!({"patchesFrom": {"apiVersion": "v1", "kind": "Secret",
-                "name": from_name, "namespace": from_ns, "fieldPath": f}})).collect::<Vec<_>>());
-        }
-        Composed { ready: o.ready, object: json!({
-            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "Object",
-            "metadata": {"name": key, "namespace": self.ns, "labels": self.labels,
-                "annotations": {"platform.cndev.nl/location": location}},
-            "spec": spec,
-        })}
+        Composed { ready: o.ready, object: to_value(&object) }
     }
 }
 
-fn pvc_spec(prom: &Map<String, Value>) -> Value {
-    let p = Value::Object(prom.clone());
-    let mut spec = json!({
-        "accessModes": ["ReadWriteOnce"],
-        "resources": {"requests": {"storage": or(as_str(dig(&p, &["storage", "size"])), "10Gi")}},
-    });
-    let sc = as_str(dig(&p, &["storage", "storageClass"]));
-    if !sc.is_empty() {
-        spec["storageClassName"] = json!(sc);
+/// An Ingress spec with one rule: host's path to service:port.
+fn ingress_spec(host: &str, path: &str, path_type: &str, service: &str, port: i32, class: &str, tls_secret: &str) -> IngressSpec {
+    IngressSpec {
+        ingress_class_name: str_opt(class),
+        rules: Some(vec![IngressRule {
+            host: Some(host.into()),
+            http: Some(HTTPIngressRuleValue { paths: vec![HTTPIngressPath {
+                path: Some(path.into()),
+                path_type: path_type.into(),
+                backend: IngressBackend {
+                    service: Some(IngressServiceBackend {
+                        name: service.into(),
+                        port: Some(ServiceBackendPort { number: Some(port), ..Default::default() }),
+                    }),
+                    ..Default::default()
+                },
+            }] }),
+        }]),
+        tls: (!tls_secret.is_empty()).then(|| vec![IngressTLS { hosts: Some(vec![host.into()]), secret_name: Some(tls_secret.into()) }]),
+        ..Default::default()
     }
-    spec
+}
+
+fn quantity_map(pairs: &[(&str, &str)]) -> BTreeMap<String, Quantity> {
+    pairs.iter().map(|(k, v)| (k.to_string(), Quantity(v.to_string()))).collect()
+}
+
+fn pvc_spec(prom: &Map<String, Value>) -> PersistentVolumeClaimSpec {
+    let p = Value::Object(prom.clone());
+    PersistentVolumeClaimSpec {
+        access_modes: Some(vec!["ReadWriteOnce".into()]),
+        resources: Some(VolumeResourceRequirements {
+            requests: Some(quantity_map(&[("storage", or(as_str(dig(&p, &["storage", "size"])), "10Gi"))])),
+            ..Default::default()
+        }),
+        storage_class_name: str_opt(as_str(dig(&p, &["storage", "storageClass"]))),
+        ..Default::default()
+    }
 }

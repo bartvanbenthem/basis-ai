@@ -30,9 +30,17 @@
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
+use k8s_openapi::ByteString;
+use k8s_openapi::api::core::v1::Secret;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+
+use crate::common::kinds::crds::grafana::grafana_dashboard as gd;
+use crate::common::kinds::crds::prometheus::pod_monitor::*;
+use crate::common::kinds::crds::valkey::valkey_cluster::*;
+use crate::common::kinds::{self, Labels, labels_of, location_object, prometheus_rule, quantities, secret_copy, to_value};
 use crate::common::lenient::decode;
 use crate::common::util::{
-    as_str, b64, condition, condition_true, dig_opt, labels_obj, live, new_secret, or, or_i, sha1hex, unb64,
+    as_str, condition, condition_true, dig_opt, labels_obj, live, new_secret, or, or_i, sha1hex, unb64,
 };
 use crate::common::{Composed, Condition, Input, Output, Requirement, Result};
 use crate::lenient;
@@ -233,13 +241,18 @@ pub fn compose(input: &Input) -> Result<Output> {
     if password.is_empty() {
         password = new_secret(32);
     }
-    out.composed.insert("auth-secret".into(), Composed { ready: c.observed.contains_key("auth-secret"), object: json!({
-        "apiVersion": "v1", "kind": "Secret", "type": "Opaque",
-        "metadata": c.meta(&secret_name, None),
-        "data": {
-            "username": b64("default"), "password": b64(&password), "host": b64(&host),
-            "port": b64(&PORT.to_string()), "uri": b64(&format!("valkey://default:{password}@{host}:{PORT}")),
-        },
+    let data = [
+        ("username", "default".to_string()),
+        ("password", password.clone()),
+        ("host", host.clone()),
+        ("port", PORT.to_string()),
+        ("uri", format!("valkey://default:{password}@{host}:{PORT}")),
+    ];
+    out.composed.insert("auth-secret".into(), Composed { ready: c.observed.contains_key("auth-secret"), object: to_value(&Secret {
+        metadata: c.meta(&secret_name, None),
+        type_: Some("Opaque".into()),
+        data: Some(data.into_iter().map(|(k, v)| (k.to_string(), ByteString(v.into_bytes()))).collect()),
+        ..Default::default()
     })});
 
     let dash_uid = format!("valkey-{}", &sha1hex(&format!("{ns}/{name}"))[..20]);
@@ -327,65 +340,84 @@ impl Composition<'_> {
         let (name, ns) = (self.xr.metadata.name.as_str(), self.xr.metadata.namespace.as_str());
         let mut out = BTreeMap::new();
         // The copy's data and type come from auth-secret (see wrap).
-        out.insert("auth".into(), json!({"apiVersion": "v1", "kind": "Secret", "metadata": self.meta(copy_name, None)}));
+        out.insert("auth".into(), to_value(&Secret { metadata: self.meta(copy_name, None), ..Default::default() }));
 
-        let mut vc_spec = json!({
-            "image": IMAGE,
-            "shards": spec.shards(),
-            "replicas": spec.replicas(),
-            "resources": {"requests": {"cpu": spec.cpu(), "memory": spec.memory()}, "limits": {"memory": spec.memory()}},
-            "config": {"maxmemory": max_memory(spec.memory(), spec.max_memory_pct()), "maxmemory-policy": spec.eviction_policy()},
-            "users": [{
-                "name": "default",
-                "passwordSecret": {"name": copy_name, "keys": ["password"]},
-                "commands": {"allow": ["@all"], "deny": ["@admin"]},
-                "keys": {"readWrite": ["*"]},
-                "channels": {"patterns": ["*"]},
-            }],
-            "scheduling": {"node": {"spread": {"shard": {"mode": "Preferred"}}}},
-            "exporter": {"enabled": mon.enabled()},
-        });
+        let memory = spec.memory().to_string();
+        let mut vc_spec = ValkeyClusterSpec {
+            image: Some(IMAGE.into()),
+            shards: spec.shards() as i32,
+            replicas: Some(spec.replicas() as i32),
+            resources: Some(ValkeyClusterResources {
+                requests: Some(quantities(Labels::from([("cpu".to_string(), spec.cpu().to_string()), ("memory".to_string(), memory.clone())]))),
+                limits: Some(quantities(Labels::from([("memory".to_string(), memory)]))),
+                ..Default::default()
+            }),
+            config: Some(Labels::from([
+                ("maxmemory".to_string(), max_memory(spec.memory(), spec.max_memory_pct())),
+                ("maxmemory-policy".to_string(), spec.eviction_policy().to_string()),
+            ])),
+            users: Some(vec![ValkeyClusterUsers {
+                name: "default".into(),
+                password_secret: Some(ValkeyClusterUsersPasswordSecret { name: Some(copy_name.into()), keys: Some(vec!["password".into()]) }),
+                commands: Some(ValkeyClusterUsersCommands { allow: Some(vec!["@all".into()]), deny: Some(vec!["@admin".into()]) }),
+                keys: Some(ValkeyClusterUsersKeys { read_write: Some(vec!["*".into()]), ..Default::default() }),
+                channels: Some(ValkeyClusterUsersChannels { patterns: Some(vec!["*".into()]) }),
+                ..Default::default()
+            }]),
+            scheduling: Some(ValkeyClusterScheduling {
+                node: Some(ValkeyClusterSchedulingNode { spread: Some(ValkeyClusterSchedulingNodeSpread {
+                    shard: Some(ValkeyClusterSchedulingNodeSpreadShard { mode: Some(ValkeyClusterSchedulingNodeSpreadShardMode::Preferred) }),
+                    ..Default::default()
+                }) }),
+                ..Default::default()
+            }),
+            exporter: Some(ValkeyClusterExporter { enabled: Some(mon.enabled()), ..Default::default() }),
+            ..Default::default()
+        };
         if spec.semantic() {
             let threads = search_threads(spec.cpu()).to_string();
-            vc_spec["image"] = json!(BUNDLE_IMAGE);
+            vc_spec.image = Some(BUNDLE_IMAGE.into());
             // Appended to the server's valkey-server command (strategic merge patch
             // by name). Every word its own argument: as one, valkey-server takes
             // "<path> --reader-threads ..." for the module's path and aborts. The
             // thread counts are the module's configs (search.*), not its arguments,
             // which must start with "--" and so would be read as server options.
-            vc_spec["containers"] = json!([{"name": "server", "args": [
-                "--loadmodule", SEARCH_MODULE,
-                "--search.reader-threads", threads,
-                "--search.writer-threads", threads]}]);
+            let args = ["--loadmodule", SEARCH_MODULE, "--search.reader-threads", &threads, "--search.writer-threads", &threads];
+            vc_spec.containers = Some(vec![ValkeyClusterContainers { name: "server".into(), args: Some(args.iter().map(|a| a.to_string()).collect()),
+                ..Default::default() }]);
             if mon.enabled() {
                 // valkey-search's INFO section (index memory, query counts) for the dashboard.
-                vc_spec["exporter"] = json!({"enabled": true, "args": ["--include-modules-metrics"]});
+                vc_spec.exporter = Some(ValkeyClusterExporter { enabled: Some(true), args: Some(vec!["--include-modules-metrics".into()]),
+                    ..Default::default() });
             }
         }
-        out.insert("cluster".into(), json!({"apiVersion": "valkey.io/v1alpha1", "kind": "ValkeyCluster",
-            "metadata": self.meta(name, None), "spec": vc_spec}));
+        out.insert("cluster".into(), to_value(&ValkeyCluster { metadata: self.meta(name, None), spec: vc_spec, status: None }));
 
         let mon_labels = &mon.pod_monitor_labels;
         if mon.enabled() {
-            let relabel = |label: &str, target: &str| {
-                json!({"sourceLabels": [format!("__meta_kubernetes_pod_label_{label}")], "targetLabel": target})
+            let relabel = |label: &str, target: &str| PodMonitorPodMetricsEndpointsRelabelings {
+                source_labels: Some(vec![format!("__meta_kubernetes_pod_label_{label}")]), target_label: Some(target.into()), ..Default::default()
             };
-            out.insert("podmonitor".into(), json!({"apiVersion": "monitoring.coreos.com/v1", "kind": "PodMonitor",
-                "metadata": self.meta(&format!("{name}-valkey"), Some(mon_labels)),
-                "spec": {
-                    "selector": {"matchLabels": {"valkey.io/cluster": name}},
-                    "podMetricsEndpoints": [{"port": "metrics", "relabelings": [
+            let pm = PodMonitor {
+                metadata: self.meta(&format!("{name}-valkey"), Some(mon_labels)),
+                spec: PodMonitorSpec {
+                    selector: PodMonitorSelector { match_labels: Some(Labels::from([("valkey.io/cluster".to_string(), name.to_string())])),
+                        ..Default::default() },
+                    pod_metrics_endpoints: Some(vec![PodMonitorPodMetricsEndpoints { port: Some("metrics".into()), relabelings: Some(vec![
                         relabel("valkey_io_cluster", "cluster"),
                         relabel("valkey_io_shard_index", "shard"),
                         relabel("valkey_io_node_index", "node"),
-                    ]}],
-                }}));
+                    ]), ..Default::default() }]),
+                    ..Default::default()
+                },
+                status: None,
+            };
+            out.insert("podmonitor".into(), to_value(&pm));
         }
         if mon.rules() {
             let rules = alert_rules(ALERT_RULES_SOURCE, ns, name, &mon.prometheus_rule.exclude_rules)?;
-            out.insert("prometheusrule".into(), json!({"apiVersion": "monitoring.coreos.com/v1", "kind": "PrometheusRule",
-                "metadata": self.meta(&format!("{name}-alerts"), Some(mon_labels)),
-                "spec": {"groups": [{"name": format!("valkey/{ns}/{name}"), "rules": rules}]}}));
+            out.insert("prometheusrule".into(), to_value(&prometheus_rule(self.meta(&format!("{name}-alerts"), Some(mon_labels)),
+                format!("valkey/{ns}/{name}"), kinds::rules(rules)?)));
         }
         Ok(out)
     }
@@ -393,22 +425,10 @@ impl Composition<'_> {
     /// Puts a location object into a provider-kubernetes Object.
     fn wrap(&self, key: &str, location: &str, manifest: Value) -> Composed {
         let (name, ns) = (self.xr.metadata.name.as_str(), self.xr.metadata.namespace.as_str());
-        let mut spec = json!({
-            "providerConfigRef": {"kind": "ClusterProviderConfig", "name": location},
-            "watch": true,
-            "forProvider": {"manifest": manifest},
-        });
-        if key == "auth" {
-            // The Secret's data comes from the control plane, never through this spec.
-            spec["references"] = json!(["data", "type"].iter().map(|field| json!({"patchesFrom": {"apiVersion": "v1",
-                "kind": "Secret", "name": format!("{name}-valkey"), "namespace": ns, "fieldPath": field}})).collect::<Vec<_>>());
-        }
-        Composed { ready: false, object: json!({
-            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "Object",
-            "metadata": {"name": format!("{name}-{key}"), "namespace": ns, "labels": self.labels,
-                "annotations": {"platform.cndev.nl/location": location}},
-            "spec": spec,
-        })}
+        // The Secret's data comes from the control plane, never through this spec.
+        let references = if key == "auth" { secret_copy(ns, &format!("{name}-valkey")) } else { vec![] };
+        let metadata = kinds::meta(&format!("{name}-{key}"), ns, &labels_of(&self.labels));
+        Composed { ready: false, object: to_value(&location_object(metadata, location, manifest, references)) }
     }
 
     /// The Valkey cache dashboard for this cache: its own title and uid, the
@@ -417,31 +437,32 @@ impl Composition<'_> {
         let (name, ns) = (self.xr.metadata.name.as_str(), self.xr.metadata.namespace.as_str());
         let g = &self.xr.spec.monitoring.grafana_dashboard;
         let selector = if g.instance_selector.is_empty() {
-            json!({"dashboards.paas.cndev.nl/scope": ns})
+            Labels::from([("dashboards.paas.cndev.nl/scope".to_string(), ns.to_string())])
         } else {
-            json!(g.instance_selector)
+            g.instance_selector.clone()
         };
-        json!({
-            "apiVersion": "grafana.integreatly.org/v1beta1", "kind": "GrafanaDashboard",
-            "metadata": self.meta(&format!("{name}-valkey"), None),
-            "spec": {
-                "instanceSelector": {"matchLabels": selector},
-                "allowCrossNamespaceImport": g.allow_cross_namespace_import,
-                "folder": or(&g.folder, "Valkey"),
-                "uid": uid,
-                "resyncPeriod": "10m",
-                "datasources": [{"inputName": "DS_PROMETHEUS", "datasourceName": or(&g.datasource_name, "prometheus")}],
-                "json": substitute(DASHBOARD_SOURCE, ns, name, uid),
+        to_value(&gd::GrafanaDashboard {
+            metadata: self.meta(&format!("{name}-valkey"), None),
+            spec: gd::GrafanaDashboardSpec {
+                instance_selector: gd::GrafanaDashboardInstanceSelector { match_labels: Some(selector), ..Default::default() },
+                allow_cross_namespace_import: Some(g.allow_cross_namespace_import),
+                folder: Some(or(&g.folder, "Valkey").into()),
+                uid: Some(uid.into()),
+                resync_period: Some("10m".into()),
+                datasources: Some(vec![gd::GrafanaDashboardDatasources { input_name: "DS_PROMETHEUS".into(),
+                    datasource_name: or(&g.datasource_name, "prometheus").into() }]),
+                json: Some(substitute(DASHBOARD_SOURCE, ns, name, uid)),
+                ..Default::default()
             },
+            status: None,
         })
     }
 
-    fn meta(&self, name: &str, extra: Option<&BTreeMap<String, String>>) -> Value {
-        let mut labels = self.labels.clone();
-        for (k, v) in extra.into_iter().flatten() {
-            labels.insert(k.clone(), json!(v));
-        }
-        json!({"name": name, "namespace": self.xr.metadata.namespace, "labels": labels})
+    /// The metadata of one of the cache's objects, extra labels added.
+    fn meta(&self, name: &str, extra: Option<&BTreeMap<String, String>>) -> ObjectMeta {
+        let mut labels = labels_of(&self.labels);
+        labels.extend(extra.into_iter().flatten().map(|(k, v)| (k.clone(), v.clone())));
+        kinds::meta(name, &self.xr.metadata.namespace, &labels)
     }
 }
 
@@ -472,6 +493,7 @@ fn search_threads(cpu: &str) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::util::b64;
     use crate::common::util::set_secret;
 
     fn input(spec: Value, status: Value, observed: &[(&str, Value)], project: Option<Value>) -> Input {

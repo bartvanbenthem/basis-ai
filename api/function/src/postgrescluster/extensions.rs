@@ -5,7 +5,6 @@
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::manifests::{ClusterExtension, ExtensionImage};
 use super::{Composition, Member, REQUIRED_EXTENSIONS, fill_params};
 use crate::common::lenient::decode;
 use crate::common::util::dig_opt;
@@ -14,6 +13,27 @@ use crate::lenient;
 /// The first PostgreSQL major that loads extensions from image volumes
 /// (extension_control_path).
 pub const IMAGE_EXTENSIONS_MIN_VERSION: i64 = 18;
+
+lenient! {
+    /// An extension mounted from an image (CNPG image volume extensions,
+    /// PostgreSQL 18+), as the catalog describes it and a running Cluster
+    /// reports it; member.rs writes it as the CRD's ClusterPostgresqlExtensions.
+    pub struct ClusterExtension {
+        pub name: String,
+        pub image: ExtensionImage,
+        pub extension_control_path: Vec<String>,
+        pub dynamic_library_path: Vec<String>,
+        pub ld_library_path: Vec<String>,
+    }
+}
+
+lenient! {
+    #[serde(rename_all = "camelCase")]
+    pub struct ExtensionImage {
+        pub reference: String,
+        pub pull_policy: String,
+    }
+}
 
 lenient! {
     /// One entry of the postgres-extensions catalog.

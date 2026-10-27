@@ -60,7 +60,6 @@
 //! clusters also export metrics on their vector indexes.
 
 mod extensions;
-mod manifests;
 mod member;
 mod observed;
 mod spec;
@@ -79,7 +78,7 @@ use crate::common::util::{as_str, dig, or, or_i, sha1hex, trunc};
 use crate::common::{Composed, Input, Output, Requirement, Result};
 use crate::lenient;
 use extensions::ExtensionConfig;
-use manifests::Labels;
+use crate::common::kinds::Labels;
 use observed::{ClusterStatus, live, read_cluster_status};
 use spec::{Backup, BackupStore, S3Credentials, Sites, Sizing, Spec, Store, Xr};
 use topology::{MemberPlacement, Placement, SWITCHOVER, TopologyMember, place};

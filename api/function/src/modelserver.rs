@@ -27,12 +27,20 @@
 //! TLS between gateway and server off) and the InferencePool. Locations are
 //! pinned in status.sites, so a server never moves.
 
-use serde_json::{Map, Value, json};
+use k8s_openapi::api::core::v1::{Container, ObjectReference, PodSpec, ResourceRequirements, Secret, SecurityContext,
+    ServiceAccount, Toleration};
+use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 use crate::common::gojson::{fmt_g, marshal, quote};
+use crate::common::kinds::crds::kserve::llm_inference_service as llmis;
+use crate::common::kinds::crds::prometheus::pod_monitor as pm;
+use crate::common::kinds::{Labels, alert, location_object, map_opt, meta, prometheus_rule, scoped_dashboard, secret_field_copy, str_opt, to_value, vec_opt};
 use crate::common::lenient::decode;
-use crate::common::util::{as_str, condition, condition_true, dig_opt, labels_obj, live, or, or_f, or_i, reported, sha1hex};
+use crate::common::util::{as_str, condition, condition_true, dig_opt, live, or, or_f, or_i, reported, sha1hex};
 use crate::common::{Composed, Condition, Input, Output, Requirement, Result};
 use crate::lenient;
 
@@ -182,7 +190,7 @@ struct Composition<'a> {
     name: &'a str,
     ns: &'a str,
     observed: &'a BTreeMap<String, Value>,
-    labels: Map<String, Value>,
+    labels: Labels,
 }
 
 /// A manifest for a location, with how to tell it's ready.
@@ -204,10 +212,10 @@ fn object_ready(o: Option<&Value>) -> bool {
 /// Renders the desired state of a ModelServer.
 pub fn compose(input: &Input) -> Result<Output> {
     let xr: Xr = decode(&input.xr);
-    let labels = labels_obj(&[
-        ("app.kubernetes.io/managed-by", "crossplane"),
-        ("app.kubernetes.io/part-of", "basis"),
-        ("ai.cndev.nl/modelserver", &xr.metadata.name),
+    let labels = Labels::from([
+        ("app.kubernetes.io/managed-by".to_string(), "crossplane".to_string()),
+        ("app.kubernetes.io/part-of".to_string(), "basis".to_string()),
+        ("ai.cndev.nl/modelserver".to_string(), xr.metadata.name.clone()),
     ]);
     let c = Composition { spec: &xr.spec, name: &xr.metadata.name, ns: &xr.metadata.namespace, observed: &input.observed, labels };
     let spec = c.spec;
@@ -247,7 +255,7 @@ pub fn compose(input: &Input) -> Result<Output> {
             all_ready = false;
             continue;
         }
-        for (key, o) in c.site_objects(replicas) {
+        for (key, o) in c.site_objects(replicas)? {
             let k = format!("{s}-{key}");
             let mut w = c.wrap(&k, &loc, o.manifest, o.copy_from.as_ref());
             w.ready = (o.ready)(c.observed.get(&k));
@@ -327,103 +335,89 @@ impl Composition<'_> {
 
     /// What runs in a site's location, by composition resource name (without
     /// the site prefix).
-    fn site_objects(&self, replicas: i64) -> BTreeMap<&'static str, Obj> {
+    fn site_objects(&self, replicas: i64) -> Result<BTreeMap<&'static str, Obj>> {
         let spec = self.spec;
         let mut out = BTreeMap::new();
         let res = &spec.resources;
-        let mut requests = json!({"cpu": res.cpu(), "memory": res.memory()});
-        let mut limits = json!({"memory": res.memory()});
+        let mut requests = BTreeMap::from([("cpu".to_string(), Quantity(res.cpu().into())), ("memory".to_string(), Quantity(res.memory().into()))]);
+        let mut limits = BTreeMap::from([("memory".to_string(), Quantity(res.memory().into()))]);
         if res.gpus() > 0 {
-            requests[res.gpu_resource()] = json!(res.gpus());
-            limits[res.gpu_resource()] = json!(res.gpus());
+            requests.insert(res.gpu_resource().into(), Quantity(res.gpus().to_string()));
+            limits.insert(res.gpu_resource().into(), Quantity(res.gpus().to_string()));
         }
-        let mut main = json!({"name": "main", "resources": {"requests": requests, "limits": limits}});
-        if !spec.image.is_empty() {
-            main["image"] = json!(spec.image);
-        }
-        if res.gpus() == 0 {
+        let main = Container {
+            name: "main".into(),
+            resources: Some(ResourceRequirements { requests: Some(requests), limits: Some(limits), ..Default::default() }),
+            image: str_opt(&spec.image),
             // vLLM's CPU image runs as root; KServe's own CPU sample allows it
             // the same way. Privilege escalation and capabilities stay off.
-            main["securityContext"] = json!({"runAsNonRoot": false});
-        }
-        if !spec.args.is_empty() {
+            security_context: (res.gpus() == 0).then(|| SecurityContext { run_as_non_root: Some(false), ..Default::default() }),
             // After KServe's own flags (its command ends in "$@").
-            main["args"] = json!(spec.args);
-        }
-        let mut template = json!({"containers": [main]});
-        if !spec.scheduling.node_selector.is_empty() {
-            template["nodeSelector"] = json!(spec.scheduling.node_selector);
-        }
-        if !spec.scheduling.tolerations.is_empty() {
-            template["tolerations"] = json!(spec.scheduling.tolerations);
-        }
+            args: vec_opt(spec.args.clone()),
+            ..Default::default()
+        };
+        let tolerations = spec.scheduling.tolerations.iter().map(|t| serde_json::from_value::<Toleration>(t.clone()))
+            .collect::<std::result::Result<Vec<_>, _>>().map_err(|e| format!("spec.scheduling.tolerations: {e}"))?;
+        let mut template = PodSpec {
+            containers: vec![main],
+            node_selector: map_opt(spec.scheduling.node_selector.clone()),
+            tolerations: vec_opt(tolerations),
+            ..Default::default()
+        };
         if let Some(r) = &spec.model.token_secret_ref {
             // KServe gives the model download the HF_TOKEN of the Secrets its
             // ServiceAccount lists.
-            template["serviceAccountName"] = json!(self.service_account());
+            template.service_account_name = Some(self.service_account());
             out.insert("token", Obj {
                 ready: Box::new(object_ready),
                 copy_from: Some((r.name.clone(), format!("data.{}", or(&r.key, "HF_TOKEN")), "data.HF_TOKEN".into())),
-                manifest: json!({"apiVersion": "v1", "kind": "Secret", "type": "Opaque", "metadata": self.meta(&self.token_secret())}),
+                manifest: to_value(&Secret { metadata: self.meta(&self.token_secret()), type_: Some("Opaque".into()), ..Default::default() }),
             });
-            out.insert("serviceaccount", Obj { ready: Box::new(reported), copy_from: None, manifest: json!({
-                "apiVersion": "v1", "kind": "ServiceAccount", "metadata": self.meta(&self.service_account()),
-                "secrets": [{"name": self.token_secret()}],
+            out.insert("serviceaccount", Obj { ready: Box::new(reported), copy_from: None, manifest: to_value(&ServiceAccount {
+                metadata: self.meta(&self.service_account()),
+                secrets: Some(vec![ObjectReference { name: Some(self.token_secret()), ..Default::default() }]),
+                ..Default::default()
             })});
         }
-        let mut server = json!({
-            "model": {"uri": spec.model.uri, "name": or(&spec.model.name, self.name)},
-            "replicas": replicas,
-            "template": template,
+        let server = llmis::LlmInferenceServiceSpec {
+            model: Some(llmis::LlmInferenceServiceModel {
+                uri: spec.model.uri.clone(), name: Some(or(&spec.model.name, self.name).into()), ..Default::default()
+            }),
+            replicas: Some(replicas as i32),
+            template: Some(template),
             // Onto everything KServe creates, next to its own labels. Not the
             // app.kubernetes.io ones: KServe's part-of label is how it finds its
             // Deployments, and how the InferencePool and PodMonitor select pods.
-            "labels": {"ai.cndev.nl/modelserver": self.name},
-        });
-        if res.gpus() > 1 {
-            server["parallelism"] = json!({"tensor": res.gpus()});
-        }
-        if spec.prefix_cache_aware() {
+            labels: Some(Labels::from([("ai.cndev.nl/modelserver".to_string(), self.name.to_string())])),
+            parallelism: (res.gpus() > 1).then(|| llmis::LlmInferenceServiceParallelism { tensor: Some(res.gpus() as i32), ..Default::default() }),
             // llm-d's endpoint picker with KServe's default configuration:
             // approximate prefix-cache affinity, then the replicas' token load.
-            server["router"] = json!({"scheduler": {}});
-        }
+            router: spec.prefix_cache_aware().then(|| json!({"scheduler": {}})),
+            ..Default::default()
+        };
         out.insert("server", Obj {
             // A stopped site has nothing to wait for.
             ready: Box::new(move |o| condition_true(live(o), "Ready") || (replicas == 0 && reported(o))),
             copy_from: None,
-            manifest: json!({"apiVersion": "serving.kserve.io/v1alpha2", "kind": "LLMInferenceService",
-                "metadata": self.meta(self.name), "spec": server}),
+            manifest: to_value(&llmis::LlmInferenceService { metadata: self.meta(self.name), spec: server, status: None }),
         });
         out.insert("podmonitor", Obj { ready: Box::new(always), copy_from: None, manifest: self.pod_monitor() });
         if !spec.alerts.disabled && replicas > 0 {
             out.insert("prometheusrule", Obj { ready: Box::new(always), copy_from: None, manifest: self.alert_rules() });
         }
-        out
+        Ok(out)
     }
 
     /// Puts a location object into a provider-kubernetes Object.
     fn wrap(&self, key: &str, location: &str, manifest: Value, copy_from: Option<&(String, String, String)>) -> Composed {
-        let mut spec = json!({
-            "providerConfigRef": {"kind": "ClusterProviderConfig", "name": location},
-            "watch": true,
-            "forProvider": {"manifest": manifest},
-        });
-        if let Some((from, field, to)) = copy_from {
-            // The Secret's data comes from the control plane, never through this spec.
-            spec["references"] = json!([{"patchesFrom": {"apiVersion": "v1", "kind": "Secret",
-                "name": from, "namespace": self.ns, "fieldPath": field}, "toFieldPath": to}]);
-        }
-        Composed { ready: false, object: json!({
-            "apiVersion": "kubernetes.m.crossplane.io/v1alpha1", "kind": "Object",
-            "metadata": {"name": format!("{}-{key}", self.name), "namespace": self.ns, "labels": self.labels,
-                "annotations": {"platform.cndev.nl/location": location}},
-            "spec": spec,
-        })}
+        // The Secret's data comes from the control plane, never through this spec.
+        let references = copy_from.map(|(from, field, to)| secret_field_copy(self.ns, from, field, to)).unwrap_or_default();
+        let metadata = meta(&format!("{}-{key}", self.name), self.ns, &self.labels);
+        Composed { ready: false, object: to_value(&location_object(metadata, location, manifest, references)) }
     }
 
-    fn meta(&self, name: &str) -> Value {
-        json!({"name": name, "namespace": self.ns, "labels": self.labels})
+    fn meta(&self, name: &str) -> ObjectMeta {
+        meta(name, self.ns, &self.labels)
     }
 
     // ---- monitoring, from vLLM's own metrics (vllm:*)
@@ -432,21 +426,34 @@ impl Composition<'_> {
     /// scheduler's pods have another component), every series labelled with
     /// the server. Only vllm:* is kept.
     fn pod_monitor(&self) -> Value {
-        json!({
-            "apiVersion": "monitoring.coreos.com/v1", "kind": "PodMonitor", "metadata": self.meta(&format!("{}-vllm", self.name)),
-            "spec": {
-                "selector": {"matchLabels": {
-                    "app.kubernetes.io/name": self.name,
-                    "app.kubernetes.io/part-of": "llminferenceservice",
-                    "kserve.io/component": "workload",
-                }},
-                "podMetricsEndpoints": [{
+        to_value(&pm::PodMonitor {
+            metadata: self.meta(&format!("{}-vllm", self.name)),
+            spec: pm::PodMonitorSpec {
+                selector: pm::PodMonitorSelector {
+                    match_labels: Some(Labels::from([
+                        ("app.kubernetes.io/name".to_string(), self.name.to_string()),
+                        ("app.kubernetes.io/part-of".to_string(), "llminferenceservice".to_string()),
+                        ("kserve.io/component".to_string(), "workload".to_string()),
+                    ])),
+                    ..Default::default()
+                },
+                pod_metrics_endpoints: Some(vec![pm::PodMonitorPodMetricsEndpoints {
                     // vLLM's API port (KServe's container has no named port).
-                    "targetPort": PORT, "path": "/metrics", "interval": "30s",
-                    "relabelings": [{"targetLabel": "server", "replacement": self.name}],
-                    "metricRelabelings": [{"sourceLabels": ["__name__"], "regex": "vllm:.*", "action": "keep"}],
-                }],
+                    target_port: Some(IntOrString::Int(PORT as i32)),
+                    path: Some("/metrics".into()),
+                    interval: Some("30s".into()),
+                    relabelings: Some(vec![pm::PodMonitorPodMetricsEndpointsRelabelings {
+                        target_label: Some("server".into()), replacement: Some(self.name.into()), ..Default::default()
+                    }]),
+                    metric_relabelings: Some(vec![pm::PodMonitorPodMetricsEndpointsMetricRelabelings {
+                        source_labels: Some(vec!["__name__".into()]), regex: Some("vllm:.*".into()),
+                        action: Some(pm::PodMonitorPodMetricsEndpointsMetricRelabelingsAction::Keep), ..Default::default()
+                    }]),
+                    ..Default::default()
+                }]),
+                ..Default::default()
             },
+            status: None,
         })
     }
 
@@ -456,44 +463,32 @@ impl Composition<'_> {
         let a = &self.spec.alerts;
         let name = self.name;
         let sel = format!("namespace={},server={}", quote(self.ns), quote(name));
-        let labels = json!({"severity": "warning", "server": name});
-        let rules = json!([
+        let labels = Labels::from([("severity".to_string(), "warning".to_string()), ("server".to_string(), name.to_string())]);
+        let alert = |rule: &str, r#for: &str, expr: String, summary: String| alert(rule, r#for, expr, &labels, summary);
+        let rules = vec![
             // Loading a large model takes a while: 15 minutes before it counts.
-            {"alert": "BasisModelServerDown", "for": "15m", "labels": labels,
-             "expr": format!("(sum(up{{{sel}}}) or vector(0)) < 1"),
-             "annotations": {"summary": format!("Model server {name}: no replica serves in this site")}},
-            {"alert": "BasisModelServerQueueing", "for": "10m", "labels": labels,
-             "expr": format!("sum(vllm:num_requests_waiting{{{sel}}}) > {}", a.waiting()),
-             "annotations": {"summary": format!("Model server {name}: {{{{ $value }}}} requests wait for a slot (threshold {}); add replicas", a.waiting())}},
-            {"alert": "BasisModelServerKVCacheFull", "for": "15m", "labels": labels,
-             "expr": format!("100 * max(vllm:kv_cache_usage_perc{{{sel}}}) > {}", fmt_g(a.kv_cache_percent())),
-             "annotations": {"summary": format!(
-                 "Model server {name}: a replica's KV cache is {{{{ $value | printf \"%.0f\" }}}}% full (threshold {}%); requests get preempted",
-                 fmt_g(a.kv_cache_percent()))}},
-            {"alert": "BasisModelServerSlowFirstToken", "for": "15m", "labels": labels,
-             "expr": format!("histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{{{sel}}}[10m]))) > {}", fmt_g(a.first_token())),
-             "annotations": {"summary": format!(
-                 "Model server {name}: 95% of requests wait up to {{{{ $value | humanizeDuration }}}} for the first token (threshold {}s)",
-                 fmt_g(a.first_token()))}},
-        ]);
-        json!({"apiVersion": "monitoring.coreos.com/v1", "kind": "PrometheusRule", "metadata": self.meta(&format!("{name}-server-alerts")),
-            "spec": {"groups": [{"name": format!("modelserver/{}/{name}", self.ns), "rules": rules}]}})
+            alert("BasisModelServerDown", "15m", format!("(sum(up{{{sel}}}) or vector(0)) < 1"),
+                format!("Model server {name}: no replica serves in this site")),
+            alert("BasisModelServerQueueing", "10m", format!("sum(vllm:num_requests_waiting{{{sel}}}) > {}", a.waiting()),
+                format!("Model server {name}: {{{{ $value }}}} requests wait for a slot (threshold {}); add replicas", a.waiting())),
+            alert("BasisModelServerKVCacheFull", "15m", format!("100 * max(vllm:kv_cache_usage_perc{{{sel}}}) > {}", fmt_g(a.kv_cache_percent())),
+                format!(
+                    "Model server {name}: a replica's KV cache is {{{{ $value | printf \"%.0f\" }}}}% full (threshold {}%); requests get preempted",
+                    fmt_g(a.kv_cache_percent()))),
+            alert("BasisModelServerSlowFirstToken", "15m",
+                format!("histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket{{{sel}}}[10m]))) > {}", fmt_g(a.first_token())),
+                format!(
+                    "Model server {name}: 95% of requests wait up to {{{{ $value | humanizeDuration }}}} for the first token (threshold {}s)",
+                    fmt_g(a.first_token()))),
+        ];
+        to_value(&prometheus_rule(self.meta(&format!("{name}-server-alerts")), format!("modelserver/{}/{name}", self.ns), rules))
     }
 
     /// The server's dashboard in the Project's Grafana (control plane): load,
     /// KV and prefix cache, latency and tokens, per replica and site.
     fn dashboard(&self) -> Value {
         let uid = format!("basis-ms-{}", &sha1hex(&format!("{}/{}", self.ns, self.name))[..12]);
-        json!({
-            "apiVersion": "grafana.integreatly.org/v1beta1", "kind": "GrafanaDashboard", "metadata": self.meta(&format!("{}-server", self.name)),
-            "spec": {
-                "instanceSelector": {"matchLabels": {"dashboards.paas.cndev.nl/scope": self.ns}},
-                "folder": "Model servers",
-                "uid": uid,
-                "resyncPeriod": "10m",
-                "json": self.dashboard_json(&uid),
-            },
-        })
+        to_value(&scoped_dashboard(self.meta(&format!("{}-server", self.name)), self.ns, "Model servers", uid.clone(), self.dashboard_json(&uid)))
     }
 
     fn dashboard_json(&self, uid: &str) -> String {
@@ -617,8 +612,8 @@ mod tests {
         assert!(spec["router"]["scheduler"].is_object(), "prefix-cache-aware routing needs the scheduler");
         let main = &spec["template"]["containers"][0];
         let res = &main["resources"];
-        assert_eq!(res["requests"]["nvidia.com/gpu"], 1);
-        assert_eq!(res["limits"]["nvidia.com/gpu"], 1);
+        assert_eq!(res["requests"]["nvidia.com/gpu"], "1");
+        assert_eq!(res["limits"]["nvidia.com/gpu"], "1");
         assert_eq!(res["limits"]["memory"], "16Gi");
         assert!(main.get("image").is_none() && main.get("securityContext").is_none() && main.get("args").is_none(), "KServe's image and flags by default");
         assert_eq!(out.status["endpoint"], "http://llama-kserve-workload-svc.ai.svc:8000/v1");
@@ -646,7 +641,7 @@ mod tests {
         let main = &tpl["containers"][0];
         assert_eq!(main["image"], "rocm/vllm:latest");
         assert_eq!(main["args"].as_array().unwrap().len(), 1);
-        assert_eq!(main["resources"]["limits"]["amd.com/gpu"], 4);
+        assert_eq!(main["resources"]["limits"]["amd.com/gpu"], "4", "a quantity");
         assert_eq!(tpl["nodeSelector"]["gpu"], "mi300");
         assert_eq!(tpl["tolerations"].as_array().unwrap().len(), 1);
     }

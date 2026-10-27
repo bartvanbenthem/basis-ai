@@ -1,16 +1,26 @@
 //! What one location runs: the CNPG Cluster, its backups, declarative
 //! databases, poolers, metrics and alerts, and the Secrets it needs copied.
 
+use k8s_openapi::api::core::v1::{ConfigMap, Secret};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::manifests::*;
+use super::extensions::ClusterExtension;
 use super::observed::database_applied;
 use super::spec::{Backup, Store};
 use super::topology::Role;
 use super::{Composition, Member, PROFILE_VECTOR, dig_or, fill_params, scalar, truthy};
 use crate::common::Composed;
+use crate::common::kinds::crds::barman::object_store::*;
+use crate::common::kinds::crds::cnpg::cluster::*;
+use crate::common::kinds::crds::cnpg::database::*;
+use crate::common::kinds::crds::cnpg::pooler as pl;
+use crate::common::kinds::crds::cnpg::scheduled_backup::*;
+use crate::common::kinds::crds::grafana::grafana_dashboard::*;
+use crate::common::kinds::crds::prometheus::pod_monitor::*;
+use crate::common::kinds::{Labels, enum_value, location_object, map_opt, prometheus_rule, quantities, rules, secret_copy, str_opt, to_value, vec_opt};
 use crate::common::util::{dig, or, or_i, sha256hex};
 
 const BARMAN_PLUGIN: &str = "barman-cloud.cloudnative-pg.io";
@@ -28,7 +38,11 @@ pub(super) struct Emitted {
 }
 
 fn emit<T: Serialize>(manifest: &T, ready: bool) -> Emitted {
-    Emitted { manifest: serde_json::to_value(manifest).expect("manifests serialise"), ready, copy_from: String::new(), backup_store: false }
+    Emitted { manifest: to_value(manifest), ready, copy_from: String::new(), backup_store: false }
+}
+
+fn map(pairs: &[(&str, &str)]) -> Labels {
+    pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
 }
 
 // Vendored sources, prepared by `make generate` (tools/src/bin/generate.rs) from
@@ -70,30 +84,55 @@ pub(super) fn dashboard_json(namespace: &str, name: &str, uid: &str) -> String {
 }
 
 /// The Barman Cloud configuration of a store.
-fn barman_store(s: &Store) -> BarmanObjectStore {
+fn barman_store(s: &Store) -> ObjectStoreConfiguration {
     let creds = s.s3_credentials.clone().unwrap_or_default();
-    let mut b = BarmanObjectStore {
+    let secret = creds.secret_name.clone();
+    ObjectStoreConfiguration {
         destination_path: s.destination_path.clone(),
-        endpoint_url: s.endpoint_url.clone(),
-        s3_credentials: S3Keys {
-            access_key_id: KeyRef { name: creds.secret_name.clone(), key: or(&creds.access_key_id_key, "ACCESS_KEY_ID").into() },
-            secret_access_key: KeyRef { name: creds.secret_name.clone(), key: or(&creds.secret_access_key_key, "ACCESS_SECRET_KEY").into() },
-            region: None,
-        },
+        endpoint_url: str_opt(&s.endpoint_url),
+        s3_credentials: Some(ObjectStoreConfigurationS3Credentials {
+            access_key_id: Some(ObjectStoreConfigurationS3CredentialsAccessKeyId {
+                name: secret.clone(), key: or(&creds.access_key_id_key, "ACCESS_KEY_ID").into() }),
+            secret_access_key: Some(ObjectStoreConfigurationS3CredentialsSecretAccessKey {
+                name: secret.clone(), key: or(&creds.secret_access_key_key, "ACCESS_SECRET_KEY").into() }),
+            region: (!creds.region_key.is_empty())
+                .then(|| ObjectStoreConfigurationS3CredentialsRegion { name: secret.clone(), key: creds.region_key.clone() }),
+            ..Default::default()
+        }),
+        endpoint_ca: s.endpoint_ca.as_ref()
+            .map(|ca| ObjectStoreConfigurationEndpointCa { name: ca.secret_name.clone(), key: or(&ca.key, "ca.crt").into() }),
         ..Default::default()
-    };
-    if !creds.region_key.is_empty() {
-        b.s3_credentials.region = Some(KeyRef { name: creds.secret_name.clone(), key: creds.region_key.clone() });
     }
-    if let Some(ca) = &s.endpoint_ca {
-        b.endpoint_ca = Some(KeyRef { name: ca.secret_name.clone(), key: or(&ca.key, "ca.crt").into() });
+}
+
+/// An image volume extension as the Cluster mounts it.
+fn cluster_extension(e: &ClusterExtension) -> ClusterPostgresqlExtensions {
+    ClusterPostgresqlExtensions {
+        name: e.name.clone(),
+        image: Some(ClusterPostgresqlExtensionsImage { reference: Some(e.image.reference.clone()), pull_policy: str_opt(&e.image.pull_policy) }),
+        extension_control_path: vec_opt(e.extension_control_path.clone()),
+        dynamic_library_path: vec_opt(e.dynamic_library_path.clone()),
+        ld_library_path: vec_opt(e.ld_library_path.clone()),
+        ..Default::default()
     }
-    b
+}
+
+/// A Barman Cloud external cluster: the backups of serverName in barmanObjectName.
+fn barman_source(name: &str, object_store: &str, server: &str) -> ClusterExternalClusters {
+    ClusterExternalClusters {
+        name: name.into(),
+        plugin: Some(ClusterExternalClustersPlugin {
+            name: BARMAN_PLUGIN.into(),
+            parameters: Some(map(&[("barmanObjectName", object_store), ("serverName", server)])),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
 }
 
 impl Composition<'_> {
-    fn meta(&self, name: &str) -> Meta {
-        Meta { name: name.into(), namespace: self.ns.clone(), labels: self.labels.clone(), ..Default::default() }
+    fn meta(&self, name: &str) -> ObjectMeta {
+        crate::common::kinds::meta(name, &self.ns, &self.labels)
     }
 
     /// Everything one location runs, by composition resource name (without
@@ -135,134 +174,135 @@ impl Composition<'_> {
             params.insert("basis.last_promotion".into(), sha256hex(t)[..16].to_string());
         }
 
+        let res = Value::Object(m.sizing.resources.clone());
+        let requests = Labels::from([
+            ("cpu".to_string(), scalar(&dig_or(&res, "500m".into(), &["requests", "cpu"]))),
+            ("memory".to_string(), scalar(&dig_or(&res, "1Gi".into(), &["requests", "memory"]))),
+        ]);
+        let mut limits = Labels::from([("memory".to_string(), scalar(&dig_or(&res, "1Gi".into(), &["limits", "memory"])))]);
+        if let Some(cpu) = dig(&res, &["limits", "cpu"]).filter(|v| truthy(v)) {
+            limits.insert("cpu".into(), scalar(cpu));
+        }
         let mut cs = ClusterSpec {
-            description: format!("PostgresCluster {ns}/{name} (postgres.cndev.nl)"),
+            description: Some(format!("PostgresCluster {ns}/{name} (postgres.cndev.nl)")),
             instances: m.instances,
-            image_catalog_ref: ImageCatalogRef { api_group: "postgresql.cnpg.io".into(), kind: "ClusterImageCatalog".into(),
-                name: or(&spec.image_catalog, "postgresql-standard-trixie").into(), major: version },
-            enable_superuser_access: spec.enable_superuser_access,
-            primary_update_strategy: or(&ha.primary_update_strategy, "unsupervised").into(),
-            primary_update_method: or(&ha.primary_update_method, "switchover").into(),
+            image_catalog_ref: Some(ClusterImageCatalogRef { api_group: Some("postgresql.cnpg.io".into()), kind: "ClusterImageCatalog".into(),
+                name: or(&spec.image_catalog, "postgresql-standard-trixie").into(), major: version }),
+            enable_superuser_access: Some(spec.enable_superuser_access),
+            primary_update_strategy: Some(enum_value("spec.highAvailability.primaryUpdateStrategy",
+                or(&ha.primary_update_strategy, "unsupervised"))?),
+            primary_update_method: Some(enum_value("spec.highAvailability.primaryUpdateMethod", or(&ha.primary_update_method, "switchover"))?),
             // Copied by CNPG onto every object it generates (pods, PVCs,
             // services, secrets): lets Prometheus relabelling and the
             // Backstage Kubernetes plugin find all of them.
-            inherited_metadata: InheritedMetadata { labels: Labels::from([
-                ("postgres.cndev.nl/postgrescluster".to_string(), name.to_string()),
-                ("backstage.io/kubernetes-id".to_string(), name.to_string()),
-            ])},
-            storage: VolumeSpec { size: or(&spec.storage.size, "10Gi").into(), storage_class: spec.storage.storage_class.clone() },
-            affinity: ClusterAffinity { enable_pod_anti_affinity: true,
-                pod_anti_affinity_type: or(&ha.pod_anti_affinity_type, "preferred").into(), topology_key: "kubernetes.io/hostname".into() },
+            inherited_metadata: Some(ClusterInheritedMetadata { labels: Some(map(&[
+                ("postgres.cndev.nl/postgrescluster", name),
+                ("backstage.io/kubernetes-id", name),
+            ])), ..Default::default() }),
+            storage: Some(ClusterStorage { size: Some(or(&spec.storage.size, "10Gi").into()), storage_class: str_opt(&spec.storage.storage_class),
+                ..Default::default() }),
+            wal_storage: spec.wal_storage.as_ref().map(|w| ClusterWalStorage { size: Some(w.size.clone()), storage_class: str_opt(&w.storage_class),
+                ..Default::default() }),
+            resources: Some(ClusterResources { requests: Some(quantities(requests)), limits: Some(quantities(limits)), ..Default::default() }),
+            affinity: Some(ClusterAffinity { enable_pod_anti_affinity: Some(true),
+                pod_anti_affinity_type: Some(or(&ha.pod_anti_affinity_type, "preferred").into()),
+                topology_key: Some("kubernetes.io/hostname".into()), ..Default::default() }),
             ..Default::default()
         };
-        if let Some(w) = &spec.wal_storage {
-            cs.wal_storage = Some(VolumeSpec { size: w.size.clone(), storage_class: w.storage_class.clone() });
-        }
-        let res = Value::Object(m.sizing.resources.clone());
-        cs.resources = Resources {
-            requests: Labels::from([
-                ("cpu".to_string(), scalar(&dig_or(&res, "500m".into(), &["requests", "cpu"]))),
-                ("memory".to_string(), scalar(&dig_or(&res, "1Gi".into(), &["requests", "memory"]))),
-            ]),
-            limits: Labels::from([("memory".to_string(), scalar(&dig_or(&res, "1Gi".into(), &["limits", "memory"])))]),
-        };
-        if let Some(cpu) = dig(&res, &["limits", "cpu"]).filter(|v| truthy(v)) {
-            cs.resources.limits.insert("cpu".into(), scalar(cpu));
-        }
         if ha.zone_spread.unwrap_or(true) {
-            cs.topology_spread_constraints = vec![TopologySpreadConstraint {
+            cs.topology_spread_constraints = Some(vec![ClusterTopologySpreadConstraints {
                 max_skew: 1, topology_key: "topology.kubernetes.io/zone".into(),
                 // ScheduleAnyway: single-zone clusters keep working; the
                 // CNPGClusterZoneSpreadWarning alert flags the imbalance.
                 when_unsatisfiable: "ScheduleAnyway".into(),
-                label_selector: LabelSelector { match_labels: Labels::from([
-                    ("cnpg.io/cluster".to_string(), name.to_string()),
-                    ("cnpg.io/podRole".to_string(), "instance".to_string()),
-                ])},
-            }];
+                label_selector: Some(ClusterTopologySpreadConstraintsLabelSelector { match_labels: Some(map(&[
+                    ("cnpg.io/cluster", name),
+                    ("cnpg.io/podRole", "instance"),
+                ])), ..Default::default() }),
+                ..Default::default()
+            }]);
         }
         let pg = &spec.postgresql;
         let images = m.image_extensions(&self.extensions);
         let preload = m.preload_libraries(&pg.shared_preload_libraries, &self.extensions, &images);
         if !params.is_empty() || !pg.pg_hba.is_empty() || !preload.is_empty() || !images.is_empty() || ha.synchronous_replicas > 0 {
-            let mut p = PostgresConfig { parameters: params, pg_hba: pg.pg_hba.clone(), shared_preload_libraries: preload, extensions: images, synchronous: None };
+            let mut p = ClusterPostgresql { parameters: map_opt(params), pg_hba: vec_opt(pg.pg_hba.clone()), shared_preload_libraries: vec_opt(preload),
+                extensions: vec_opt(images.iter().map(cluster_extension).collect()), ..Default::default() };
             if ha.synchronous_replicas > 0 {
-                p.synchronous = Some(Synchronous { method: "any".into(), number: ha.synchronous_replicas,
-                    data_durability: or(&ha.synchronous_data_durability, "preferred").into() });
+                p.synchronous = Some(ClusterPostgresqlSynchronous { method: ClusterPostgresqlSynchronousMethod::Any, number: ha.synchronous_replicas,
+                    data_durability: Some(enum_value("spec.highAvailability.synchronousDataDurability",
+                        or(&ha.synchronous_data_durability, "preferred"))?),
+                    failover_quorum: None, max_standby_names_from_cluster: None, standby_names_post: None, standby_names_pre: None });
             }
             cs.postgresql = Some(p);
         }
+        let mut bootstrap = ClusterBootstrap::default();
         if let Some(r) = &m.restore {
             // Point-in-time recovery from another cluster's backups
             // (spec.restore); the application owner's password is reset into
             // the <name>-app Secret.
-            let mut rec = Recovery { source: RESTORE_SOURCE.into(), database: db.name().into(), owner: db.owner().into(), recovery_target: None };
-            if !r.target_time.is_empty() {
-                rec.recovery_target = Some(RecoveryTarget { target_time: r.target_time.clone() });
-            }
-            cs.bootstrap.recovery = Some(rec);
+            bootstrap.recovery = Some(ClusterBootstrapRecovery { source: Some(RESTORE_SOURCE.into()), database: str_opt(db.name()), owner: str_opt(db.owner()),
+                recovery_target: (!r.target_time.is_empty())
+                    .then(|| ClusterBootstrapRecoveryRecoveryTarget { target_time: Some(r.target_time.clone()), ..Default::default() }),
+                ..Default::default() });
         } else if m.original {
-            cs.bootstrap.initdb = Some(InitDb { database: db.name().into(), owner: db.owner().into(), encoding: or(&db.encoding, "UTF8").into(),
-                locale_collate: or(&db.locale_collate, "C").into(), locale_c_type: or(&db.locale_c_type, "C").into() });
+            bootstrap.initdb = Some(ClusterBootstrapInitdb { database: Some(db.name().into()), owner: Some(db.owner().into()),
+                encoding: Some(or(&db.encoding, "UTF8").into()), locale_collate: Some(or(&db.locale_collate, "C").into()),
+                locale_c_type: Some(or(&db.locale_c_type, "C").into()), ..Default::default() });
         } else {
             // A replica cluster starts from the original member's base backup
             // and WAL archive.
-            cs.bootstrap.recovery = Some(Recovery { source: members[0].topology.clone(), ..Default::default() });
+            bootstrap.recovery = Some(ClusterBootstrapRecovery { source: Some(members[0].topology.clone()), ..Default::default() });
         }
+        cs.bootstrap = Some(bootstrap);
+        let mut external_clusters = vec![];
         if distributed {
             // Distributed topology: self/primary decide whether this member is
             // the primary or a replica cluster following source.
             let p = &m.placement;
-            cs.replica = Some(ReplicaTopology { self_: m.topology.clone(), primary: p.primary.clone(), source: p.source.clone(),
-                promotion_token: p.promotion_token.clone() });
+            cs.replica = Some(ClusterReplica { r#_self: Some(m.topology.clone()), primary: Some(p.primary.clone()), source: p.source.clone(),
+                promotion_token: str_opt(&p.promotion_token), ..Default::default() });
             for o in members {
-                cs.external_clusters.push(ExternalCluster { name: o.topology.clone(), plugin: PluginConfig {
-                    name: BARMAN_PLUGIN.into(), parameters: Labels::from([
-                        ("barmanObjectName".to_string(), object_store_name.clone()),
-                        ("serverName".to_string(), o.topology.clone()),
-                    ])}});
+                external_clusters.push(barman_source(&o.topology, &object_store_name, &o.topology));
             }
         }
         if let Some(r) = &m.restore {
-            cs.external_clusters.push(ExternalCluster { name: RESTORE_SOURCE.into(), plugin: PluginConfig {
-                name: BARMAN_PLUGIN.into(), parameters: Labels::from([
-                    ("barmanObjectName".to_string(), format!("{name}-restore")),
-                    ("serverName".to_string(), r.server_name.clone()),
-                ])}});
+            external_clusters.push(barman_source(RESTORE_SOURCE, &format!("{name}-restore"), &r.server_name));
         }
+        cs.external_clusters = vec_opt(external_clusters);
         let exposed = spec.expose.as_ref().filter(|e| e.enabled);
         if !spec.roles.is_empty() || exposed.is_some() {
-            let mut managed = Managed::default();
-            for r in &spec.roles {
-                let mut role = ManagedRole { name: r.name.clone(), ensure: "present".into(), login: r.login.unwrap_or(true),
-                    create_db: r.create_db, connection_limit: r.connection_limit.unwrap_or(-1), in_roles: r.in_roles.clone(), password_secret: None };
-                if !r.password_secret.is_empty() {
-                    role.password_secret = Some(Ref { name: r.password_secret.clone() });
-                }
-                managed.roles.push(role);
-            }
-            if let Some(e) = exposed {
-                let svc = ManagedService { selector_type: "rw".into(), service_template: ServiceTemplate {
-                    metadata: ServiceTemplateMeta { name: format!("{name}-external"), annotations: e.annotations.clone() },
-                    spec: ServiceTemplateSpec { type_: or(&e.type_, "LoadBalancer").into(), load_balancer_source_ranges: e.load_balancer_source_ranges.clone() },
-                }};
-                managed.services = Some(ManagedServices { additional: vec![svc] });
-            }
-            cs.managed = Some(managed);
+            let roles = spec.roles.iter().map(|r| ClusterManagedRoles { name: r.name.clone(), ensure: Some(ClusterManagedRolesEnsure::Present),
+                login: Some(r.login.unwrap_or(true)), createdb: Some(r.create_db), connection_limit: Some(r.connection_limit.unwrap_or(-1)),
+                in_roles: vec_opt(r.in_roles.clone()),
+                password_secret: (!r.password_secret.is_empty()).then(|| ClusterManagedRolesPasswordSecret { name: r.password_secret.clone() }),
+                ..Default::default() }).collect();
+            let services = exposed.map(|e| ClusterManagedServices { additional: Some(vec![ClusterManagedServicesAdditional {
+                selector_type: ClusterManagedServicesAdditionalSelectorType::Rw,
+                service_template: ClusterManagedServicesAdditionalServiceTemplate {
+                    metadata: Some(ClusterManagedServicesAdditionalServiceTemplateMetadata { name: Some(format!("{name}-external")),
+                        annotations: map_opt(e.annotations.clone()), ..Default::default() }),
+                    spec: Some(ClusterManagedServicesAdditionalServiceTemplateSpec { r#type: Some(or(&e.type_, "LoadBalancer").into()),
+                        load_balancer_source_ranges: vec_opt(e.load_balancer_source_ranges.clone()), ..Default::default() }),
+                },
+                update_strategy: None,
+            }]), ..Default::default() });
+            cs.managed = Some(ClusterManaged { roles: vec_opt(roles), services });
         }
         if mon.enabled() {
             // Next to CNPG's default queries (the monitoring-queries ConfigMap).
-            cs.monitoring = Some(ClusterMonitoring { custom_queries_config_map: vec![KeyRef { name: format!("{name}-monitoring"), key: "queries".into() }] });
+            cs.monitoring = Some(ClusterMonitoring { custom_queries_config_map: Some(vec![ClusterMonitoringCustomQueriesConfigMap {
+                name: format!("{name}-monitoring"), key: "queries".into() }]), ..Default::default() });
         }
         if backup.enabled {
-            let mut p = ClusterPlugin { name: BARMAN_PLUGIN.into(), is_wal_archiver: true,
-                parameters: Labels::from([("barmanObjectName".to_string(), object_store_name.clone())]) };
+            let mut parameters = map(&[("barmanObjectName", &object_store_name)]);
             if m.topology != name {
                 // Its own folder in the shared object store (a replica
                 // cluster, or a restored cluster).
-                p.parameters.insert("serverName".into(), m.topology.clone());
+                parameters.insert("serverName".into(), m.topology.clone());
             }
-            cs.plugins = vec![p];
+            cs.plugins = Some(vec![ClusterPlugins { name: BARMAN_PLUGIN.into(), is_wal_archiver: Some(true), parameters: Some(parameters),
+                ..Default::default() }]);
         }
         // A new Cluster waits for the ObjectStores its plugin reads: the Barman
         // Cloud plugin's pre-reconcile hook stops the Cluster's reconcile when it
@@ -273,36 +313,41 @@ impl Composition<'_> {
         // or the Cluster would be deleted.
         let stores_ready = (!backup.enabled || exists("objectstore")) && (m.restore.is_none() || exists("restore-objectstore"));
         if stores_ready || self.observed.contains_key(&format!("{}cluster", m.prefix)) {
-            out.insert("cluster".into(), emit(&Cluster { api_version: "postgresql.cnpg.io/v1".into(), kind: "Cluster".into(),
-                metadata: self.meta(name), spec: cs }, m.status.ready()));
+            out.insert("cluster".into(), emit(&Cluster { metadata: self.meta(name), spec: cs, status: None }, m.status.ready()));
         }
 
         // ================= Backups: Barman Cloud ObjectStore + ScheduledBackup =================
         if backup.enabled {
-            let mut os = ObjectStore { api_version: "barmancloud.cnpg.io/v1".into(), kind: "ObjectStore".into(), metadata: self.meta(&object_store_name),
-                spec: ObjectStoreSpec { retention_policy: or(&backup.retention_policy, "30d").into(), configuration: barman_store(&backup.store()) } };
-            let compression = or(&backup.compression, "gzip").to_string();
-            os.spec.configuration.wal = Some(WalBackup { compression: compression.clone(), max_parallel: 2 });
-            os.spec.configuration.data = Some(DataBackup { compression, jobs: 2 });
+            let compression = or(&backup.compression, "gzip");
+            let mut configuration = barman_store(&backup.store());
+            configuration.wal = Some(ObjectStoreConfigurationWal { compression: Some(enum_value("spec.backup.compression", compression)?),
+                max_parallel: Some(2), ..Default::default() });
+            configuration.data = Some(ObjectStoreConfigurationData { compression: Some(enum_value("spec.backup.compression", compression)?),
+                jobs: Some(2), ..Default::default() });
+            let mut metadata = self.meta(&object_store_name);
             // What the Project's inventory of its bucket (status.backup.servers)
             // records about this folder, and keeps after the cluster is gone.
-            os.metadata.annotations = Labels::from([
+            metadata.annotations = Some(Labels::from([
                 ("postgres.cndev.nl/server-name".to_string(), m.topology.clone()),
                 ("postgres.cndev.nl/postgres-version".to_string(), version.to_string()),
                 ("postgres.cndev.nl/database".to_string(), db.name().to_string()),
                 ("postgres.cndev.nl/database-owner".to_string(), db.owner().to_string()),
-            ]);
+            ]));
+            let os = ObjectStore { metadata, spec: ObjectStoreSpec { retention_policy: Some(or(&backup.retention_policy, "30d").into()), configuration,
+                ..Default::default() }, status: None };
             let mut e = emit(&os, exists("objectstore"));
             e.backup_store = true;
             out.insert("objectstore".into(), e);
 
-            let sb = ScheduledBackup { api_version: "postgresql.cnpg.io/v1".into(), kind: "ScheduledBackup".into(),
-                metadata: self.meta(&format!("{name}-scheduled")),
+            let sb = ScheduledBackup { metadata: self.meta(&format!("{name}-scheduled")),
                 spec: ScheduledBackupSpec { schedule: or(&backup.schedule, "0 0 2 * * *").into(),
                     // Take the first base backup right away: WAL archiving alone
                     // is not restorable until a base backup exists.
-                    immediate: true, backup_owner_reference: "self".into(), method: "plugin".into(),
-                    plugin_configuration: Ref { name: BARMAN_PLUGIN.into() }, cluster: Ref { name: name.into() } } };
+                    immediate: Some(true), backup_owner_reference: Some(ScheduledBackupBackupOwnerReference::r#_Self),
+                    method: Some(ScheduledBackupMethod::Plugin),
+                    plugin_configuration: Some(ScheduledBackupPluginConfiguration { name: BARMAN_PLUGIN.into(), parameters: None }),
+                    cluster: ScheduledBackupCluster { name: name.into() }, ..Default::default() },
+                status: None };
             out.insert("scheduled-backup".into(), emit(&sb, exists("scheduled-backup")));
         }
 
@@ -310,34 +355,38 @@ impl Composition<'_> {
         if let Some(r) = &m.restore {
             // No retentionPolicy: the source's backups are only read, never
             // pruned through this store.
-            out.insert("restore-objectstore".into(), emit(&ObjectStore { api_version: "barmancloud.cnpg.io/v1".into(), kind: "ObjectStore".into(),
-                metadata: self.meta(&format!("{name}-restore")),
-                spec: ObjectStoreSpec { retention_policy: String::new(), configuration: barman_store(&r.store) } }, exists("restore-objectstore")));
+            let os = ObjectStore { metadata: self.meta(&format!("{name}-restore")),
+                spec: ObjectStoreSpec { configuration: barman_store(&r.store), ..Default::default() }, status: None };
+            out.insert("restore-objectstore".into(), emit(&os, exists("restore-objectstore")));
         }
 
         // ================= Declarative databases =================
-        let mut database = |db_name: &str, owner: &str, reclaim: &str, extensions: &[String]| {
+        let mut database = |db_name: &str, owner: &str, reclaim: &str, extensions: &[String]| -> crate::common::Result<()> {
             let key = format!("database-{}", db_name.replace('_', "-"));
-            let d = DatabaseObject { api_version: "postgresql.cnpg.io/v1".into(), kind: "Database".into(),
-                metadata: self.meta(&format!("{name}-{}", db_name.replace('_', "-"))),
-                spec: DatabaseSpec { cluster: Ref { name: name.into() }, name: db_name.into(), owner: owner.into(), ensure: "present".into(),
-                    database_reclaim_policy: reclaim.into(),
-                    extensions: self.extensions.ordered(extensions).into_iter().map(|e| DatabaseExtension { name: e, ensure: "present".into() }).collect() } };
+            let d = Database { metadata: self.meta(&format!("{name}-{}", db_name.replace('_', "-"))),
+                spec: DatabaseSpec { cluster: DatabaseCluster { name: Some(name.into()) }, name: db_name.into(), owner: owner.into(),
+                    ensure: Some(DatabaseEnsure::Present),
+                    database_reclaim_policy: Some(enum_value("spec.databases[].reclaimPolicy", reclaim)?),
+                    extensions: vec_opt(self.extensions.ordered(extensions).into_iter()
+                        .map(|e| DatabaseExtensions { name: e, ensure: Some(DatabaseExtensionsEnsure::Present), ..Default::default() }).collect()),
+                    ..Default::default() },
+                status: None };
             // CNPG applies a Database only on the primary; a replica cluster
             // gets it through replication and waits until it is promoted.
             let replica = distributed && m.placement.role != Role::Primary;
             let ready = replica || database_applied(m.observed.get(&key));
             out.insert(key, emit(&d, ready));
+            Ok(())
         };
         let mut listed = false;
         for d in &spec.databases {
-            database(&d.name, &d.owner, or(&d.reclaim_policy, "retain"), &d.extensions);
+            database(&d.name, &d.owner, or(&d.reclaim_policy, "retain"), &d.extensions)?;
             listed = listed || d.name == db.name();
         }
         // The bootstrap database's extensions, unless a databases[] entry
         // manages that database. Never dropped: retain.
         if !db.extensions.is_empty() && !listed {
-            database(db.name(), db.owner(), "retain", &db.extensions);
+            database(db.name(), db.owner(), "retain", &db.extensions)?;
         }
 
         // ================= PgBouncer poolers =================
@@ -348,28 +397,39 @@ impl Composition<'_> {
             }
             for t in types {
                 let pooler_name = format!("{name}-pooler-{t}");
-                let p = PoolerObject { api_version: "postgresql.cnpg.io/v1".into(), kind: "Pooler".into(), metadata: self.meta(&pooler_name),
-                    spec: PoolerSpec {
-                        cluster: Ref { name: name.into() },
-                        instances: or_i(pooler.instances, 2),
-                        type_: t.into(),
-                        pgbouncer: PgBouncer { pool_mode: or(&pooler.pool_mode, "transaction").into(), parameters: Labels::from([
-                            ("max_client_conn".to_string(), or_i(pooler.max_client_conn, 1000).to_string()),
-                            ("default_pool_size".to_string(), or_i(pooler.default_pool_size, 25).to_string()),
-                        ])},
-                        template: PoolerTemplate {
-                            metadata: PoolerTemplateMeta { labels: Labels::from([
-                                ("postgres.cndev.nl/postgrescluster".to_string(), name.to_string()),
-                                ("backstage.io/kubernetes-id".to_string(), name.to_string()),
-                            ])},
-                            spec: PoolerPodSpec { containers: vec![], affinity: PoolerAffinity { pod_anti_affinity: PodAntiAffinity {
-                                preferred: vec![WeightedPodAffinityTerm { weight: 100, pod_affinity_term: PodAffinityTerm {
-                                    topology_key: "kubernetes.io/hostname".into(),
-                                    label_selector: LabelSelector { match_labels: Labels::from([("cnpg.io/poolerName".to_string(), pooler_name.clone())]) },
-                                }}],
-                            }}},
-                        },
-                    } };
+                let term = pl::PoolerTemplateSpecAffinityPodAntiAffinityPreferredDuringSchedulingIgnoredDuringExecution {
+                    weight: 100,
+                    pod_affinity_term: pl::PoolerTemplateSpecAffinityPodAntiAffinityPreferredDuringSchedulingIgnoredDuringExecutionPodAffinityTerm {
+                        topology_key: "kubernetes.io/hostname".into(),
+                        label_selector: Some(pl::PoolerTemplateSpecAffinityPodAntiAffinityPreferredDuringSchedulingIgnoredDuringExecutionPodAffinityTermLabelSelector {
+                            match_labels: Some(map(&[("cnpg.io/poolerName", &pooler_name)])), ..Default::default() }),
+                        ..Default::default()
+                    },
+                };
+                let p = pl::Pooler { metadata: self.meta(&pooler_name),
+                    spec: pl::PoolerSpec {
+                        cluster: pl::PoolerCluster { name: name.into() },
+                        instances: Some(or_i(pooler.instances, 2) as i32),
+                        r#type: Some(enum_value("pooler type", t)?),
+                        pgbouncer: pl::PoolerPgbouncer { pool_mode: Some(enum_value("spec.pooler.poolMode", or(&pooler.pool_mode, "transaction"))?),
+                            parameters: Some(Labels::from([
+                                ("max_client_conn".to_string(), or_i(pooler.max_client_conn, 1000).to_string()),
+                                ("default_pool_size".to_string(), or_i(pooler.default_pool_size, 25).to_string()),
+                            ])), ..Default::default() },
+                        template: Some(pl::PoolerTemplate {
+                            metadata: Some(pl::PoolerTemplateMetadata { labels: Some(map(&[
+                                ("postgres.cndev.nl/postgrescluster", name),
+                                ("backstage.io/kubernetes-id", name),
+                            ])), ..Default::default() }),
+                            // containers is required by the Pooler schema, even when empty.
+                            spec: Some(pl::PoolerTemplateSpec { containers: vec![], affinity: Some(pl::PoolerTemplateSpecAffinity {
+                                pod_anti_affinity: Some(pl::PoolerTemplateSpecAffinityPodAntiAffinity {
+                                    preferred_during_scheduling_ignored_during_execution: Some(vec![term]), ..Default::default() }),
+                                ..Default::default() }), ..Default::default() }),
+                        }),
+                        ..Default::default()
+                    },
+                    status: None };
                 out.insert(format!("pooler-{t}"), emit(&p, exists(&format!("pooler-{t}"))));
             }
         }
@@ -380,15 +440,13 @@ impl Composition<'_> {
             mon_labels.insert(k.clone(), v.clone());
         }
         let pod_monitor = |obj_name: &str, role: &str| PodMonitor {
-            api_version: "monitoring.coreos.com/v1".into(), kind: "PodMonitor".into(),
-            metadata: Meta { name: obj_name.into(), namespace: ns.into(), labels: mon_labels.clone(), ..Default::default() },
+            metadata: crate::common::kinds::meta(obj_name, ns, &mon_labels),
             spec: PodMonitorSpec {
-                selector: LabelSelector { match_labels: Labels::from([
-                    ("cnpg.io/cluster".to_string(), name.to_string()),
-                    ("cnpg.io/podRole".to_string(), role.to_string()),
-                ])},
-                pod_metrics_endpoints: vec![PortRef { port: "metrics".into() }],
+                selector: PodMonitorSelector { match_labels: Some(map(&[("cnpg.io/cluster", name), ("cnpg.io/podRole", role)])), ..Default::default() },
+                pod_metrics_endpoints: Some(vec![PodMonitorPodMetricsEndpoints { port: Some("metrics".into()), ..Default::default() }]),
+                ..Default::default()
             },
+            status: None,
         };
         if mon.enabled() {
             // Replaces the deprecated Cluster.spec.monitoring.enablePodMonitor:
@@ -397,19 +455,18 @@ impl Composition<'_> {
             // CNPG reloads the queries when this ConfigMap changes.
             let mut cm_labels = Labels::from([("cnpg.io/reload".to_string(), String::new())]);
             cm_labels.extend(self.labels.clone());
-            out.insert("monitoring-queries".into(), emit(&ConfigMap { api_version: "v1".into(), kind: "ConfigMap".into(),
-                metadata: Meta { name: format!("{name}-monitoring"), namespace: ns.into(), labels: cm_labels, ..Default::default() },
-                data: Labels::from([("queries".to_string(), queries_for(spec.profile()))]) }, exists("monitoring-queries")));
+            let cm = ConfigMap { metadata: crate::common::kinds::meta(&format!("{name}-monitoring"), ns, &cm_labels),
+                data: Some(Labels::from([("queries".to_string(), queries_for(spec.profile()))])), ..Default::default() };
+            out.insert("monitoring-queries".into(), emit(&cm, exists("monitoring-queries")));
             if pooler.enabled {
                 // PgBouncer exporter (port "metrics", 9127) on every pooler pod.
                 out.insert("podmonitor-pooler".into(), emit(&pod_monitor(&format!("{name}-pooler"), "pooler"), exists("podmonitor-pooler")));
             }
         }
         if mon.rules() {
-            let rules = crate::valkeycache::alert_rules(ALERT_RULES_SOURCE, ns, name, &mon.prometheus_rule.exclude_rules)?;
-            let pr = PrometheusRule { api_version: "monitoring.coreos.com/v1".into(), kind: "PrometheusRule".into(),
-                metadata: Meta { name: format!("{name}-alerts"), namespace: ns.into(), labels: mon_labels.clone(), ..Default::default() },
-                spec: RuleSpec { groups: vec![RuleGroup { name: format!("cloudnative-pg/{ns}/{name}"), rules }] } };
+            let alerts = crate::valkeycache::alert_rules(ALERT_RULES_SOURCE, ns, name, &mon.prometheus_rule.exclude_rules)?;
+            let pr = prometheus_rule(crate::common::kinds::meta(&format!("{name}-alerts"), ns, &mon_labels), format!("cloudnative-pg/{ns}/{name}"),
+                rules(alerts)?);
             out.insert("prometheusrule".into(), emit(&pr, exists("prometheusrule")));
         }
 
@@ -442,7 +499,8 @@ impl Composition<'_> {
         }
         for secret in copies {
             let key = format!("secret-{secret}");
-            let mut e = emit(&Secret { api_version: "v1".into(), kind: "Secret".into(), metadata: self.meta(&secret) }, exists(&key));
+            // Its data and type are patched in by the Object's references, never written here.
+            let mut e = emit(&Secret { metadata: self.meta(&secret), ..Default::default() }, exists(&key));
             e.copy_from = m.copy_from.get(&secret).cloned().unwrap_or_else(|| secret.clone());
             out.insert(key, e);
         }
@@ -457,26 +515,14 @@ impl Composition<'_> {
             // The Project finds the backup folders in its bucket through this label.
             labels.insert("postgres.cndev.nl/backup-store".into(), "true".into());
         }
-        let mut o = KubernetesObject {
-            api_version: "kubernetes.m.crossplane.io/v1alpha1".into(), kind: "Object".into(),
-            metadata: Meta { name: format!("{}-{key}", self.name), namespace: self.ns.clone(), labels,
-                annotations: Labels::from([("platform.cndev.nl/location".to_string(), m.location.clone())]) },
-            spec: KubernetesObjectSpec {
-                provider_config_ref: ProviderConfigRef { kind: "ClusterProviderConfig".into(), name: m.location.clone() },
-                watch: true,
-                references: vec![],
-                for_provider: ForProvider { manifest: e.manifest },
-            },
-        };
+        let mut references = vec![];
         if !e.copy_from.is_empty() {
             let parts: Vec<&str> = e.copy_from.split('/').collect();
             let (from_ns, from_name) = if parts.len() == 2 { (parts[0], parts[1]) } else { (self.ns.as_str(), e.copy_from.as_str()) };
-            for field in ["data", "type"] {
-                o.spec.references.push(Reference { patches_from: PatchesFrom { api_version: "v1".into(), kind: "Secret".into(),
-                    name: from_name.into(), namespace: from_ns.into(), field_path: field.into() } });
-            }
+            references = secret_copy(from_ns, from_name);
         }
-        Composed { object: serde_json::to_value(o).expect("manifests serialise"), ready: e.ready }
+        let o = location_object(crate::common::kinds::meta(&format!("{}-{key}", self.name), &self.ns, &labels), &m.location, e.manifest, references);
+        Composed { object: to_value(&o), ready: e.ready }
     }
 
     /// CloudNativePG's official Grafana dashboard (Apache-2.0) for this
@@ -489,17 +535,21 @@ impl Composition<'_> {
             g.instance_selector.clone()
         };
         GrafanaDashboard {
-            api_version: "grafana.integreatly.org/v1beta1".into(), kind: "GrafanaDashboard".into(),
             metadata: self.meta(&format!("{}-cnpg", self.name)),
             spec: GrafanaDashboardSpec {
-                instance_selector: LabelSelector { match_labels },
-                allow_cross_namespace_import: g.allow_cross_namespace_import,
-                folder: or(&g.folder, "CloudNativePG").into(),
-                uid: uid.into(),
-                resync_period: "10m".into(),
-                datasources: vec![DashboardDatasource { input_name: "DS_PROMETHEUS".into(), datasource_name: or(&g.datasource_name, "prometheus").into() }],
-                json: dashboard_json(&self.ns, &self.name, uid),
+                instance_selector: GrafanaDashboardInstanceSelector { match_labels: Some(match_labels), ..Default::default() },
+                allow_cross_namespace_import: Some(g.allow_cross_namespace_import),
+                folder: Some(or(&g.folder, "CloudNativePG").into()),
+                // Unique per cluster (the upstream JSON hardcodes "cloudnative-pg",
+                // which made every cluster's dashboard collide in one Grafana).
+                uid: Some(uid.into()),
+                resync_period: Some("10m".into()),
+                datasources: Some(vec![GrafanaDashboardDatasources { input_name: "DS_PROMETHEUS".into(),
+                    datasource_name: or(&g.datasource_name, "prometheus").into() }]),
+                json: Some(dashboard_json(&self.ns, &self.name, uid)),
+                ..Default::default()
             },
+            status: None,
         }
     }
 }

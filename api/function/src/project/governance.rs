@@ -17,12 +17,15 @@
 //! The control-plane Prometheus has every location's series (remote write),
 //! so its rules see both sites. Without basis-prices, no cost rules.
 
+use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
 use regex::Regex;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 use super::Settings;
+use crate::common::kinds::crds::prometheus::prometheus_rule as pr;
+use crate::common::kinds::{Labels, alert, scoped_dashboard, to_value};
 use crate::common::gojson::{fmt_f, fmt_g_prec, marshal, quote, quote_meta};
 use crate::common::util::{as_obj, as_str, or, past_day, sha1hex, trunc};
 
@@ -163,7 +166,12 @@ impl Governance {
         let f = |v: f64| fmt_g_prec(v, 8);
         let sel = |extra: &str| format!("{{namespace={}{extra}}}", quote(ns));
         let running = format!("and on (namespace, pod, site) (kube_pod_status_phase{} == 1)", sel(",phase=\"Running\""));
-        let cost = |component: &str, expr: String| json!({"record": "basis:cost_per_hour", "expr": expr, "labels": {"component": component}});
+        let record = |record: &str, expr: String, labels: Option<Labels>| pr::PrometheusRuleGroupsRules {
+            record: Some(record.into()), expr: IntOrString::String(expr), labels, ..Default::default()
+        };
+        let cost = |component: &str, expr: String| {
+            record("basis:cost_per_hour", expr, Some(Labels::from([("component".to_string(), component.to_string())])))
+        };
         let mut rules = vec![
             cost("cpu", format!("sum by (namespace, site) (kube_pod_container_resource_requests{} {running}) * {}",
                 sel(",resource=\"cpu\""), f(self.hourly("cpu")))),
@@ -173,8 +181,8 @@ impl Governance {
                 sel(""), f(self.hourly("storage")))),
             cost("loadbalancer", format!("count by (namespace, site) (kube_service_spec_type{}) * {}",
                 sel(",type=\"LoadBalancer\""), f(self.hourly("loadBalancer")))),
-            json!({"record": "basis:tokens_per_hour", "expr": format!(
-                "sum by (namespace, site, gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_sum{}[5m])) * 3600", sel(""))}),
+            record("basis:tokens_per_hour", format!(
+                "sum by (namespace, site, gen_ai_request_model, gen_ai_token_type) (rate(gen_ai_client_token_usage_sum{}[5m])) * 3600", sel("")), None),
         ];
         let (models, def) = self.token_prices();
         let token_cost = |m: &str, p: &TokenPrice| {
@@ -194,16 +202,15 @@ impl Governance {
         };
         rules.push(token_cost(&other, &def));
         // The month at the last day's run rate.
-        rules.push(json!({"record": "basis:cost_monthly_forecast", "expr": format!(
-            "avg_over_time(sum by (namespace) (basis:cost_per_hour{})[1d:5m]) * {HOURS_PER_MONTH}", sel(""))}));
-        rules.push(json!({"record": "basis:tokens_monthly_forecast", "expr": format!(
-            "avg_over_time(sum by (namespace) (basis:tokens_per_hour{})[1d:5m]) * {HOURS_PER_MONTH}", sel(""))}));
+        rules.push(record("basis:cost_monthly_forecast", format!(
+            "avg_over_time(sum by (namespace) (basis:cost_per_hour{})[1d:5m]) * {HOURS_PER_MONTH}", sel("")), None));
+        rules.push(record("basis:tokens_monthly_forecast", format!(
+            "avg_over_time(sum by (namespace) (basis:tokens_per_hour{})[1d:5m]) * {HOURS_PER_MONTH}", sel("")), None));
 
         let mut alerts = vec![];
         let mut alert = |name: &str, expr: String, severity: &str, summary: String| {
-            alerts.push(json!({"alert": name, "expr": expr, "for": "1h",
-                "labels": {"severity": severity, "project": s.name},
-                "annotations": {"summary": summary}}));
+            let labels = Labels::from([("severity".to_string(), severity.to_string()), ("project".to_string(), s.name.clone())]);
+            alerts.push(alert(name, "1h", expr, &labels, summary));
         };
         let currency = self.currency();
         if self.budget_monthly > 0.0 {
@@ -220,27 +227,17 @@ impl Governance {
             alert("BasisTokenBudgetForecastExceeded", format!("basis:tokens_monthly_forecast{} > {t}", sel("")), "critical",
                 format!("Project {} is on track to use {{{{ $value | humanize }}}} tokens this month, over its {t}", s.name));
         }
-        let mut groups = vec![json!({"name": "basis-cost", "interval": "1m", "rules": rules})];
+        let mut groups = vec![pr::PrometheusRuleGroups { name: "basis-cost".into(), interval: Some("1m".into()), rules: Some(rules), ..Default::default() }];
         if !alerts.is_empty() {
-            groups.push(json!({"name": "basis-budget", "rules": alerts}));
+            groups.push(pr::PrometheusRuleGroups { name: "basis-budget".into(), rules: Some(alerts), ..Default::default() });
         }
-        json!({"apiVersion": "monitoring.coreos.com/v1", "kind": "PrometheusRule", "metadata": s.meta("basis-cost"),
-            "spec": {"groups": groups}})
+        to_value(&pr::PrometheusRule { metadata: s.meta("basis-cost"), spec: pr::PrometheusRuleSpec { groups: Some(groups) }, status: None })
     }
 
     /// The project's cost in its Grafana.
     pub(super) fn cost_dashboard(&self, s: &Settings) -> Value {
         let uid = format!("basis-cost-{}", trunc(&sha1hex(&s.ns), 12));
-        json!({
-            "apiVersion": "grafana.integreatly.org/v1beta1", "kind": "GrafanaDashboard", "metadata": s.meta("basis-cost"),
-            "spec": {
-                "instanceSelector": {"matchLabels": {"dashboards.paas.cndev.nl/scope": s.ns}},
-                "folder": "Platform",
-                "uid": uid,
-                "resyncPeriod": "10m",
-                "json": self.dashboard_json(s, &uid),
-            },
-        })
+        to_value(&scoped_dashboard(s.meta("basis-cost"), &s.ns, "Platform", uid.clone(), self.dashboard_json(s, &uid)))
     }
 
     fn dashboard_json(&self, s: &Settings, uid: &str) -> String {

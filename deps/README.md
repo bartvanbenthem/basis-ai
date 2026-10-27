@@ -19,7 +19,9 @@ databases run in. Each component goes where its column says.
 | Envoy Gateway + Agent Router | `ModelGateway` (an internal, OpenAI-compatible endpoint per gateway and site, optionally exposed over HTTPS; every GenAIStack has one) | no | where gateways and stacks run |
 | KServe (LLMInferenceService) + llm-d's scheduler | `ModelServer` (vLLM, prefix-cache-aware routing behind an InferencePool) | no | where self-hosted models run (GPU nodes) |
 
-Install them in the order below, each in the clusters its row says.
+Install them in the order below, each in the clusters its row says. Upgrading
+an operator whose kinds the APIs write also means refreshing its CRD for
+function-basis ([Operator types](../api/README.md#operator-types-crds)).
 
 ## 1. cert-manager
 
