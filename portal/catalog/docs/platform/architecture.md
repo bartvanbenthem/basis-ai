@@ -18,7 +18,7 @@ run) and optionally a **recovery** location (replica clusters).
  PostgresCluster (XR, in the Project's namespace on the control plane)
    │  Crossplane runs the Composition's pipeline
    ▼
- function-basis (Rust)        reads: the XR, its Project, the size and extension catalogs,
+ function-basis (Go)          reads: the XR, its Project, the extension catalog,
    │                                     the observed state of what it composed before
    │  desired state
    ▼
@@ -37,7 +37,7 @@ run) and optionally a **recovery** location (replica clusters).
 - **The function refuses to break a running database.** When an input it needs is missing (the
   Project, the bucket, the size), it keeps what runs instead of rendering an empty or default desired
   state. `status.message` says what is missing.
-- **One function composes every API.** function-basis (Rust) dispatches on the XR's kind: Project
+- **One function composes every API.** function-basis (Go) dispatches on the XR's kind: Project
   (namespaces, RBAC, Prometheus, Grafana, bucket), Location (provider config, checks),
   PostgresCluster, ValkeyCache, ModelServer, ModelGateway, MCPServer and GenAIStack. Each is a package with unit tests, and
   every case is rendered and validated against the real CRD schemas in CI (`make -C api test`).
@@ -66,8 +66,8 @@ run) and optionally a **recovery** location (replica clusters).
 | Concern | Where |
 |---|---|
 | Schema, defaults, immutable fields | The XRDs (`api/apis/*/definition.yaml`), enforced by the API server |
-| Sizes, extensions, Project defaults | EnvironmentConfigs on the control plane: see [Catalogs](catalogs.md) |
-| Cross-object rules (size in catalog, sites set, deletion protection) | ValidatingAdmissionPolicies (`api/apis/*/policies.yaml`) |
+| Extensions, Project defaults | EnvironmentConfigs on the control plane: see [Catalogs](catalogs.md) |
+| Cross-object rules (extensions in catalog, sites set, deletion protection) | ValidatingAdmissionPolicies (`api/apis/*/policies.yaml`) |
 | What gets composed, switchover/failover | function-basis (`api/function/<api>`, one package per API) |
 | Who may do what in the portal | Backstage permissions (`basis.*`) |
 

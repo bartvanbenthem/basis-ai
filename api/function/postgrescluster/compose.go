@@ -37,41 +37,37 @@
 // it takes the name of a deleted cluster. Its replica cluster's folder is
 // <that>-<recovery location>.
 //
-// Sizes (spec.size): the EnvironmentConfig "postgres-sizes" (data.sizes, a
-// list of {name, resources, parameters, ...}) says what each size gets: the
-// instances' resources and tuned postgresql.conf settings, under the ones
-// spec.postgresql.parameters sets. Without spec.size, spec.resources (or
-// 500m/1Gi) applies. The result is kept in status.sizing: while the catalog
-// can't be read or has dropped the size, the cluster keeps running with that,
-// never with the defaults. Changing a size in the catalog resizes every cluster
-// of that size (CNPG restarts the instances one by one, the primary last).
+// Resources (spec.resources): each instance's CPU and memory (500m/1Gi
+// unset), with postgresql.conf settings tuned to them under the ones
+// spec.postgresql.parameters sets; status.sizing shows the result. Changing
+// them restarts the instances one by one, the primary last.
 //
 // Extensions (spec.database.extensions, spec.databases[].extensions): the
 // EnvironmentConfig "postgres-extensions" (data.extensions, a list of {name,
 // parameters, sharedPreloadLibraries, image, ...}) is what the admission
 // policy lets clusters add. The parameters of the extensions in use go under
-// the size's and spec's settings, their libraries are preloaded, and one with
+// the tuned ones and spec's, their libraries are preloaded, and one with
 // an image (PostgreSQL 18+) is mounted from it (CNPG image volume
 // extensions); see extensions.go. The bootstrap database gets a CNPG Database
 // of its own (databaseReclaimPolicy retain) for its extensions.
 //
 // Profiles (spec.profile): general, or vector for embeddings and hybrid
-// search. The size's settings for the profile (sizes[].profiles.<profile>)
-// go over the size's own and are kept in status.sizing with them; vector
-// clusters also export metrics on their vector indexes.
+// search. Vector tunes for building indexes in memory (see tuned) and
+// exports metrics on the vector indexes.
 package postgrescluster
 
 import (
 	"crypto/sha1" //nolint:gosec // a dashboard uid, not a security boundary
 	"encoding/hex"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 )
 
 // The resources the composition reads besides the XR, by requirement name.
 const (
 	RequiredProject    = "project"
-	RequiredSizes      = "sizes"
 	RequiredExtensions = "extensions"
 )
 
@@ -81,11 +77,10 @@ type Requirement struct {
 }
 
 // Requirements returns what Compose reads besides the XR: the Project named
-// after the XR's namespace and the two catalogs.
+// after the XR's namespace and the extensions catalog.
 func Requirements(namespace string) map[string]Requirement {
 	return map[string]Requirement{
 		RequiredProject:    {"platform.cndev.nl/v1alpha1", "Project", namespace},
-		RequiredSizes:      {"apiextensions.crossplane.io/v1beta1", "EnvironmentConfig", "postgres-sizes"},
 		RequiredExtensions: {"apiextensions.crossplane.io/v1beta1", "EnvironmentConfig", "postgres-extensions"},
 	}
 }
@@ -231,10 +226,7 @@ func (c *composition) compose() (*Output, error) {
 		}
 	}
 
-	sizing, err := c.sizing()
-	if err != nil {
-		return nil, err
-	}
+	sizing := c.sizing()
 	c.extensions = c.resolveExtensions()
 
 	// ---- archive folders: the cluster's name, or a new one for a restored
@@ -246,7 +238,7 @@ func (c *composition) compose() (*Output, error) {
 
 	// ---- members: the protected site, then the recovery site
 	var members []*member
-	if protected != "" && sizing != nil && (!(projectBucket || restoreFromProject) || store.DestinationPath != "") {
+	if protected != "" && (!(projectBucket || restoreFromProject) || store.DestinationPath != "") {
 		members = append(members, &member{location: protected, site: "protected", topology: server, prefix: "",
 			original: true, instances: spec.instances(), sizing: sizing})
 		if recovery != "" && (geo.Enabled || draining) {
@@ -346,80 +338,78 @@ func (c *composition) compose() (*Output, error) {
 	return out, nil
 }
 
-// sizing resolves spec.size (or spec.resources) into what the instances run with.
-func (c *composition) sizing() (*Sizing, error) {
-	spec := c.spec
-	var sizing *Sizing
-	if spec.Size != "" {
-		var catalog struct {
-			Data struct {
-				Sizes []struct {
-					Name       string         `json:"name"`
-					Resources  map[string]any `json:"resources"`
-					Parameters map[string]any `json:"parameters"`
-					// Per profile, settings over the size's.
-					Profiles map[string]struct {
-						Parameters map[string]any `json:"parameters"`
-					} `json:"profiles"`
-				} `json:"sizes"`
-			} `json:"data"`
-		}
-		if items := c.required[RequiredSizes]; len(items) > 0 {
-			decode(items[0], &catalog)
-		}
-		for _, s := range catalog.Data.Sizes {
-			if s.Name == spec.Size {
-				sizing = &Sizing{Size: spec.Size, Resources: s.Resources, Parameters: s.Parameters}
-				if p := s.Profiles[spec.profile()].Parameters; len(p) > 0 {
-					params := map[string]any{}
-					for k, v := range s.Parameters {
-						params[k] = v
-					}
-					for k, v := range p {
-						params[k] = v
-					}
-					sizing.Profile, sizing.Parameters = spec.profile(), params
-				}
-			}
-		}
-		pinned := c.xr.Status.Sizing
-		switch {
-		case sizing != nil:
-		case pinned != nil && len(pinned.Resources) > 0:
-			// A size retired from the catalog is fine for the clusters that
-			// have it; a change to one that isn't there is not applied.
-			sizing = pinned
-			if c.resolved(RequiredSizes) && pinned.Size != spec.Size {
-				c.setProblem("size %s is not in the postgres-sizes catalog; the instances keep running as %s", spec.Size, or(pinned.Size, "before"))
-			}
-		case c.running():
-			// Never resize a running database to the defaults.
-			if c.resolved(RequiredSizes) {
-				return nil, stop("PostgresCluster %s/%s has size %s, which is not in the postgres-sizes catalog, and no status.sizing to keep running with", c.ns, c.name, spec.Size)
-			}
-		default:
-			c.setProblem("size %s is not in the postgres-sizes catalog (EnvironmentConfig postgres-sizes, data.sizes)", spec.Size)
-		}
-	} else {
-		sizing = &Sizing{Resources: spec.Resources}
+// sizing resolves spec.resources into what the instances run with: memory
+// as request and limit (Guaranteed QoS, the memory the settings assume), no
+// CPU limit so instances aren't throttled, and postgresql.conf tuned to them.
+func (c *composition) sizing() *Sizing {
+	cpu, memory := c.spec.cpu(), c.spec.memory()
+	return &Sizing{
+		Resources: map[string]any{
+			"requests": map[string]any{"cpu": cpu, "memory": memory},
+			"limits":   map[string]any{"memory": memory},
+		},
+		Parameters: tuned(cpu, memory, c.spec.profile()),
 	}
-	if sizing == nil {
-		return nil, nil
+}
+
+// tuned is postgresql.conf for an instance's CPU and memory: shared_buffers
+// 25% of the memory, effective_cache_size 75%, and connections and work
+// memory that grow with it. The vector profile builds HNSW and VectorChord
+// indexes in memory: maintenance_work_mem ~20% (they build fastest with room)
+// and parallel workers for it, up to the CPUs. spec.postgresql.parameters wins
+// over these.
+func tuned(cpu, memory, profile string) map[string]any {
+	mb := mebibytes(memory)
+	connections := 400
+	switch {
+	case mb < 4096:
+		connections = 100
+	case mb < 16384:
+		connections = 200
+	case mb < 32768:
+		connections = 300
 	}
-	// The defaults, so status.sizing says what really runs.
-	r := sizing.Resources
-	limits := map[string]any{"memory": digOr(r, "1Gi", "limits", "memory")}
-	if cpu := dig(r, "limits", "cpu"); truthy(cpu) {
-		limits["cpu"] = cpu
+	p := map[string]any{
+		"max_connections":      strconv.Itoa(connections),
+		"shared_buffers":       pgMB(mb / 4),
+		"effective_cache_size": pgMB(mb * 3 / 4),
+		"work_mem":             pgMB(max(mb/512, 4)),
+		"maintenance_work_mem": pgMB(max(mb/16, 64)),
 	}
-	params := sizing.Parameters
-	if params == nil {
-		params = map[string]any{}
+	if profile == ProfileVector {
+		p["maintenance_work_mem"] = pgMB(max(mb*3/16, 64))
+		workers := int64(max(math.Ceil(cores(cpu)*0.75), 1))
+		p["max_parallel_maintenance_workers"] = strconv.FormatInt(workers, 10)
 	}
-	return &Sizing{Size: sizing.Size, Profile: sizing.Profile, Parameters: params, Resources: map[string]any{
-		"requests": map[string]any{"cpu": digOr(r, "500m", "requests", "cpu"), "memory": digOr(r, "1Gi", "requests", "memory")},
-		"limits":   limits,
-	}}, nil
+	return p
+}
+
+// mebibytes is a Kubernetes memory quantity (Mi or Gi) in MiB.
+func mebibytes(memory string) int64 {
+	if n, ok := strings.CutSuffix(memory, "Gi"); ok {
+		v, _ := strconv.ParseInt(n, 10, 64)
+		return v * 1024
+	}
+	v, _ := strconv.ParseInt(strings.TrimSuffix(memory, "Mi"), 10, 64)
+	return v
+}
+
+// cores is a Kubernetes CPU quantity in cores.
+func cores(cpu string) float64 {
+	if m, ok := strings.CutSuffix(cpu, "m"); ok {
+		v, _ := strconv.ParseFloat(m, 64)
+		return v / 1000
+	}
+	v, _ := strconv.ParseFloat(cpu, 64)
+	return v
+}
+
+// pgMB is MiB as a postgresql.conf size: GB when whole.
+func pgMB(mb int64) string {
+	if mb > 0 && mb%1024 == 0 {
+		return fmt.Sprintf("%dGB", mb/1024)
+	}
+	return fmt.Sprintf("%dMB", mb)
 }
 
 // fillParams sets the settings dst doesn't have (or has empty) from src.

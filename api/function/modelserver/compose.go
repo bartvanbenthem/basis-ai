@@ -35,6 +35,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -257,7 +258,8 @@ func (c *composition) siteObjects(site string, replicas int) map[string]object {
 	requests := Object{"cpu": res.cpu(), "memory": res.memory()}
 	limits := Object{"memory": res.memory()}
 	if g := res.gpus(); g > 0 {
-		requests[res.gpuResource()], limits[res.gpuResource()] = g, g
+		// A quantity, as the API server stores it.
+		requests[res.gpuResource()], limits[res.gpuResource()] = strconv.Itoa(g), strconv.Itoa(g)
 	}
 	main := Object{"name": "main", "resources": Object{"requests": requests, "limits": limits}}
 	if spec.Image != "" {

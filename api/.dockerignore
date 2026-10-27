@@ -1,4 +1,4 @@
-# The function's image needs the workspace manifests, function/ and tools/.
+# The function's image needs only go.mod, go.sum and function/.
 target/
 _output/
 tests/

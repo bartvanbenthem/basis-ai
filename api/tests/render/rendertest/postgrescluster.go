@@ -47,10 +47,6 @@ var pgExpected = map[string]map[string]bool{
 	"restorecustom":  set("cluster", "restore-objectstore", "secret-ledger-db-s3", "podmonitor", "monitoring-queries", "prometheusrule"),
 	"restorepending": set("dashboard"),
 	"sized":          set("cluster", "podmonitor", "monitoring-queries", "prometheusrule", "dashboard"),
-	"sizegone":       set("cluster", "podmonitor", "monitoring-queries", "prometheusrule", "dashboard"),
-	"sizechanged":    set("cluster", "podmonitor", "monitoring-queries", "prometheusrule", "dashboard"),
-	// An unknown size: nothing placed until it names one in the catalog.
-	"sizeunknown": set("dashboard"),
 	// The bootstrap database's extensions get a Database of their own.
 	"extensions": set("cluster", "podmonitor", "monitoring-queries", "prometheusrule", "dashboard", "database-docs", "database-analytics"),
 	// ... unless databases[] lists that database.
@@ -59,7 +55,7 @@ var pgExpected = map[string]map[string]bool{
 }
 
 // The postgresql.conf settings the extensions in use bring from the
-// postgres-extensions catalog, under the size's and spec's.
+// postgres-extensions catalog, under the tuned ones and spec's.
 var pgExtensionParams = map[string]M{
 	"extensions": {"pg_stat_statements.track": "top"},
 	"production": {"pg_stat_statements.track": "top"},
@@ -72,34 +68,30 @@ const (
 	pgPrevToken = "eyJsc24iOiIwLzIwMDAwMDAifQ=="
 )
 
-// sizing: (size, resources, parameters, profile) per case.
+// sizing: (resources, parameters) per case.
 type sizing struct {
-	size              string
 	resources, params M
-	profile           string
 }
 
-var defaultResources = M{"requests": M{"cpu": "500m", "memory": "1Gi"}, "limits": M{"memory": "1Gi"}}
+func pgResources(cpu, memory string) M {
+	return M{"requests": M{"cpu": cpu, "memory": memory}, "limits": M{"memory": memory}}
+}
 
-// spec.size from the postgres-sizes catalog (its resources and settings,
-// spec.postgresql.parameters on top), else spec.resources or the defaults;
-// status.sizing says what every site runs with.
+// spec.resources (or 500m/1Gi), memory as request and limit, and
+// postgresql.conf tuned to them (the vector profile with room to build
+// indexes), spec.postgresql.parameters on top; status.sizing says what every
+// site runs with.
 var pgSizing = map[string]sizing{
-	"sized": {"m", M{"requests": M{"cpu": "2", "memory": "8Gi"}, "limits": M{"memory": "8Gi"}},
-		M{"shared_buffers": "2GB", "effective_cache_size": "6GB", "work_mem": "16MB",
-			"maintenance_work_mem": "512MB", "max_connections": "200"}, ""},
-	// Kept from status.sizing: the catalog no longer has "retired".
-	"sizegone": {"retired", M{"requests": M{"cpu": "3", "memory": "12Gi"}, "limits": M{"memory": "12Gi"}},
-		M{"shared_buffers": "3GB"}, ""},
-	// Not applied: the instances keep the size they had.
-	"sizechanged": {"m", M{"requests": M{"cpu": "2", "memory": "8Gi"}, "limits": M{"memory": "8Gi"}},
-		M{"shared_buffers": "2GB"}, ""},
-	"production": {"", M{"requests": M{"cpu": "1", "memory": "4Gi"}, "limits": M{"memory": "4Gi"}}, M{}, ""},
-	// Size m with its vector settings over its own.
-	"vector": {"m", M{"requests": M{"cpu": "2", "memory": "8Gi"}, "limits": M{"memory": "8Gi"}},
-		M{"shared_buffers": "2GB", "effective_cache_size": "6GB", "work_mem": "16MB",
-			"maintenance_work_mem": "1536MB", "max_parallel_maintenance_workers": "2", "max_connections": "200"}, "vector"},
+	"sized": {pgResources("2", "8Gi"), M{"max_connections": "200", "shared_buffers": "2GB", "effective_cache_size": "6GB",
+		"work_mem": "16MB", "maintenance_work_mem": "512MB"}},
+	"production": {pgResources("1", "4Gi"), M{"max_connections": "200", "shared_buffers": "1GB", "effective_cache_size": "3GB",
+		"work_mem": "8MB", "maintenance_work_mem": "256MB"}},
+	"vector": {pgResources("2", "8Gi"), M{"max_connections": "200", "shared_buffers": "2GB", "effective_cache_size": "6GB",
+		"work_mem": "16MB", "maintenance_work_mem": "1536MB", "max_parallel_maintenance_workers": "2"}},
 }
+
+var pgDefaultSizing = sizing{pgResources("500m", "1Gi"), M{"max_connections": "100", "shared_buffers": "256MB",
+	"effective_cache_size": "768MB", "work_mem": "4MB", "maintenance_work_mem": "64MB"}}
 
 func assertPostgresCluster(r *render, dashboardSrc string) {
 	kase, state, status, conds, name, ns, xr := r.kase, r.state, r.status, r.conds, r.name, r.ns, r.xr
@@ -203,9 +195,6 @@ func assertPostgresCluster(r *render, dashboardSrc string) {
 			"no sites without a Project: %s", repr(status))
 		check(strings.Contains(str(status, "message"), "not a Project with a protected location"), "message %s", repr(get(status, "message")))
 		check(str(conds["PostgresReady"], "reason") == "NoSite", "PostgresReady reason NoSite")
-	case "sizeunknown":
-		check(equal(get(status, "locations"), L{}) && !has(status, "sizing"), "nothing placed yet: %s", repr(status))
-		check(strings.Contains(str(status, "message"), "size huge is not in the postgres-sizes catalog"), "message %s", repr(get(status, "message")))
 	case "bucketpending", "restorepending":
 		check(equal(get(status, "locations"), L{}) && !has(status, "backupStore"), "nothing placed yet: %s", repr(status))
 		verb := "backup uses"
@@ -345,7 +334,7 @@ func assertPostgresCluster(r *render, dashboardSrc string) {
 		got = L{get(main, "postgresql", "parameters", "basis.last_promotion"),
 			get(replica, "postgresql", "parameters", "basis.last_promotion")}
 		check(equal(got, marker), "basis.last_promotion %s", repr(got))
-	} else if !slices.Contains([]string{"noproject", "bucketpending", "projectbucket", "restored", "restorepending", "sizeunknown"}, kase) {
+	} else if !slices.Contains([]string{"noproject", "bucketpending", "projectbucket", "restored", "restorepending"}, kase) {
 		spec := mp(r.live("cluster"), "spec")
 		var ext []string
 		for _, e := range list(spec, "externalClusters") {
@@ -374,12 +363,10 @@ func assertPostgresCluster(r *render, dashboardSrc string) {
 	}
 
 	// --- readiness / status
-	if state == "empty" || slices.Contains([]string{"noproject", "bucketpending", "restorepending", "sizeunknown", "sizechanged"}, kase) {
+	if state == "empty" || slices.Contains([]string{"noproject", "bucketpending", "restorepending"}, kase) {
 		check(equal(get(status, "ready"), false), "status.ready should be false before the Cluster exists")
 		check(str(conds["PostgresReady"], "status") == "False", "PostgresReady should be False")
-		if kase != "sizechanged" { // its composed resources are all there
-			check(str(conds["Ready"], "status") == "False", "XR Ready should be False")
-		}
+		check(str(conds["Ready"], "status") == "False", "XR Ready should be False")
 	} else {
 		check(equal(get(status, "ready"), true), "status.ready should be true, got %s", repr(get(status, "ready")))
 		wantReady := get(r.live("cluster"), "spec", "instances")
@@ -394,15 +381,12 @@ func assertPostgresCluster(r *render, dashboardSrc string) {
 	}
 
 	// --- sizing
-	if kase != "sizeunknown" {
+	{
 		sz, ok := pgSizing[kase]
 		if !ok {
-			sz = sizing{"", defaultResources, M{}, ""}
+			sz = pgDefaultSizing
 		}
-		want := M{"size": sz.size, "resources": sz.resources, "parameters": sz.params}
-		if sz.profile != "" {
-			want["profile"] = sz.profile
-		}
+		want := M{"resources": sz.resources, "parameters": sz.params}
 		check(equal(get(status, "sizing"), want), "status.sizing %s != %s", repr(get(status, "sizing")), repr(want))
 		for _, key := range []string{"cluster", "recovery-cluster"} {
 			if _, ok := r.composed[key]; !ok {
@@ -428,7 +412,7 @@ func assertPostgresCluster(r *render, dashboardSrc string) {
 			for k, v := range user {
 				merged[k] = v
 			}
-			check(equal(got, merged), "%s: parameters %s != extensions' under size's under spec's %s", key, repr(got), repr(merged))
+			check(equal(got, merged), "%s: parameters %s != extensions' under tuned under spec's %s", key, repr(got), repr(merged))
 		}
 	}
 	// --- extensions: one CNPG Database per database, the bootstrap one never dropped.
@@ -470,14 +454,6 @@ func assertPostgresCluster(r *render, dashboardSrc string) {
 		check(equal(get(r.live("cluster"), "spec", "imageCatalogRef", "major"), float64(18)), "imageCatalogRef.major should be 18")
 		queries := str(r.live("monitoring-queries"), "data", "queries")
 		check(strings.Contains(queries, "vector_index:") && strings.Contains(queries, "create_index_progress:"), "vector exporter queries missing")
-	}
-
-	if kase == "sizechanged" {
-		check(strings.Contains(str(status, "message"), "size huge is not in the postgres-sizes catalog; the instances keep running as m"),
-			"message %s", repr(get(status, "message")))
-	}
-	if kase == "sizegone" {
-		check(!strings.Contains(str(status, "message"), "catalog"), "a retired size is no problem: %s", repr(get(status, "message")))
 	}
 
 	// --- backup folders: the cluster's name, a folder of its own per replica cluster.
@@ -588,7 +564,9 @@ func assertPostgresCluster(r *render, dashboardSrc string) {
 
 	if kase == "bare" {
 		spec := mp(r.live("cluster"), "spec")
-		check(!has(spec, "postgresql"), "empty postgresql block must be omitted")
+		// Only the settings tuned to the resources: no preloads or extensions.
+		pg := sortedKeys(mp(spec, "postgresql"))
+		check(len(pg) == 1 && pg[0] == "parameters", "postgresql block %v, want only the tuned parameters", pg)
 		check(!has(spec, "topologySpreadConstraints"), "zoneSpread: false must drop the zone constraint")
 		check(equal(get(spec, "enableSuperuserAccess"), true), "enableSuperuserAccess not passed through")
 		check(str(status, "secrets", "superuser") == name+"-superuser", "secrets.superuser")

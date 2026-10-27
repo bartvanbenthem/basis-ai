@@ -11,7 +11,7 @@ import (
 )
 
 // Vendored sources, prepared by hack/generate (`make generate`) from
-// src/dashboards/cnpg-cluster.json and src/alerts/ with their placeholders
+// monitoring/dashboards/cnpg-cluster.json and monitoring/alerts/ with their placeholders
 // for the namespace, cluster name and dashboard uid.
 var (
 	//go:embed assets/zz_generated.dashboard.json

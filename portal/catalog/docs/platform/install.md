@@ -32,7 +32,7 @@ or later); the portal's location health shows it.
 
 ```sh
 api/install/install.sh      # Crossplane 2.4, function-basis, provider-kubernetes, RBAC, XRDs,
-                            # Compositions, policies, and the size and extension catalogs (once)
+                            # Compositions, policies, and the extension catalog (once)
 ```
 
 `install.sh` installs the published function-basis package (every API's composition) and waits until it's Healthy. The

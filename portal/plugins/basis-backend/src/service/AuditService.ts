@@ -68,7 +68,7 @@ export class AuditService {
     const names = clusters.map(c => c.metadata.name);
     const audited = clusters.map(c => ({
       name: c.metadata.name,
-      // The size's settings, under the cluster's own (as the composition merges them).
+      // The tuned settings, under the cluster's own (as the composition merges them).
       pgauditLog: pgauditLog({ ...c.status?.sizing?.parameters, ...c.spec.postgresql?.parameters }),
     }));
 

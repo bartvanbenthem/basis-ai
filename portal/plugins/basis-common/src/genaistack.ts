@@ -31,7 +31,9 @@ export interface GenAIStackSpec {
     gatewayReplicas?: number;
   };
   retrieval?: {
-    size?: string;
+    /** Each database instance's; memory is request and limit. */
+    cpu?: string;
+    memory?: string;
     instances?: number;
     storageSize?: string;
     backup?: boolean;

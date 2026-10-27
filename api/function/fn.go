@@ -270,8 +270,7 @@ func compose(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionResponse, oxr *r
 	fn func(xr map[string]any, observed map[string]map[string]any, required map[string][]map[string]any) (*composed, error)) {
 	// Ask for the requirements every time: Crossplane calls the function
 	// again with them once they're resolved.
-	requirements := &fnv1.Requirements{Resources: map[string]*fnv1.ResourceSelector{},
-		ExtraResources: map[string]*fnv1.ResourceSelector{}} //nolint:staticcheck // Crossplane < 2 reads extra_resources
+	requirements := &fnv1.Requirements{Resources: map[string]*fnv1.ResourceSelector{}}
 	for key, r := range reqs {
 		sel := &fnv1.ResourceSelector{ApiVersion: r.apiVersion, Kind: r.kind,
 			Match: &fnv1.ResourceSelector_MatchName{MatchName: r.name}}
@@ -283,7 +282,6 @@ func compose(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionResponse, oxr *r
 			sel.Namespace = &ns
 		}
 		requirements.Resources[key] = sel
-		requirements.ExtraResources[key] = sel //nolint:staticcheck // see above
 	}
 	rsp.Requirements = requirements
 
@@ -369,12 +367,6 @@ func requiredResources(req *fnv1.RunFunctionRequest) (map[string][]map[string]an
 	resolved, err := request.GetRequiredResources(req)
 	if err != nil {
 		return nil, err
-	}
-	if len(resolved) == 0 {
-		// Crossplane < 2 answers in extra_resources.
-		if resolved, err = request.GetExtraResources(req); err != nil { //nolint:staticcheck // see above
-			return nil, err
-		}
 	}
 	out := make(map[string][]map[string]any, len(resolved))
 	for name, items := range resolved {

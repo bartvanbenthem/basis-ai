@@ -20,8 +20,8 @@ databases run in. Each component goes where its column says.
 | KServe (LLMInferenceService) + llm-d's scheduler | `ModelServer` (vLLM, prefix-cache-aware routing behind an InferencePool) | no | where self-hosted models run (GPU nodes) |
 
 Install them in the order below, each in the clusters its row says. Upgrading
-an operator whose kinds the APIs write also means refreshing its CRD for
-function-basis ([Operator types](../api/README.md#operator-types-crds)).
+an operator whose kinds the APIs write also means refreshing its CRD in
+`api/tests/crds/`, so the render tests validate against it ([Develop](../api/README.md#develop)).
 
 ## 1. cert-manager
 
@@ -140,7 +140,7 @@ The operator is v1alpha1 and marked early development upstream: cluster mode
 only (no standalone or Sentinel), no backups, no modules of its own. The
 `ValkeyCache` composition loads valkey-search for semantic caches through the
 `valkey/valkey-bundle` image, and pins both images
-([`function/src/valkeycache.rs`](../api/function/src/valkeycache.rs), a
+([`function/valkeycache/compose.go`](../api/function/valkeycache/compose.go), a
 new function-basis version); bump them together with this chart. Read the
 [upgrade notes](https://github.com/valkey-io/valkey-helm/tree/main/valkey-operator)
 before a chart upgrade: an operator upgrade can roll every cache's pods.

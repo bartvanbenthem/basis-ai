@@ -28,7 +28,9 @@ metadata:
 spec:
   profile: vector
   postgresVersion: 18
-  size: m
+  resources:
+    cpu: "2"
+    memory: 8Gi
   database:
     name: docs
     owner: docs
@@ -37,13 +39,13 @@ spec:
     enabled: true
 ```
 
-## Pick a size
+## Pick the memory
 
 A vector index answers fast while it fits in memory. Compare the index sizes on the cluster's
 dashboard (`cnpg_vector_index_size_bytes`) with the instance memory; as a rule of thumb, an HNSW index
 of 1 million 1024-dimension `vector` embeddings takes about 4–8 GB, half that with `halfvec`.
-**M** (8Gi) holds an index of about a million such embeddings; take **L** or **XL** beyond that, or
-use `halfvec` or VectorChord to make the index smaller. Move up a size when the indexes outgrow it.
+8Gi holds an index of about a million such embeddings; take 16Gi or 32Gi beyond that, or use
+`halfvec` or VectorChord to make the index smaller. Add memory when the indexes outgrow it.
 
 ## Store embeddings
 

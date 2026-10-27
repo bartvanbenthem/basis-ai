@@ -62,7 +62,6 @@ describe('ProjectListPage', () => {
 describe('CreateClusterPage', () => {
   const base: Partial<BasisApi> = {
     getConfig: jest.fn(async () => ({ storageClasses: [] })),
-    listSizes: jest.fn(async () => []),
     listExtensions: jest.fn(async () => []),
   };
 
@@ -86,36 +85,13 @@ describe('CreateClusterPage', () => {
     expect(screen.getByText('Create project')).toBeInTheDocument();
   });
 
-  it("starts at the catalog's first size, with its volumes", async () => {
-    const api: Partial<BasisApi> = {
-      ...base,
-      listProjects: jest.fn(async () => [project({})]),
-      listSizes: jest.fn(async () => [
-        {
-          name: 's',
-          displayName: 'S',
-          description: 'Small production workloads',
-          resources: { requests: { cpu: '1', memory: '4Gi' } },
-          parameters: { shared_buffers: '1GB' },
-          storage: { size: '20Gi', walSize: '5Gi' },
-        },
-      ]),
-    };
-    await renderInTestApp(<CreateClusterPage />, apis(api) as any);
-    expect(await screen.findByText(/PostgreSQL tuned: shared_buffers 1GB/)).toBeInTheDocument();
-    // The manifest preview: the size instead of resources, and its volumes.
-    const manifest = () => document.querySelector('pre')?.textContent ?? '';
-    await waitFor(() => expect(manifest()).toMatch(/^ {2}size: s$/m));
-    expect(manifest()).not.toMatch(/resources:/);
-    expect(screen.queryByLabelText('CPU request')).not.toBeInTheDocument();
-    expect(screen.getByDisplayValue('20Gi')).toBeInTheDocument();
-  });
-
-  it('offers custom resources without a catalog', async () => {
+  it('sends CPU and memory as spec.resources', async () => {
     const api: Partial<BasisApi> = { ...base, listProjects: jest.fn(async () => [project({})]) };
     await renderInTestApp(<CreateClusterPage />, apis(api) as any);
-    expect(await screen.findByLabelText('CPU request')).toBeInTheDocument();
-    expect(screen.queryByText('Size')).not.toBeInTheDocument();
+    const manifest = () => document.querySelector('pre')?.textContent ?? '';
+    fireEvent.change(await screen.findByLabelText('Memory'), { target: { value: '8Gi' } });
+    await waitFor(() => expect(manifest()).toMatch(/^ {2}resources:\n {4}cpu: 500m\n {4}memory: 8Gi$/m));
+    expect(manifest()).not.toMatch(/size: [a-z]+$/m);
   });
 
   it('adds pgvector from the extension catalog to the bootstrap database', async () => {

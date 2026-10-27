@@ -24,11 +24,11 @@ func TestRunFunction(t *testing.T) {
 	project := resource.MustStructJSON(`{"apiVersion":"platform.cndev.nl/v1alpha1","kind":"Project",
 		"metadata":{"name":"payments"},"spec":{"locations":{"protected":"si-ske-demo"}}}`)
 
-	t.Run("asks for the Project and the catalogs", func(t *testing.T) {
+	t.Run("asks for the Project and the extensions catalog", func(t *testing.T) {
 		rsp := runFunction(t, &fnv1.RunFunctionRequest{Observed: &fnv1.State{Composite: &fnv1.Resource{Resource: xr}}})
 		sel := rsp.GetRequirements().GetResources()
-		if sel["project"].GetMatchName() != "payments" || sel["sizes"].GetMatchName() != "postgres-sizes" ||
-			sel["extensions"].GetMatchName() != "postgres-extensions" {
+		if sel["project"].GetMatchName() != "payments" || sel["extensions"].GetMatchName() != "postgres-extensions" ||
+			len(sel) != 2 {
 			t.Errorf("requirements %v", sel)
 		}
 	})

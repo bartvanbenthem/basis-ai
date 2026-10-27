@@ -6,8 +6,8 @@ import (
 )
 
 // Workload profiles (spec.profile). A profile tunes a cluster for a kind of
-// workload: the size's settings for it (postgres-sizes, sizes[].profiles),
-// and for vector the exporter queries on vector indexes. The extensions a
+// workload: its tuned settings (tuned, in compose.go), and for vector the
+// exporter queries on vector indexes. The extensions a
 // profile suggests are the portal's business; the spec lists them.
 const (
 	ProfileGeneral = "general"

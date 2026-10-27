@@ -6,7 +6,7 @@ import (
 )
 
 // Status is the XR's status (definition.yaml status), mirrored from CNPG and
-// carrying the pinned sites, backup store and sizing between reconciles.
+// carrying the pinned sites and backup store between reconciles.
 type Status struct {
 	Ready           bool              `json:"ready"`
 	Phase           string            `json:"phase"`
@@ -45,9 +45,6 @@ type BackupStore struct {
 
 // Sizing is what the instances run with.
 type Sizing struct {
-	Size string `json:"size"`
-	// Profile whose settings for the size are in Parameters.
-	Profile    string         `json:"profile,omitempty"`
 	Resources  map[string]any `json:"resources"`
 	Parameters map[string]any `json:"parameters"`
 }

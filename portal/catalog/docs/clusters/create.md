@@ -25,7 +25,9 @@ metadata:
   name: orders-db
   namespace: team-payments     # your Project
 spec:
-  size: s                      # 1 vCPU, 4Gi memory per instance
+  resources:
+    cpu: "1"                     # per instance
+    memory: 4Gi                # request and limit; PostgreSQL is tuned to it
   storage:
     size: 20Gi
   backup:

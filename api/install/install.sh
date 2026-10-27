@@ -66,14 +66,15 @@ echo "==> PostgresCluster Composition"
 # (too big for client-side apply), so the field manager stays the same.
 kubectl apply --server-side --force-conflicts -f "${API_DIR}/postgrescluster/composition.yaml"
 
-echo "==> PostgresCluster sizes and extensions (catalogs, once) + admission policies"
-# The catalogs are the platform team's to edit afterwards: never overwrite them.
-for catalog in sizes extensions; do
-  if ! kubectl get environmentconfig "postgres-${catalog}" >/dev/null 2>&1; then
-    kubectl apply -f "${API_DIR}/postgrescluster/${catalog}.yaml"
-  fi
-done
+echo "==> PostgresCluster extensions (catalog, once) + admission policies"
+# The catalog is the platform team's to edit afterwards: never overwrite it.
+if ! kubectl get environmentconfig postgres-extensions >/dev/null 2>&1; then
+  kubectl apply -f "${API_DIR}/postgrescluster/extensions.yaml"
+fi
 kubectl apply -f "${API_DIR}/postgrescluster/policies.yaml"
+# Gone with spec.size (clusters set spec.resources): the size policy of earlier installs.
+kubectl delete validatingadmissionpolicybinding,validatingadmissionpolicy \
+  postgres.cndev.nl-postgrescluster-size --ignore-not-found
 
 echo "==> Project XRD + Composition"
 kubectl apply -f "${API_DIR}/project/definition.yaml"
@@ -85,7 +86,7 @@ sed "s/system:serviceaccount:crossplane-system:crossplane'/system:serviceaccount
   "${API_DIR}/project/policies.yaml" | kubectl apply -f -
 
 echo "==> Governance: price and model catalogs (once) + policies (model residency, exposure, expiry)"
-# Like the size catalog: the platform team's to edit afterwards, never overwritten.
+# Like the extensions catalog: the platform team's to edit afterwards, never overwritten.
 for catalog in project/prices:basis-prices modelgateway/models:basis-models; do
   if ! kubectl get environmentconfig "${catalog#*:}" >/dev/null 2>&1; then
     kubectl apply -f "${API_DIR}/${catalog%%:*}.yaml"

@@ -80,7 +80,7 @@ func (c *composition) member(m *member, members []*member, distributed bool) (ma
 	version := spec.postgresVersion()
 
 	// ================= CloudNativePG Cluster =================
-	// The size's tuned settings, under the ones spec.postgresql sets; what
+	// The settings tuned to the resources, under the ones spec.postgresql sets; what
 	// the extensions in use need (postgres-extensions catalog) under both.
 	params := map[string]string{}
 	fillParams(params, spec.PostgreSQL.Parameters)

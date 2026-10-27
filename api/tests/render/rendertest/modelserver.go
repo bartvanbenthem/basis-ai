@@ -61,7 +61,7 @@ func assertModelServer(r *render) {
 			check(gpu == nil && str(main, "image") == "docker.io/vllm/vllm-openai-cpu:v0.23.0" &&
 				equal(get(main, "securityContext", "runAsNonRoot"), false), "%s: CPU only: %s", s, repr(main))
 		case geo:
-			check(equal(gpu, 2) && equal(get(srv, "spec", "parallelism", "tensor"), 2), "%s: two GPUs, tensor parallel: %s", s, repr(main))
+			check(equal(gpu, "2") && equal(get(srv, "spec", "parallelism", "tensor"), 2), "%s: two GPUs, tensor parallel: %s", s, repr(main))
 			check(equal(get(main, "args"), L{"--max-model-len=32768", "--gpu-memory-utilization=0.92"}), "%s: vLLM flags %s", s, repr(get(main, "args")))
 			check(str(srv, "spec", "template", "serviceAccountName") == name+"-model", "%s: the token's ServiceAccount", s)
 			sa := r.live(s + "-serviceaccount")
@@ -71,7 +71,7 @@ func assertModelServer(r *render) {
 				"%s: the token copied from the Project's Secret: %s", s, repr(ref))
 			check(str(srv, "spec", "template", "tolerations", 0, "key") == "nvidia.com/gpu", "%s: tolerations", s)
 		default:
-			check(equal(gpu, 1) && !has(srv, "spec", "parallelism") && !has(main, "image"), "%s: one GPU, KServe's image: %s", s, repr(main))
+			check(equal(gpu, "1") && !has(srv, "parallelism", "spec") && !has(main, "image"), "%s: one GPU, KServe's image: %s", s, repr(main))
 			check(r.live(s+"-token") == nil && !has(srv, "spec", "template", "serviceAccountName"), "%s: no token without tokenSecretRef", s)
 		}
 		pm := r.live(s + "-podmonitor")

@@ -34,11 +34,10 @@ import {
   PROJECT_KIND,
   PROJECT_PLURAL,
   PROJECT_VERSION,
-  SIZES_GROUP,
-  SIZES_NAME,
+  EXTENSIONS_GROUP,
   EXTENSIONS_NAME,
-  SIZES_PLURAL,
-  SIZES_VERSION,
+  EXTENSIONS_PLURAL,
+  EXTENSIONS_VERSION,
   summarize,
   XR_GROUP,
   XR_KIND,
@@ -397,14 +396,6 @@ export class BasisKubernetesService {
   }
 
   /**
-   * data of the postgres-sizes EnvironmentConfig (the sizes spec.size can
-   * name); undefined when there's none, so the form offers only custom resources.
-   */
-  async sizesCatalog(): Promise<unknown> {
-    return this.#environmentConfigData(SIZES_NAME);
-  }
-
-  /**
    * data of the postgres-extensions EnvironmentConfig (the extensions a
    * cluster may add); undefined when there's none.
    */
@@ -416,9 +407,9 @@ export class BasisKubernetesService {
     try {
       const res = await this.#call(() =>
         this.#custom.getClusterCustomObject({
-          group: SIZES_GROUP,
-          version: SIZES_VERSION,
-          plural: SIZES_PLURAL,
+          group: EXTENSIONS_GROUP,
+          version: EXTENSIONS_VERSION,
+          plural: EXTENSIONS_PLURAL,
           name,
         }),
       );

@@ -166,12 +166,12 @@ export const ClusterDetails = ({ details }: { details: PostgresClusterDetails })
   const { summary, resource, pods, events, cnpgStatus } = details;
   const spec = resource.spec;
   const status = resource.status ?? {};
-  // What the instances run with (a size resolved by the composition), else the spec's.
-  const running = status.sizing?.resources ?? spec.resources ?? {};
+  // What the instances run with, as the composition resolved spec.resources.
+  const running = status.sizing?.resources ?? {};
   const tuned = Object.entries(status.sizing?.parameters ?? {})
     .map(([k, v]) => `${k}=${v}`)
     .join(', ');
-  // The size's setting, under the cluster's own (as the composition merges them).
+  // The tuned setting, under the cluster's own (as the composition merges them).
   const auditLog = pgauditLog({ ...status.sizing?.parameters, ...spec.postgresql?.parameters });
   // Each database's extensions: the bootstrap database's, then databases[]'.
   const extensions = [
@@ -294,10 +294,9 @@ export const ClusterDetails = ({ details }: { details: PostgresClusterDetails })
             rows={[
               ['Data volume', `${spec.storage?.size ?? '-'}${spec.storage?.storageClass ? ` (${spec.storage.storageClass})` : ''}`],
               ['WAL volume', spec.walStorage ? `${spec.walStorage.size}` : 'shared with data'],
-              ['Size', spec.size ? spec.size.toUpperCase() : 'custom'],
               ['Workload profile', PROFILES[clusterProfile(spec)].displayName],
-              ['CPU request', running.requests?.cpu ?? '-'],
-              ['Memory', `${running.requests?.memory ?? '-'} request / ${running.limits?.memory ?? '-'} limit`],
+              ['CPU', running.requests?.cpu ?? spec.resources?.cpu ?? '-'],
+              ['Memory', running.requests?.memory ?? spec.resources?.memory ?? '-'],
               ...(tuned
                 ? ([['PostgreSQL tuned', <Mono>{tuned}</Mono>]] as Array<[string, ReactNode]>)
                 : []),

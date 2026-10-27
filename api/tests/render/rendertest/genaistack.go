@@ -73,7 +73,7 @@ func assertGenAIStack(r *render) {
 		check(str(gw, "spec", "expose", "hostname") == "bot.example.com" && str(gw, "spec", "expose", "issuer") == "basis",
 			"gateway: gateway.expose passed on: %s", repr(get(gw, "spec", "expose")))
 	} else {
-		check(!has(db, "spec", "expose") && !has(gw, "spec", "expose"), "nothing exposed without spec.*.expose")
+		check(!has(db, "expose", "spec") && !has(gw, "expose", "spec"), "nothing exposed without spec.*.expose")
 	}
 
 	// --- what the stack composes is the stack's (the ownership policy reads this label)

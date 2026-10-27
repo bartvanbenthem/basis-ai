@@ -6,42 +6,11 @@ catalogs, and you edit them there (`kubectl edit environmentconfig <name>`, or G
 
 | Catalog | Holds | Read by |
 |---|---|---|
-| `postgres-sizes` | Sizes: CPU, memory, tuned PostgreSQL settings, suggested volumes, per-profile settings | function, size admission policy, portal |
 | `postgres-extensions` | Extensions clusters may add, their settings, preloads, images | function, extension admission policy, portal |
 | `project-defaults` | Ingress hosts, remote write, COSI driver and access class | Project composition |
 
-The shipped versions are in `api/apis/postgrescluster/sizes.yaml` and `extensions.yaml`, with every
-key documented in their header.
-
-## Sizes
-
-```yaml
-- name: m
-  displayName: M
-  description: General purpose production
-  resources:
-    requests: {cpu: "2", memory: 8Gi}
-    limits: {memory: 8Gi}            # memory request == limit
-  parameters:                        # tuned to the memory
-    shared_buffers: 2GB
-    effective_cache_size: 6GB
-    work_mem: 16MB
-    maintenance_work_mem: 512MB
-    max_connections: "200"
-  profiles:
-    vector:                          # over the parameters, for profile: vector
-      parameters:
-        maintenance_work_mem: 1536MB
-        max_parallel_maintenance_workers: "2"
-  storage: {size: 50Gi, walSize: 10Gi}   # what the portal suggests
-```
-
-- **Changing a size resizes every cluster of that size**: CNPG restarts their instances one by one,
-  the primary last. Do it in a quiet hour.
-- **Removing a size** only stops new clusters from picking it. Clusters that have it keep running with
-  what `status.sizing` recorded, also when the catalog can't be read.
-- Values are strings. Keep `shared_buffers` around 25% and `effective_cache_size` around 75% of the
-  memory.
+The shipped extensions catalog is `api/apis/postgrescluster/extensions.yaml`, with every key
+documented in its header.
 
 ## Extensions
 
@@ -67,13 +36,12 @@ key documented in their header.
 
 ## Profiles
 
-Profiles (`general`, `vector`) are part of the API, not a catalog; their tuning comes from the sizes'
-`profiles` entries. A size without an entry for a profile runs that profile with the size's own
-settings.
+Profiles (`general`, `vector`) are part of the API, not a catalog; the function tunes each cluster
+to its CPU, memory and profile (see [Configure a cluster](../clusters/configure.md#resources)).
 
 ## Admission
 
-Two ValidatingAdmissionPolicies take the catalogs as their parameter: a new cluster (or a change of
-size or extensions) must name what's in them, and an image extension needs PostgreSQL 18. Without a
-catalog the policies let everything through, and the function reports what it can't resolve in the
+A ValidatingAdmissionPolicy takes the extensions catalog as its parameter: a new cluster (or a change
+of extensions) must name what's in it, and an image extension needs PostgreSQL 18. Without the
+catalog the policy lets everything through, and the function reports what it can't resolve in the
 cluster's `status.message`.

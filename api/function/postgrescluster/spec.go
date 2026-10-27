@@ -23,30 +23,28 @@ type XRStatus struct {
 	PrimaryLocation string       `json:"primaryLocation"`
 	PromotionToken  string       `json:"promotionToken"`
 	BackupStore     *BackupStore `json:"backupStore"`
-	Sizing          *Sizing      `json:"sizing"`
 }
 
 type Spec struct {
-	Restore               *Restore         `json:"restore"`
-	GeoReplication        GeoReplication   `json:"geoReplication"`
-	PostgresVersion       int              `json:"postgresVersion"`
-	ImageCatalog          string           `json:"imageCatalog"`
-	Profile               string           `json:"profile"`
-	Instances             int              `json:"instances"`
-	Storage               Storage          `json:"storage"`
-	WALStorage            *Storage         `json:"walStorage"`
-	Size                  string           `json:"size"`
-	Resources             map[string]any   `json:"resources"`
-	PostgreSQL            PostgreSQL       `json:"postgresql"`
-	Database              Database         `json:"database"`
-	Databases             []ExtraDatabase  `json:"databases"`
-	Roles                 []DatabaseRole   `json:"roles"`
-	EnableSuperuserAccess bool             `json:"enableSuperuserAccess"`
-	HighAvailability      HighAvailability `json:"highAvailability"`
-	Pooler                Pooler           `json:"pooler"`
-	Backup                Backup           `json:"backup"`
-	Monitoring            Monitoring       `json:"monitoring"`
-	Expose                *Expose          `json:"expose"`
+	Restore               *Restore          `json:"restore"`
+	GeoReplication        GeoReplication    `json:"geoReplication"`
+	PostgresVersion       int               `json:"postgresVersion"`
+	ImageCatalog          string            `json:"imageCatalog"`
+	Profile               string            `json:"profile"`
+	Instances             int               `json:"instances"`
+	Storage               Storage           `json:"storage"`
+	WALStorage            *Storage          `json:"walStorage"`
+	Resources             InstanceResources `json:"resources"`
+	PostgreSQL            PostgreSQL        `json:"postgresql"`
+	Database              Database          `json:"database"`
+	Databases             []ExtraDatabase   `json:"databases"`
+	Roles                 []DatabaseRole    `json:"roles"`
+	EnableSuperuserAccess bool              `json:"enableSuperuserAccess"`
+	HighAvailability      HighAvailability  `json:"highAvailability"`
+	Pooler                Pooler            `json:"pooler"`
+	Backup                Backup            `json:"backup"`
+	Monitoring            Monitoring        `json:"monitoring"`
+	Expose                *Expose           `json:"expose"`
 }
 
 type Restore struct {
@@ -85,6 +83,12 @@ type GeoReplication struct {
 	Instances   int    `json:"instances"`
 	PrimarySite string `json:"primarySite"`
 	Promotion   string `json:"promotion"`
+}
+
+// InstanceResources are each instance's CPU and memory; memory is request and limit.
+type InstanceResources struct {
+	CPU    string `json:"cpu"`
+	Memory string `json:"memory"`
 }
 
 type Storage struct {
@@ -187,6 +191,8 @@ func orTrue(b *bool) bool { return b == nil || *b }
 func (s *Spec) postgresVersion() int  { return or(s.PostgresVersion, 17) }
 func (s *Spec) instances() int        { return or(s.Instances, 3) }
 func (s *Spec) profile() string       { return or(s.Profile, ProfileGeneral) }
+func (s *Spec) cpu() string           { return or(s.Resources.CPU, "500m") }
+func (s *Spec) memory() string        { return or(s.Resources.Memory, "1Gi") }
 func (d *Database) name() string      { return or(d.Name, "app") }
 func (d *Database) owner() string     { return or(d.Owner, "app") }
 func (m *Monitoring) enabled() bool   { return orTrue(m.Enabled) }

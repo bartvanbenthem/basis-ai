@@ -159,7 +159,8 @@ func assertSelfHostedGateway(r *render) {
 				"%s: qwen through its Service, renamed: %s", site, repr(qwen))
 			check(len(gpt) == 2 && equal(get(gpt[1], "priority"), 1), "%s: qwen as gpt-4o-mini's fallback: %s", site, repr(gpt))
 		} else {
-			check(!has(got, "qwen") && len(gpt) == 1, "%s: no qwen where its server doesn't run: %s", site, repr(got))
+			_, hasQwen := got["qwen"]
+			check(!hasQwen && len(gpt) == 1, "%s: no qwen where its server doesn't run: %s", site, repr(got))
 		}
 	}
 	var backends []string

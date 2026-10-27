@@ -18,7 +18,7 @@ Router in the Project's locations (the platform team installs them).
 
 | Field | Default | What |
 |---|---|---|
-| `retrieval.size` | 500m CPU, 1Gi | A size from the platform's catalog, e.g. `s` or `m` |
+| `retrieval.cpu`, `.memory` | `500m`, `1Gi` | Per database instance; memory is request and limit, and PostgreSQL is tuned to it |
 | `retrieval.instances`, `.storageSize` | `3`, `20Gi` | |
 | `retrieval.extensions` | `[vector]` | From the extension catalog, e.g. `vchord`, `pg_search` |
 | `retrieval.backup` | off | Continuous backups to the Project's bucket; always on with recovery |

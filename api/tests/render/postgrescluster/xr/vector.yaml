@@ -1,4 +1,4 @@
-# The vector profile (PostgreSQL 18): size m with its vector settings, and
+# The vector profile (PostgreSQL 18): 2 CPUs and 8Gi tuned for vector, and
 # the image extensions VectorChord and pg_search from the postgres-extensions
 # catalog, mounted as image volumes and preloaded. Both require pgvector,
 # which the Database gets first although the spec leaves it out.
@@ -10,7 +10,9 @@ metadata:
 spec:
   profile: vector
   postgresVersion: 18
-  size: m
+  resources:
+    cpu: "2"
+    memory: 8Gi
   database:
     name: docs
     owner: docs

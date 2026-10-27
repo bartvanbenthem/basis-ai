@@ -10,7 +10,7 @@ import (
 )
 
 // Vendored sources, prepared by hack/generate (`make generate`) from
-// src/dashboards/valkey-cache.json and src/alerts/valkey-cache-rules.yaml with
+// monitoring/dashboards/valkey-cache.json and monitoring/alerts/valkey-cache-rules.yaml with
 // their placeholders for the namespace, cache name and dashboard uid.
 var (
 	//go:embed assets/zz_generated.dashboard.json

@@ -224,14 +224,12 @@ func Compose(in Input) (*Output, error) {
 		"profile":         "vector",
 		"postgresVersion": 18,
 		"instances":       spec.instances(),
+		"resources":       Object{"cpu": spec.dbCPU(), "memory": spec.dbMemory()},
 		"storage":         Object{"size": spec.storageSize()},
 		"database":        Object{"extensions": spec.extensions()},
 		"roles":           []any{Object{"name": role, "passwordSecret": c.name + "-db-credentials", "inRoles": []any{"app"}}},
 		"backup":          Object{"enabled": backup},
 		"geoReplication":  geo,
-	}
-	if spec.Retrieval.Size != "" {
-		dbSpec["size"] = spec.Retrieval.Size
 	}
 	if len(spec.Retrieval.Expose) > 0 {
 		dbSpec["expose"] = spec.Retrieval.Expose

@@ -269,7 +269,8 @@ export function registerActions(options: {
           dryRun: z.boolean().default(true).describe('Only validate (default); false creates it'),
           recovery: z.boolean().optional().describe('Warm standby in the project\'s recovery location'),
           cacheMode: z.enum(['semantic', 'exact', 'none']).optional().describe('Cache: semantic (default), exact or none'),
-          databaseSize: z.string().optional().describe('A size from the postgres-sizes catalog, e.g. s or m'),
+          databaseCpu: z.string().optional().describe('CPU of each database instance, e.g. 500m or 2 (default 500m)'),
+          databaseMemory: z.string().optional().describe('Memory of each database instance, e.g. 1Gi or 8Gi (default 1Gi); PostgreSQL is tuned to it'),
           auditLog: z
             .string()
             .optional()
@@ -286,7 +287,8 @@ export function registerActions(options: {
         recovery: { enabled: Boolean(input.recovery) },
         cache: input.cacheMode === 'none' ? { enabled: false } : { mode: input.cacheMode ?? 'semantic' },
         retrieval: {
-          ...(input.databaseSize ? { size: input.databaseSize } : {}),
+          ...(input.databaseCpu ? { cpu: input.databaseCpu } : {}),
+          ...(input.databaseMemory ? { memory: input.databaseMemory } : {}),
           ...(input.auditLog ? { auditLog: input.auditLog } : {}),
         },
         gateway: input.gatewayRef ? { ref: input.gatewayRef } : { models: toModels(input.models) },

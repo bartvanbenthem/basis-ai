@@ -25,7 +25,6 @@ import type {
   StackConnection,
   ClusterConnection,
   ClusterExtension,
-  ClusterSize,
   LocationHealth,
   LocationSpec,
   LocationSummary,
@@ -121,8 +120,6 @@ export interface PatchRequest {
 /** Client for the basis backend plugin (/api/basis). */
 export interface BasisApi {
   getConfig(): Promise<BasisPortalConfig>;
-  /** The sizes (SKUs) spec.size can name, in catalog order; empty without a catalog. */
-  listSizes(): Promise<ClusterSize[]>;
   /** The extensions a cluster may add to its databases, in catalog order; empty without a catalog. */
   listExtensions(): Promise<ClusterExtension[]>;
   listClusters(namespace?: string): Promise<PostgresClusterSummary[]>;
@@ -238,10 +235,6 @@ export class BasisClient implements BasisApi {
 
   getConfig() {
     return this.#request<BasisPortalConfig>('/config');
-  }
-
-  async listSizes() {
-    return (await this.#request<{ items: ClusterSize[] }>('/sizes')).items;
   }
 
   async listExtensions() {

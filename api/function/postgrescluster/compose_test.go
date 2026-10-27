@@ -65,14 +65,6 @@ func TestComposeRefuses(t *testing.T) {
 				Required: map[string][]Object{RequiredProject: project(t, "spec: {locations: {protected: "+rtm+"}}")}},
 			want: "uses the Project's backup bucket",
 		},
-		"size gone from the catalog with nothing pinned": {
-			in: Input{XR: withSpec("size: huge"), Observed: running(t),
-				Required: map[string][]Object{
-					RequiredProject: project(t, "spec: {locations: {protected: "+rtm+"}}"),
-					RequiredSizes:   {obj(t, "data: {sizes: [{name: s}]}")},
-				}},
-			want: "is not in the postgres-sizes catalog, and no status.sizing",
-		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -108,13 +100,11 @@ func clusterSpec(t *testing.T, out *Output, key string) map[string]any {
 func TestParameterPrecedence(t *testing.T) {
 	x := obj(t, xrYAML)
 	x["spec"] = obj(t, `
-size: m
-postgresql: {parameters: {work_mem: 64MB, empty: ""}}
+resources: {cpu: "2", memory: 8Gi}
+postgresql: {parameters: {work_mem: 64MB, shared_buffers: ""}}
 database: {extensions: [pg_stat_statements]}`)
 	out, err := Compose(Input{XR: x, Required: map[string][]Object{
 		RequiredProject: project(t, "spec: {locations: {protected: "+rtm+"}}"),
-		RequiredSizes: {obj(t, `data: {sizes: [{name: m, resources: {requests: {cpu: 2, memory: 8Gi}},
-  parameters: {work_mem: 16MB, shared_buffers: 2GB, max_connections: 200, empty: from-size}}]}`)},
 		RequiredExtensions: {obj(t, `data: {extensions: [
   {name: pg_stat_statements, parameters: {pg_stat_statements.track: top, shared_buffers: 1GB}},
   {name: pg_trgm, parameters: {never: used}}]}`)},
@@ -124,18 +114,31 @@ database: {extensions: [pg_stat_statements]}`)
 	}
 	spec := clusterSpec(t, out, "cluster")
 	got, _ := json.Marshal(dig(spec, "postgresql", "parameters"))
-	// The spec's settings over the size's over the extensions'; an empty one
-	// counts as unset; numbers from the catalog become strings.
-	want := `{"empty":"from-size","max_connections":"200","pg_stat_statements.track":"top","shared_buffers":"2GB","work_mem":"64MB"}`
+	// The spec's settings over the ones tuned to the resources over the
+	// extensions'; an empty one counts as unset.
+	want := `{"effective_cache_size":"6GB","maintenance_work_mem":"512MB","max_connections":"200","pg_stat_statements.track":"top","shared_buffers":"2GB","work_mem":"64MB"}`
 	if string(got) != want {
 		t.Errorf("parameters %s, want %s", got, want)
 	}
 	res, _ := json.Marshal(spec["resources"])
-	if want := `{"limits":{"memory":"1Gi"},"requests":{"cpu":"2","memory":"8Gi"}}`; string(res) != want {
+	if want := `{"limits":{"memory":"8Gi"},"requests":{"cpu":"2","memory":"8Gi"}}`; string(res) != want {
 		t.Errorf("resources %s, want %s", res, want)
 	}
-	if out.Status.Sizing == nil || out.Status.Sizing.Size != "m" {
-		t.Errorf("status.sizing %+v", out.Status.Sizing)
+	if s, _ := json.Marshal(out.Status.Sizing.Resources); string(s) != string(res) {
+		t.Errorf("status.sizing.resources %s, want %s", s, res)
+	}
+}
+
+func TestTunedToTheResources(t *testing.T) {
+	for _, tc := range []struct{ cpu, memory, profile, want string }{
+		{"500m", "1Gi", ProfileGeneral, `{"effective_cache_size":"768MB","maintenance_work_mem":"64MB","max_connections":"100","shared_buffers":"256MB","work_mem":"4MB"}`},
+		{"4", "16Gi", ProfileGeneral, `{"effective_cache_size":"12GB","maintenance_work_mem":"1GB","max_connections":"300","shared_buffers":"4GB","work_mem":"32MB"}`},
+		{"8", "32Gi", ProfileVector, `{"effective_cache_size":"24GB","maintenance_work_mem":"6GB","max_connections":"400","max_parallel_maintenance_workers":"6","shared_buffers":"8GB","work_mem":"64MB"}`},
+		{"500m", "1Gi", ProfileVector, `{"effective_cache_size":"768MB","maintenance_work_mem":"192MB","max_connections":"100","max_parallel_maintenance_workers":"1","shared_buffers":"256MB","work_mem":"4MB"}`},
+	} {
+		if got, _ := json.Marshal(tuned(tc.cpu, tc.memory, tc.profile)); string(got) != tc.want {
+			t.Errorf("tuned(%s, %s, %s) = %s, want %s", tc.cpu, tc.memory, tc.profile, got, tc.want)
+		}
 	}
 }
 

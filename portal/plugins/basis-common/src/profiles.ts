@@ -1,7 +1,7 @@
 /**
  * Workload profiles (PostgresCluster spec.profile). A profile tunes a
- * cluster for a kind of workload: the size's settings for it
- * (postgres-sizes, sizes[].profiles) and, for vector, exporter metrics on
+ * cluster for a kind of workload: the composition's settings for it (vector:
+ * room to build indexes in memory) and, for vector, exporter metrics on
  * vector indexes. The extensions are the portal's suggestion; the spec lists
  * them like any others.
  */

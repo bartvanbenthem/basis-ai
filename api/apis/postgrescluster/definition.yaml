@@ -43,9 +43,12 @@ spec:
         - name: Version
           type: integer
           jsonPath: .spec.postgresVersion
-        - name: Size
+        - name: CPU
           type: string
-          jsonPath: .status.sizing.size
+          jsonPath: .spec.resources.cpu
+        - name: Memory
+          type: string
+          jsonPath: .spec.resources.memory
         - name: Instances
           type: integer
           jsonPath: .spec.instances
@@ -87,8 +90,6 @@ spec:
                   message: highAvailability.synchronousReplicas must be lower than geoReplication.instances
                 - rule: "has(self.restore) == has(oldSelf.restore)"
                   message: restore can only be set when the cluster is created, and stays
-                - rule: "!has(self.size) || !has(self.resources)"
-                  message: set size or resources, not both (remove spec.resources to move a cluster to a size)
                 - rule: "!has(self.profile) || self.profile != 'vector' || (has(self.postgresVersion) ? self.postgresVersion : 17) >= 18"
                   message: profile vector needs postgresVersion 18 or later (its extensions are mounted from images)
               properties:
@@ -209,10 +210,9 @@ spec:
                 profile:
                   type: string
                   description: >-
-                    Workload profile. general: the size's settings as they are. vector: for
-                    embeddings, RAG and hybrid search (PostgreSQL 18+): the size's settings for
-                    building vector indexes in memory (postgres-sizes, sizes[].profiles.vector),
-                    and exporter metrics on vector and BM25 indexes and index builds. List the
+                    Workload profile. general: settings tuned to the resources. vector: for
+                    embeddings, RAG and hybrid search (PostgreSQL 18+): more maintenance_work_mem
+                    and parallel maintenance workers to build vector indexes in memory, and exporter metrics on vector and BM25 indexes and index builds. List the
                     extensions in database.extensions (vector, vchord, pg_search).
                   enum: [general, vector]
                   default: general
@@ -255,34 +255,25 @@ spec:
                     storageClass:
                       type: string
                   required: [size]
-                size:
-                  type: string
-                  description: >-
-                    Size (SKU) from the postgres-sizes EnvironmentConfig, e.g. m: CPU and memory of
-                    each instance plus PostgreSQL settings tuned to them (postgresql.parameters set
-                    here win). Changing it restarts the instances one by one, the primary last
-                    (switchover). Leave it unset to set resources yourself.
-                  pattern: '^[a-z0-9]([-a-z0-9]{0,30}[a-z0-9])?$'
                 resources:
                   type: object
                   description: >-
-                    Requests/limits for each PostgreSQL instance pod, instead of a size; unset, 500m
-                    CPU and 1Gi memory. Keep memory request == limit (Guaranteed QoS) in production.
+                    CPU and memory for each PostgreSQL instance (memory is request and limit; no CPU
+                    limit, so instances aren't throttled). PostgreSQL's settings (shared_buffers,
+                    effective_cache_size, work_mem, ...) are tuned to them; postgresql.parameters
+                    set here win. Changing them restarts the instances one by one, the primary last
+                    (switchover).
+                  default: {}
                   properties:
-                    requests:
-                      type: object
-                      properties:
-                        cpu:
-                          type: string
-                        memory:
-                          type: string
-                    limits:
-                      type: object
-                      properties:
-                        cpu:
-                          type: string
-                        memory:
-                          type: string
+                    cpu:
+                      type: string
+                      pattern: '^[0-9]+(\.[0-9]+)?m?$'
+                      default: 500m
+                    memory:
+                      type: string
+                      description: Mi or Gi.
+                      pattern: '^[0-9]+(Mi|Gi)$'
+                      default: 1Gi
                 postgresql:
                   type: object
                   description: PostgreSQL configuration.
@@ -675,22 +666,14 @@ spec:
                       type: string
                 sizing:
                   type: object
-                  description: >-
-                    What the instances run with: spec.size resolved from the postgres-sizes catalog
-                    (or spec.resources). Kept while the catalog can't be read or no longer has the
-                    size, so a running cluster never falls back to the defaults.
+                  description: What the instances run with, from spec.resources and spec.profile.
                   properties:
-                    size:
-                      type: string
-                    profile:
-                      type: string
-                      description: The profile whose settings for the size are in parameters.
                     resources:
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
                     parameters:
                       type: object
-                      description: PostgreSQL settings from the size (and its profile settings), before spec.postgresql.parameters.
+                      description: PostgreSQL settings tuned to the resources and profile, before spec.postgresql.parameters.
                       additionalProperties:
                         type: string
                 backupStore:

@@ -18,17 +18,12 @@ const extensionsCatalog = `data: {extensions: [
   {name: pg_search, requires: [vector], sharedPreloadLibraries: [pg_search],
    image: {reference: paradedb/paradedb-extension:18-trixie}, ldLibraryPath: [system]}]}`
 
-const sizesCatalog = `data: {sizes: [{name: m, resources: {requests: {cpu: 2, memory: 8Gi}},
-  parameters: {maintenance_work_mem: 512MB, work_mem: 16MB},
-  profiles: {vector: {parameters: {maintenance_work_mem: 2GB, max_parallel_maintenance_workers: 2}}}}]}`
-
 func composeVector(t *testing.T, spec string, observed map[string]Object, required map[string][]Object) *Output {
 	t.Helper()
 	x := obj(t, xrYAML)
 	x["spec"] = obj(t, spec)
 	if required == nil {
 		required = map[string][]Object{
-			RequiredSizes:      {obj(t, sizesCatalog)},
 			RequiredExtensions: {obj(t, extensionsCatalog)},
 		}
 	}
@@ -117,22 +112,19 @@ func TestVectorProfile(t *testing.T) {
 	out := composeVector(t, `
 profile: vector
 postgresVersion: 18
-size: m
+resources: {cpu: "2", memory: 8Gi}
 postgresql: {parameters: {work_mem: 32MB}}
 database: {extensions: [vector]}`, nil, nil)
 	got := asJSON(dig(clusterSpec(t, out, "cluster"), "postgresql", "parameters"))
-	// The profile's settings over the size's, the spec's over both.
-	if want := `{"maintenance_work_mem":"2GB","max_parallel_maintenance_workers":"2","work_mem":"32MB"}`; got != want {
+	// Room to build indexes in memory, the spec's settings over it.
+	if want := `{"effective_cache_size":"6GB","maintenance_work_mem":"1536MB","max_connections":"200","max_parallel_maintenance_workers":"2","shared_buffers":"2GB","work_mem":"32MB"}`; got != want {
 		t.Errorf("parameters %s, want %s", got, want)
-	}
-	if s := out.Status.Sizing; s == nil || s.Profile != ProfileVector {
-		t.Errorf("status.sizing %+v", s)
 	}
 	if q := queries(t, out); !strings.Contains(q, "vector_index:") || !strings.Contains(q, "wal_archive:") {
 		t.Errorf("vector cluster's queries: %.200s", q)
 	}
 
-	general := composeVector(t, "size: m", nil, nil)
+	general := composeVector(t, `resources: {cpu: "2", memory: 8Gi}`, nil, nil)
 	if got := asJSON(dig(clusterSpec(t, general, "cluster"), "postgresql", "parameters", "maintenance_work_mem")); got != `"512MB"` {
 		t.Errorf("general profile maintenance_work_mem %s", got)
 	}

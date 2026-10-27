@@ -24,7 +24,8 @@ type Spec struct {
 		GatewayReplicas *int   `json:"gatewayReplicas"`
 	} `json:"recovery"`
 	Retrieval struct {
-		Size        string    `json:"size"`
+		CPU         string    `json:"cpu"`
+		Memory      string    `json:"memory"`
 		Instances   int       `json:"instances"`
 		StorageSize string    `json:"storageSize"`
 		Backup      bool      `json:"backup"`
@@ -88,6 +89,8 @@ func (s *Spec) gatewayReplicas() int  { return or(s.Gateway.Replicas, 2) }
 func (s *Spec) primarySite() string   { return or(s.Recovery.ActiveSite, SiteProtected) }
 func (s *Spec) instances() int        { return or(s.Retrieval.Instances, 3) }
 func (s *Spec) storageSize() string   { return or(s.Retrieval.StorageSize, "20Gi") }
+func (s *Spec) dbCPU() string         { return or(s.Retrieval.CPU, "500m") }
+func (s *Spec) dbMemory() string      { return or(s.Retrieval.Memory, "1Gi") }
 
 func (s *Spec) standbyGatewayReplicas() int {
 	if s.Recovery.GatewayReplicas == nil {

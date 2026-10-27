@@ -199,7 +199,7 @@ export class PostgresClusterEntityProvider implements EntityProvider {
         // per Kubernetes namespace -- so include both.
         name: `${namespace}--${name}`.slice(0, 63),
         title: `${name} (${namespace})`,
-        description: `PostgreSQL ${s.postgresVersion ?? ''} on CloudNativePG, ${s.instances} instance(s)${s.size ? ` of size ${s.size}` : ''}`,
+        description: `PostgreSQL ${s.postgresVersion ?? ''} on CloudNativePG, ${s.instances} instance(s)${s.cpu && s.memory ? ` of ${s.cpu} CPU, ${s.memory}` : ''}`,
         annotations: {
           [ANNOTATION_LOCATION]: location,
           [ANNOTATION_ORIGIN_LOCATION]: location,
@@ -211,7 +211,6 @@ export class PostgresClusterEntityProvider implements EntityProvider {
           'postgresql',
           'cnpg',
           `pg${s.postgresVersion ?? ''}`,
-          ...(s.size ? [`size-${s.size}`] : []),
         ].filter(t => t !== 'pg'),
         links,
       },

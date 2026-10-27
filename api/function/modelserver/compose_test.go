@@ -66,7 +66,7 @@ func TestCompose(t *testing.T) {
 		}
 		main := dig(spec, "template", "containers").([]any)[0].(Object)
 		res := main["resources"].(Object)
-		if dig(res, "requests", "nvidia.com/gpu") != 1 || dig(res, "limits", "nvidia.com/gpu") != 1 || dig(res, "limits", "memory") != "16Gi" {
+		if dig(res, "requests", "nvidia.com/gpu") != "1" || dig(res, "limits", "nvidia.com/gpu") != "1" || dig(res, "limits", "memory") != "16Gi" {
 			t.Errorf("resources %v", res)
 		}
 		if main["image"] != nil || main["securityContext"] != nil || main["args"] != nil {
@@ -102,7 +102,7 @@ func TestCompose(t *testing.T) {
 		}
 		tpl := spec["template"].(Object)
 		main := tpl["containers"].([]any)[0].(Object)
-		if main["image"] != "rocm/vllm:latest" || len(main["args"].([]any)) != 1 || dig(main, "resources", "limits", "amd.com/gpu") != 4 {
+		if main["image"] != "rocm/vllm:latest" || len(main["args"].([]any)) != 1 || dig(main, "resources", "limits", "amd.com/gpu") != "4" {
 			t.Errorf("main %v", main)
 		}
 		if tpl["nodeSelector"].(map[string]string)["gpu"] != "mi300" || len(tpl["tolerations"].([]any)) != 1 {

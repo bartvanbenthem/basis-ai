@@ -29,7 +29,8 @@ metadata:
   namespace: demo
 spec:
   retrieval:
-    size: s
+    cpu: "1"
+    memory: 4Gi
     storageSize: 20Gi
     extensions: [vector]
   cache:

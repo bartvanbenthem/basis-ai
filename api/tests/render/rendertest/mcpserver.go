@@ -112,7 +112,7 @@ func assertMCPServer(r *render) {
 			check(str(cfg, "retrieval", "table") == "public.chunks" && equal(get(cfg, "retrieval", "own"), false) &&
 				str(cfg, "retrieval", "columns", "embedding") == "vec" && str(cfg, "memory", "scope") == "shared",
 				"%s: a table of your own: %s", s, repr(cfg))
-			check(equal(get(cfg, "clients", "support-bot", "tools"), L{"search", "fetch", "recall"}) && !has(cfg, "clients", "intern"),
+			check(equal(get(cfg, "clients", "support-bot", "tools"), L{"search", "fetch", "recall"}) && !has(cfg, "intern", "clients"),
 				"%s: clients %s", s, repr(get(cfg, "clients")))
 		}
 

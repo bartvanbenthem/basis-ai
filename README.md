@@ -20,7 +20,7 @@ and [Backstage](https://backstage.io/).
 | `ModelGateway` | An OpenAI-compatible endpoint ([Agent Router](https://github.com/theagentrouter/agent-router) on [Envoy Gateway](https://gateway.envoyproxy.io)) to hosted and self-hosted models: provider keys kept in the platform, a key per client, retries and fallbacks, token caps, an audit log per call. [Guide](portal/catalog/docs/ai/model-gateways.md) |
 | `ModelServer` | An open model on your GPUs: [vLLM](https://docs.vllm.ai/) on [KServe](https://kserve.github.io/website/), with [llm-d](https://llm-d.ai/)'s prefix-cache-aware routing. [Guide](portal/catalog/docs/ai/model-servers.md) |
 | `MCPServer` | A Project's knowledge base (hybrid search) and its agents' memory as MCP tools ([basis-mcp](mcp/)), a key and a set of tools per agent. [Guide](portal/catalog/docs/ai/mcp-servers.md) |
-| `PostgresCluster` | A highly available PostgreSQL on [CloudNativePG](https://cloudnative-pg.io/): sizes from a catalog, PgBouncer, pgvector and other extensions, backups, point-in-time restore, geo replication. [Guide](portal/catalog/docs/clusters/create.md) |
+| `PostgresCluster` | A highly available PostgreSQL on [CloudNativePG](https://cloudnative-pg.io/): CPU and memory with PostgreSQL tuned to them, PgBouncer, pgvector and other extensions, backups, point-in-time restore, geo replication. [Guide](portal/catalog/docs/clusters/create.md) |
 | `ValkeyCache` | An exact or semantic (vector) cache on [Valkey](https://valkey.io/). [Guide](portal/catalog/docs/caches/valkey.md) |
 | `Project` | A team's namespace in every site, with its own Prometheus and Grafana, access control, quota, backup bucket, deletion protection, and governance: data classification, budget and cost forecast, allowed models. [Guide](portal/catalog/docs/platform/projects.md) |
 
@@ -34,7 +34,8 @@ metadata:
   namespace: demo
 spec:
   retrieval:
-    size: s
+    cpu: "1"
+    memory: 4Gi
     extensions: [vector]
   cache:
     mode: semantic
@@ -61,7 +62,7 @@ See [`api/examples/`](api/examples/) for every API, and the platform docs in
 
 | Folder | What |
 |---|---|
-| [`api/`](api/README.md) | The APIs (Crossplane v2) and function-basis, the Rust composition function behind all of them |
+| [`api/`](api/README.md) | The APIs (Crossplane v2) and function-basis, the Go composition function behind all of them |
 | [`deps/`](deps/README.md) | The operators the platform builds on, and how to install them |
 | [`portal/`](portal/README.md) | The Backstage portal: forms, catalog, MCP tools for agents, and the platform docs |
 | [`mcp/`](mcp/README.md) | basis-mcp, the server every `MCPServer` runs |
@@ -101,12 +102,12 @@ make -C api function-push FUNCTION_VERSION=<version>  # publish to ghcr.io
 kubectl apply -f api/install/function-basis.yaml      # on every control plane (or api/install/install.sh)
 ```
 
-`MCPServer`s run basis-mcp's image, at the tag in `DEFAULT_IMAGE` in
-`api/function/src/mcpserver.rs`. When [`mcp/`](mcp/) changes, publish it first, then function-basis:
+`MCPServer`s run basis-mcp's image, at the tag in `DefaultImage` in
+`api/function/mcpserver/compose.go`. When [`mcp/`](mcp/) changes, publish it first, then function-basis:
 
 ```sh
 make -C mcp test-db
-make -C mcp push VERSION=<version>   # then set <version> in mcp/Makefile and DEFAULT_IMAGE, and publish function-basis
+make -C mcp push VERSION=<version>   # then set <version> in mcp/Makefile and DefaultImage, and publish function-basis
 ```
 
 See [Releasing function-basis](api/README.md#releasing-function-basis) for logging in to ghcr.io,
@@ -116,7 +117,7 @@ the package's visibility, and rolling back.
 
 | Command | Needs | Covers |
 |---|---|---|
-| `make -C api test` | Rust, crossplane CLI, Docker/podman | function-basis's unit tests; every API rendered from `api/tests/render`, validated against the real CRDs, and asserted on |
+| `make -C api test` | Go, crossplane CLI, Docker/podman | function-basis's unit tests; every API rendered from `api/tests/render`, validated against the real CRDs, and asserted on |
 | `make -C mcp test-db` | Rust, podman | basis-mcp, including the store against PostgreSQL with pgvector |
 | `cd portal && yarn tsc && yarn test:all` | node 22 | the portal's backend and frontend |
 | `deps/cnpg/verify.sh` | helm | the vendored CNPG charts lint and render |

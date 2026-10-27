@@ -1,56 +1,6 @@
 # Guardrails for PostgresClusters (ValidatingAdmissionPolicy, Kubernetes >= 1.30):
-# the size and the extensions must be in their catalogs.
+# the extensions must be in their catalog.
 #
-# spec.size names a size in the EnvironmentConfig postgres-sizes (the
-# policy's parameter). A new cluster, or a size change, must name one that's
-# there. Clusters keep their size when it's later removed from the catalog
-# (other changes to them still go through). Without the catalog the policy
-# lets everything through and the composition reports the unknown size.
-apiVersion: admissionregistration.k8s.io/v1
-kind: ValidatingAdmissionPolicy
-metadata:
-  name: postgres.cndev.nl-postgrescluster-size
-spec:
-  failurePolicy: Fail
-  paramKind:
-    apiVersion: apiextensions.crossplane.io/v1beta1
-    kind: EnvironmentConfig
-  matchConstraints:
-    resourceRules:
-      - apiGroups: [postgres.cndev.nl]
-        apiVersions: ["*"]
-        resources: [postgresclusters]
-        operations: [CREATE, UPDATE]
-  variables:
-    - name: size
-      expression: "has(object.spec.size) ? object.spec.size : ''"
-    - name: changed
-      expression: >-
-        variables.size != '' && (oldObject == null || !has(oldObject.spec.size)
-        || oldObject.spec.size != variables.size)
-    - name: names
-      expression: >-
-        has(params.data) && has(params.data.sizes)
-        ? params.data.sizes.filter(s, has(s.name)).map(s, string(s.name))
-        : []
-  validations:
-    - expression: "!variables.changed || variables.size in variables.names"
-      messageExpression: >-
-        'size ' + variables.size + ' is not in the postgres-sizes catalog; choose one of: '
-        + variables.names.join(', ')
-      reason: Invalid
----
-apiVersion: admissionregistration.k8s.io/v1
-kind: ValidatingAdmissionPolicyBinding
-metadata:
-  name: postgres.cndev.nl-postgrescluster-size
-spec:
-  policyName: postgres.cndev.nl-postgrescluster-size
-  validationActions: [Deny]
-  paramRef:
-    name: postgres-sizes
-    parameterNotFoundAction: Allow
----
 # Extensions (spec.database.extensions, spec.databases[].extensions) must be
 # in the EnvironmentConfig postgres-extensions (the policy's parameter): what
 # the image catalog ships and the platform supports. An extension a cluster

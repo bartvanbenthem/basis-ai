@@ -18,8 +18,8 @@
 //	podmonitor      PodMonitor <name>-valkey for the redis_exporter sidecar,
 //	                labelling every series with cluster, shard and node
 //	prometheusrule  PrometheusRule <name>-alerts: the cache alerts
-//	                (src/alerts/valkey-cache-rules.yaml) scoped to this cache
-//	dashboard       GrafanaDashboard <name>-valkey: src/dashboards/valkey-cache.json
+//	                (monitoring/alerts/valkey-cache-rules.yaml) scoped to this cache
+//	dashboard       GrafanaDashboard <name>-valkey: monitoring/dashboards/valkey-cache.json
 //	                with its own title and uid, preselected on this cache
 //
 // Location: the Project's location for spec.site, protected (default) or

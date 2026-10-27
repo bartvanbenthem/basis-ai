@@ -1,4 +1,4 @@
-// Command alertrules writes src/alerts/cnpg-cluster-rules.yaml from the
+// Command alertrules writes monitoring/alerts/cnpg-cluster-rules.yaml from the
 // PrometheusRule the upstream cnpg/cluster Helm chart renders; see
 // hack/refresh-alerts.sh.
 //

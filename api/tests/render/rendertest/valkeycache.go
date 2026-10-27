@@ -63,8 +63,8 @@ func assertValkeyCache(r *render) {
 	check(json.Unmarshal([]byte(str(dash, "spec", "json")), &body) == nil, "dashboard json doesn't parse")
 	check(str(body, "uid") == uid && str(body, "title") == "Valkey / "+ns+" / "+name, "dashboard uid/title %q %q", str(body, "uid"), str(body, "title"))
 	check(!strings.Contains(str(dash, "spec", "json"), "zz"), "dashboard placeholders left")
-	src, err := doc.Load(filepath.Join(root(), "src", "dashboards", "valkey-cache.json"))
-	check(err == nil && len(list(body, "panels")) == len(list(src, "panels")), "dashboard panels differ from src/dashboards/valkey-cache.json")
+	src, err := doc.Load(filepath.Join(root(), "monitoring", "dashboards", "valkey-cache.json"))
+	check(err == nil && len(list(body, "panels")) == len(list(src, "panels")), "dashboard panels differ from monitoring/dashboards/valkey-cache.json")
 	for _, v := range list(body, "templating", "list") {
 		if n := str(v, "name"); n == "namespace" || n == "cluster" {
 			check(str(v, "current", "value") == map[string]string{"namespace": ns, "cluster": name}[n], "dashboard variable %s not preset: %s", n, repr(get(v, "current")))

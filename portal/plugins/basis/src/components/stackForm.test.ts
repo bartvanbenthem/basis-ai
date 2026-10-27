@@ -7,7 +7,7 @@ const stack: GenAIStack = {
   metadata: { name: 'support-bot', namespace: 'demo', labels: { 'backstage.io/owner': 'team-ai' } },
   spec: {
     recovery: { enabled: true },
-    retrieval: { size: 'm', extensions: ['vector', 'vchord'] },
+    retrieval: { cpu: '2', memory: '8Gi', extensions: ['vector', 'vchord'] },
     gateway: {
       models: [
         { name: 'gpt-4o-mini', endpoint: 'https://api.openai.com/v1', apiKeySecretRef: { name: 'openai' } },
@@ -22,11 +22,10 @@ describe('stackForm', () => {
     const spec = toStackSpec({ ...defaultStackForm(), name: 'bot', namespace: 'demo', models: [] });
     expect(spec).toMatchObject({
       recovery: { enabled: false },
-      retrieval: { extensions: ['vector'], storageSize: '20Gi' },
+      retrieval: { cpu: '500m', memory: '1Gi', extensions: ['vector'], storageSize: '20Gi' },
       cache: { enabled: true, mode: 'semantic' },
       gateway: { enabled: true, models: [] },
     });
-    expect((spec.retrieval as any).size).toBeUndefined();
   });
 
   it('maps models, with an API key Secret only when named', () => {
